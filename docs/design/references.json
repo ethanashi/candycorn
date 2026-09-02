@@ -190,6 +190,32 @@
         "A brief written as prose: a large heading sentence, then short statements separated by hairlines, with the patient's own data highlighted inline by a soft tinted background.",
         "One pinned full-width Continue button; no cards, no icons, the text is the object."
       ]
+    },
+    {
+      "screen": "Privacy and AI processing status",
+      "app": "Runna",
+      "source": "mobbin",
+      "url": "https://mobbin.com/screens/85a339d4-c914-4a3d-a527-15d2bb33dae1",
+      "screenId": "85a339d4-c914-4a3d-a527-15d2bb33dae1",
+      "observedMechanics": [
+        "A centered navigation title sits above a short ledger of plain settings rows; each primary control remains a full 44px-tall row rather than a compact switch floating by itself.",
+        "The AI-sharing row names the external processor directly and places a concrete explanation immediately beneath the control.",
+        "Long privacy consequences stay in readable body copy within the same section, while policy destinations form a separate two-row list with trailing chevrons.",
+        "Groups are separated by generous vertical space and bounded surfaces; there is no metrics grid or decorative privacy illustration."
+      ]
+    },
+    {
+      "screen": "Photographed note extraction",
+      "app": "Splitwise",
+      "source": "mobbin",
+      "url": "https://mobbin.com/screens/ba220c78-9ede-4bd0-ba41-16c6476716fa",
+      "screenId": "ba220c78-9ede-4bd0-ba41-16c6476716fa",
+      "observedMechanics": [
+        "The confirmation screen keeps a visible thumbnail of the photographed source beside the extracted subtotal and tax values.",
+        "Extracted content is presented as editable structured rows below the source preview, with the original image remaining separately identifiable.",
+        "A single full-width confirmation action is pinned at the bottom after the user can inspect and amend the extraction.",
+        "The source preview, extracted values, and correction action have distinct hierarchy, so extraction never visually replaces the original."
+      ]
     }
   ]
 }

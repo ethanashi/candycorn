@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Candy Corn visual contract</title>
+    <style>
+      :root {
+        --white: #ffffff;
+        --warm: #fff4e8;
+        --orange: #f28a3c;
+        --orange-pressed: #d9732f;
+        --yellow: #f4c95d;
+        --yellow-deep: #9a6812;
+        --cocoa: #2d2825;
+        --soft: #766d67;
+        --line: #ebe2d8;
+        --sage: #71876d;
+        --rose: #a85f55;
+        --shadow: 0 2px 8px rgb(45 40 37 / 6%);
+      }
+
+      * { box-sizing: border-box; }
+
+      html { background: var(--white); }
+
+      body {
+        margin: 0;
+        color: var(--cocoa);
+        background: var(--white);
+        font-family: "Avenir Next", Avenir, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      button { font: inherit; }
+
+      .sheet {
+        width: 1266px;
+        margin: 0 auto;
+        padding: 48px 24px 64px;
+        display: grid;
+        grid-template-columns: repeat(3, 390px);
+        gap: 40px 24px;
+        background: var(--white);
+      }
+
+      .frame-wrap { width: 390px; }
+
+      .frame-label {
+        height: 32px;
+        margin: 0 0 12px 4px;
+        color: var(--soft);
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .frame {
+        position: relative;
+        width: 390px;
+        height: 844px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 32px;
+        background: var(--white);
+        box-shadow: var(--shadow);
+      }
+
+      .scene {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        border-radius: inherit;
+        background: var(--white);
+      }
+
+      .status-bar {
+        height: 44px;
+        padding: 12px 22px 0;
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        font-size: 13px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .status-icons { display: flex; align-items: center; gap: 6px; }
+      .signal { display: flex; align-items: flex-end; gap: 2px; height: 12px; }
+      .signal i { width: 3px; border-radius: 2px; background: var(--cocoa); }
+      .signal i:nth-child(1) { height: 4px; }
+      .signal i:nth-child(2) { height: 7px; }
+      .signal i:nth-child(3) { height: 10px; }
+      .battery { width: 20px; height: 10px; border: 1.5px solid var(--cocoa); border-radius: 3px; padding: 1.5px; }
+      .battery::after { content: ""; display: block; width: 12px; height: 5px; border-radius: 1px; background: var(--cocoa); }
+
+      .content {
+        height: calc(100% - 44px);
+        padding: 0 16px 96px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: none;
+      }
+
+      .content::-webkit-scrollbar { display: none; }
+
+      .content.no-nav { padding-bottom: 24px; }
+
+      .topline {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .back, .quiet-action {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0;
+        border: 0;
+        color: var(--cocoa);
+        background: transparent;
+        font-size: 15px;
+        font-weight: 600;
+      }
+
+      .back { text-align: left; font-size: 24px; }
+      .quiet-action { text-align: right; }
+
+      h1, h2, h3, p { margin-top: 0; }
+      h1 { margin-bottom: 20px; font-size: 31px; line-height: 1.1; letter-spacing: -0.7px; font-weight: 700; }
+      h2 { margin-bottom: 12px; font-size: 20px; line-height: 1.25; font-weight: 700; }
+      h3 { margin-bottom: 8px; font-size: 16px; line-height: 1.3; font-weight: 600; }
+      p { font-size: 16px; line-height: 1.48; }
+
+      .date { color: var(--soft); font-size: 14px; font-weight: 500; }
+      .question { margin: 16px 0 16px; font-size: 25px; line-height: 1.18; font-weight: 700; letter-spacing: -0.35px; }
+
+      .mood-kernel {
+        width: 100%;
+        height: 150px;
+        margin-bottom: 20px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 30px;
+        clip-path: path("M30 0 H268 Q282 0 294 12 L348 64 Q358 75 348 86 L294 138 Q282 150 268 150 H30 Q0 150 0 120 V30 Q0 0 30 0 Z");
+        background: var(--white);
+      }
+
+      .mood-band {
+        position: relative;
+        height: 50px;
+        overflow: hidden;
+        border-bottom: 1px solid rgb(45 40 37 / 12%);
+      }
+
+      .mood-band:last-child { border-bottom: 0; }
+      .mood-band::before { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--value); }
+      .mood-band.anxiety::before { background: var(--yellow); }
+      .mood-band.mood::before { background: var(--orange); }
+      .mood-band.energy { background: var(--warm); }
+      .mood-band.energy::before { background: var(--white); border-right: 1px solid var(--line); }
+
+      .mood-label {
+        position: relative;
+        z-index: 1;
+        height: 100%;
+        padding: 0 52px 0 18px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .mood-value { font-size: 17px; font-variant-numeric: tabular-nums; }
+
+      .capture-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-bottom: 24px;
+      }
+
+      .capture-button {
+        min-height: 56px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        color: var(--cocoa);
+        background: var(--white);
+        font-size: 15px;
+        font-weight: 600;
+      }
+
+      .capture-button.primary { border-color: var(--orange); background: var(--orange); color: var(--white); }
+      .capture-button .symbol { display: block; margin-bottom: 2px; font-size: 18px; line-height: 1; }
+
+      .section-heading {
+        margin: 0 0 10px;
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .section-heading h2 { margin: 0; font-size: 18px; }
+      .section-heading span { color: var(--soft); font-size: 13px; font-variant-numeric: tabular-nums; }
+
+      .appointment-card {
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: var(--white);
+      }
+
+      .appointment-card strong { display: block; margin-bottom: 4px; font-size: 17px; font-weight: 600; }
+      .appointment-card > span { display: block; color: var(--soft); font-size: 14px; }
+
+      .provenance {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        margin-top: 10px;
+        color: var(--soft);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .kernel { flex: 0 0 auto; width: 14px; height: 18px; }
+      .kernel.user { color: var(--orange); }
+      .kernel.provider { color: var(--cocoa); }
+      .kernel.candy { color: var(--yellow); }
+
+      .bottom-nav {
+        position: absolute;
+        z-index: 4;
+        left: 12px;
+        right: 12px;
+        bottom: 10px;
+        height: 68px;
+        padding: 4px 2px 8px;
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: var(--white);
+        box-shadow: var(--shadow);
+      }
+
+      .nav-item {
+        min-width: 44px;
+        min-height: 48px;
+        border: 0;
+        color: var(--soft);
+        background: transparent;
+        font-size: 11px;
+        font-weight: 500;
+      }
+
+      .nav-mark { display: block; width: 18px; height: 3px; margin: 0 auto 7px; border-radius: 2px; background: transparent; }
+      .nav-item.active { color: var(--cocoa); font-weight: 600; }
+      .nav-item.active .nav-mark { background: var(--orange); }
+
+      .recording-content { display: flex; min-height: 758px; flex-direction: column; }
+      .recording-title { text-align: center; }
+      .recording-title h1 { margin-bottom: 4px; font-size: 22px; }
+      .recording-title p { color: var(--soft); font-size: 14px; }
+      .record-stage { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-bottom: 36px; }
+      .recording-word { margin-bottom: 18px; font-size: 15px; font-weight: 600; }
+      .timer { margin-bottom: 28px; font-size: 54px; line-height: 1; letter-spacing: -2px; font-weight: 600; font-variant-numeric: tabular-nums; }
+      .waveform { width: 358px; height: 112px; margin-bottom: 36px; display: flex; align-items: center; justify-content: center; gap: 4px; overflow: hidden; }
+      .waveform i { display: block; width: 4px; height: var(--h); border-radius: 3px; background: var(--orange); }
+      .stop-button { width: 112px; min-height: 56px; border: 0; border-radius: 16px; color: var(--white); background: var(--orange); font-size: 17px; font-weight: 600; }
+      .local-note { max-width: 290px; margin: 24px auto 0; color: var(--soft); text-align: center; font-size: 13px; line-height: 1.4; }
+
+      .tabs {
+        min-height: 48px;
+        margin: 0 0 20px;
+        display: flex;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .tab {
+        position: relative;
+        min-height: 48px;
+        padding: 0 15px;
+        border: 0;
+        color: var(--soft);
+        background: transparent;
+        font-size: 14px;
+        font-weight: 500;
+      }
+
+      .tab.active { color: var(--cocoa); font-weight: 600; }
+      .tab.active::after { content: ""; position: absolute; right: 12px; bottom: -1px; left: 12px; height: 3px; border-radius: 2px; background: var(--orange); }
+      .journal-copy { margin-bottom: 24px; font-size: 17px; line-height: 1.58; }
+      .suggestion-region { margin: 12px 0 8px; padding: 16px; border-radius: 20px; background: var(--warm); }
+      .suggestion-region h2 { margin-bottom: 8px; font-size: 18px; }
+      .suggestion-row { padding-top: 12px; border-top: 1px solid rgb(45 40 37 / 10%); }
+      .suggestion-copy { margin: 0; font-size: 15px; line-height: 1.4; }
+      .add-button { min-width: 72px; min-height: 44px; margin-top: 12px; border: 1px solid var(--cocoa); border-radius: 14px; color: var(--cocoa); background: var(--white); font-weight: 600; }
+
+      .prepare-intro { margin: -4px 0 20px; color: var(--soft); font-size: 15px; }
+      .brief { padding-bottom: 76px; }
+      .brief-block { padding: 16px 0; border-top: 1px solid var(--line); }
+      .brief-block:first-child { padding-top: 4px; border-top: 0; }
+      .brief-block h2 { margin-bottom: 8px; font-size: 17px; }
+      .brief-block p { margin-bottom: 10px; font-size: 16px; line-height: 1.52; }
+      .brief-block mark { padding: 1px 3px; color: inherit; background: var(--warm); }
+      .edit-button { position: absolute; z-index: 4; right: 16px; bottom: 20px; left: 16px; min-height: 56px; border: 0; border-radius: 16px; color: var(--white); background: var(--orange); font-size: 17px; font-weight: 600; box-shadow: var(--shadow); }
+
+      .session-meta { margin: -12px 0 14px; color: var(--soft); font-size: 13px; font-variant-numeric: tabular-nums; }
+      .session-tabs { margin-bottom: 16px; overflow-x: hidden; }
+      .session-tabs .tab { padding: 0 9px; font-size: 13px; }
+      .transcript-block { padding: 16px 0; border-bottom: 1px solid var(--line); }
+      .speaker-line { margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+      .speaker { font-size: 14px; font-weight: 600; }
+      .speaker.patient { color: var(--orange-pressed); }
+      .speaker.provider { color: var(--cocoa); }
+      .timestamp { color: var(--soft); font-size: 13px; font-variant-numeric: tabular-nums; }
+      .transcript-block p { margin-bottom: 0; font-size: 15px; line-height: 1.46; }
+      .playback { margin-top: 18px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 20px; }
+      .playback-time { display: flex; justify-content: space-between; color: var(--soft); font-size: 12px; font-variant-numeric: tabular-nums; }
+      .scrubber { height: 4px; margin: 10px 0; border-radius: 2px; background: var(--line); }
+      .scrubber::before { content: ""; display: block; width: 34%; height: 100%; border-radius: 2px; background: var(--orange); }
+
+      .goals-intro { margin: -10px 0 16px; color: var(--soft); font-size: 14px; }
+      .goal-section { border-top: 1px solid var(--line); }
+      .goal-heading { min-height: 48px; display: flex; align-items: center; justify-content: space-between; font-size: 16px; font-weight: 600; }
+      .goal-count { color: var(--soft); font-size: 13px; font-variant-numeric: tabular-nums; }
+      .goal-row { padding: 4px 0 14px; display: grid; grid-template-columns: 28px 1fr; gap: 8px; }
+      .check { width: 24px; height: 24px; margin-top: 2px; border: 1.5px solid var(--soft); border-radius: 50%; background: var(--white); }
+      .check.done { border-color: var(--sage); background: var(--sage); color: var(--white); text-align: center; font-size: 14px; line-height: 21px; }
+      .goal-text { margin: 0; font-size: 15px; line-height: 1.35; font-weight: 600; }
+
+      .focus-mode .sheet { width: 390px; height: 844px; margin: 0; padding: 0; display: block; }
+      .focus-mode .frame-wrap { display: none; }
+      .focus-mode .frame-wrap.selected { display: block; }
+      .focus-mode .frame-label { display: none; }
+      .focus-mode .frame { border: 0; border-radius: 0; box-shadow: none; }
+      .focus-mode .scene { border-radius: 0; }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <svg width="0" height="0" aria-hidden="true" focusable="false">
+      <defs>
+        <symbol id="kernel-shape" viewBox="0 0 16 20">
+          <path fill="currentColor" d="M8 1.2c1.05 0 1.72.56 2.26 1.62l5.22 12.38c.92 2.2-.48 3.8-2.86 3.8H3.38C1 19-.4 17.4.52 15.2L5.74 2.82C6.28 1.76 6.95 1.2 8 1.2Z" />
+        </symbol>
+      </defs>
+    </svg>
+
+    <main class="sheet">
+      <div class="frame-wrap" data-frame-wrap="today">
+        <p class="frame-label">Today</p>
+        <article class="frame" data-frame="today" aria-label="Today concept frame">
+          <div class="scene">
+            <div class="status-bar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i></span><span class="battery"></span></span></div>
+            <div class="content">
+              <div class="topline"><span class="date">Saturday, Sep 5</span><button class="quiet-action" type="button">Jamie</button></div>
+              <h1>Today</h1>
+              <p class="question">How are you doing?</p>
+              <div class="mood-kernel" aria-label="Mood 6, anxiety 7, energy 4">
+                <div class="mood-band anxiety" style="--value: 70%"><div class="mood-label"><span>Anxiety</span><span class="mood-value">7</span></div></div>
+                <div class="mood-band mood" style="--value: 60%"><div class="mood-label"><span>Mood</span><span class="mood-value">6</span></div></div>
+                <div class="mood-band energy" style="--value: 40%"><div class="mood-label"><span>Energy</span><span class="mood-value">4</span></div></div>
+              </div>
+              <div class="capture-grid" aria-label="Capture choices">
+                <button class="capture-button primary" type="button"><span class="symbol">●</span>Talk</button>
+                <button class="capture-button" type="button"><span class="symbol">＋</span>Write</button>
+                <button class="capture-button" type="button"><span class="symbol">○</span>Record</button>
+              </div>
+              <div class="section-heading"><h2>Next appointment</h2><span>Sep 9</span></div>
+              <div class="appointment-card">
+                <strong>Therapy with Dr. Elena Park</strong>
+                <span>Wednesday at 3:30 PM</span>
+                <div class="provenance"><svg class="kernel provider" aria-hidden="true"><use href="#kernel-shape"></use></svg><span>Provider appointment scheduled for Sep 9</span></div>
+              </div>
+            </div>
+            <nav class="bottom-nav" aria-label="Primary navigation">
+              <button class="nav-item active" type="button"><span class="nav-mark"></span>Today</button>
+              <button class="nav-item" type="button"><span class="nav-mark"></span>Journal</button>
+              <button class="nav-item" type="button"><span class="nav-mark"></span>Prepare</button>
+              <button class="nav-item" type="button"><span class="nav-mark"></span>History</button>
+              <button class="nav-item" type="button"><span class="nav-mark"></span>Settings</button>
+            </nav>
+          </div>
+        </article>
+      </div>
+
+      <div class="frame-wrap" data-frame-wrap="talk-recording">
+        <p class="frame-label">Talk recording</p>
+        <article class="frame" data-frame="talk-recording" aria-label="Talk recording concept frame">
+          <div class="scene">
+            <div class="status-bar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i></span><span class="battery"></span></span></div>
+            <div class="content no-nav recording-content">
+              <div class="topline"><button class="back" type="button" aria-label="Close">×</button><button class="quiet-action" type="button">Cancel</button></div>
+              <div class="recording-title"><h1>What’s going on?</h1><p>Private journal recording</p></div>
+              <div class="record-stage">
+                <div class="recording-word">Simulated recording</div>
+                <div class="timer">02:17</div>
+                <div class="waveform" aria-label="Decorative recording waveform">
+                  <i style="--h:22px"></i><i style="--h:38px"></i><i style="--h:64px"></i><i style="--h:44px"></i><i style="--h:78px"></i><i style="--h:52px"></i><i style="--h:26px"></i><i style="--h:58px"></i><i style="--h:94px"></i><i style="--h:62px"></i><i style="--h:38px"></i><i style="--h:72px"></i><i style="--h:42px"></i><i style="--h:88px"></i><i style="--h:52px"></i><i style="--h:30px"></i><i style="--h:68px"></i><i style="--h:48px"></i><i style="--h:82px"></i><i style="--h:34px"></i><i style="--h:58px"></i><i style="--h:92px"></i><i style="--h:46px"></i><i style="--h:72px"></i><i style="--h:28px"></i><i style="--h:62px"></i><i style="--h:40px"></i><i style="--h:76px"></i><i style="--h:48px"></i><i style="--h:24px"></i><i style="--h:54px"></i><i style="--h:84px"></i><i style="--h:44px"></i><i style="--h:66px"></i><i style="--h:32px"></i><i style="--h:74px"></i><i style="--h:38px"></i><i style="--h:58px"></i><i style="--h:88px"></i><i style="--h:50px"></i><i style="--h:30px"></i><i style="--h:68px"></i><i style="--h:46px"></i><i style="--h:78px"></i><i style="--h:36px"></i><i style="--h:60px"></i><i style="--h:26px"></i><i style="--h:72px"></i>
+                </div>
+                <button class="stop-button" type="button">Stop</button>
+                <p class="local-note">This prototype does not use your microphone. Audio is saved before any organization begins in the real app.</p>
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div class="frame-wrap" data-frame-wrap="journal-result">
+        <p class="frame-label">Journal result</p>
+        <article class="frame" data-frame="journal-result" aria-label="Journal result concept frame">
+          <div class="scene">
+            <div class="status-bar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i></span><span class="battery"></span></span></div>
+            <div class="content">
+              <div class="topline"><button class="back" type="button" aria-label="Back">‹</button><button class="quiet-action" type="button">More</button></div>
+              <h1>Football and guilt</h1>
+              <div class="tabs" role="tablist" aria-label="Journal versions">
+                <button class="tab active" role="tab" aria-selected="true" type="button">Original</button>
+                <button class="tab" role="tab" aria-selected="false" type="button">Cleaned</button>
+                <button class="tab" role="tab" aria-selected="false" type="button">Summary</button>
+              </div>
+              <p class="journal-copy">Work was okay until around three, then I started thinking about football again and got angry. I went to the gym and felt better. Later I realized I had not thought about it for a few hours, and then I felt guilty for feeling better.</p>
+              <div class="provenance"><svg class="kernel user" aria-hidden="true"><use href="#kernel-shape"></use></svg><span>You said this in a voice journal on Sep 5 at 4:18 PM</span></div>
+              <section class="suggestion-region">
+                <h2>Something to consider</h2>
+                <div class="suggestion-row">
+                  <p class="suggestion-copy">Would you like to bring up why feeling better can create guilt?</p>
+                  <div class="provenance"><svg class="kernel candy" aria-hidden="true"><use href="#kernel-shape"></use></svg><span>Candy Corn suggested this from your Sep 5 journal</span></div>
+                  <button class="add-button" type="button">Add</button>
+                </div>
+              </section>
+            </div>
+            <nav class="bottom-nav" aria-label="Primary navigation">
+              <button class="nav-item" type="button"><span class="nav-mark"></span>Today</button><button class="nav-item active" type="button"><span class="nav-mark"></span>Journal</button><button class="nav-item" type="button"><span class="nav-mark"></span>Prepare</button><button class="nav-item" type="button"><span class="nav-mark"></span>History</button><button class="nav-item" type="button"><span class="nav-mark"></span>Settings</button>
+            </nav>
+          </div>
+        </article>
+      </div>
+
+      <div class="frame-wrap" data-frame-wrap="prepare-brief">
+        <p class="frame-label">Prepare brief</p>
+        <article class="frame" data-frame="prepare-brief" aria-label="Prepare for therapy concept frame">
+          <div class="scene">
+            <div class="status-bar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i></span><span class="battery"></span></span></div>
+            <div class="content no-nav">
+              <div class="topline"><button class="back" type="button" aria-label="Back">‹</button><span class="date">Therapy · Sep 9</span></div>
+              <h1>Walk in knowing what matters</h1>
+              <p class="prepare-intro">A brief for Jamie Rivera to read before therapy with Dr. Elena Park.</p>
+              <div class="brief">
+                <section class="brief-block">
+                  <h2>Where you left off</h2>
+                  <p>You stopped the football story at the end of junior year. Dr. Park asked you to <mark>finish the senior-year timeline</mark> and notice guilt when moving forward feels possible.</p>
+                  <div class="provenance"><svg class="kernel provider" aria-hidden="true"><use href="#kernel-shape"></use></svg><span>Therapist assigned this on Sep 2 at 42:18</span></div>
+                </section>
+                <section class="brief-block">
+                  <h2>What changed</h2>
+                  <p>You wrote that the need to prove you could have played may matter more now than playing itself. Exercise helped on Sep 5, followed by guilt after several easier hours.</p>
+                  <div class="provenance"><svg class="kernel user" aria-hidden="true"><use href="#kernel-shape"></use></svg><span>You said this in journals on Sep 3 and Sep 5</span></div>
+                </section>
+                <section class="brief-block">
+                  <h2>A question to open with</h2>
+                  <p>“Is needing proof itself part of what keeps me stuck?”</p>
+                  <div class="provenance"><svg class="kernel candy" aria-hidden="true"><use href="#kernel-shape"></use></svg><span>Candy Corn suggested this from your pinned question</span></div>
+                </section>
+              </div>
+            </div>
+            <button class="edit-button" type="button">Edit brief</button>
+          </div>
+        </article>
+      </div>
+
+      <div class="frame-wrap" data-frame-wrap="session-detail">
+        <p class="frame-label">Therapy session detail</p>
+        <article class="frame" data-frame="session-detail" aria-label="Therapy session detail concept frame">
+          <div class="scene">
+            <div class="status-bar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i></span><span class="battery"></span></span></div>
+            <div class="content">
+              <div class="topline"><button class="back" type="button" aria-label="Back">‹</button><button class="quiet-action" type="button">Correct</button></div>
+              <h1>Therapy with Dr. Elena Park</h1>
+              <p class="session-meta">Sep 2 · 52 min · Saved on this device</p>
+              <div class="tabs session-tabs" role="tablist" aria-label="Session detail sections">
+                <button class="tab" role="tab" aria-selected="false" type="button">Summary</button><button class="tab active" role="tab" aria-selected="true" type="button">Transcript</button><button class="tab" role="tab" aria-selected="false" type="button">Homework</button><button class="tab" role="tab" aria-selected="false" type="button">Talking points</button>
+              </div>
+              <div class="transcript-block">
+                <div class="speaker-line"><span class="speaker patient">Jamie</span><span class="timestamp">12:41</span></div>
+                <p>I think I care less about playing again than proving I really could have played.</p>
+                <div class="provenance"><svg class="kernel user" aria-hidden="true"><use href="#kernel-shape"></use></svg><span>You said this at 12:41</span></div>
+              </div>
+              <div class="transcript-block">
+                <div class="speaker-line"><span class="speaker provider">Dr. Elena Park</span><span class="timestamp">12:48</span></div>
+                <p>Maybe the grief is partly about never getting that chance to prove it.</p>
+                <div class="provenance"><svg class="kernel provider" aria-hidden="true"><use href="#kernel-shape"></use></svg><span>Therapist said this on Sep 2 at 12:48</span></div>
+              </div>
+              <div class="playback">
+                <div class="playback-time"><span>12:48</span><span>52:06</span></div>
+                <div class="scrubber"></div>
+                <h3>Playing from the saved transcript</h3>
+              </div>
+            </div>
+            <nav class="bottom-nav" aria-label="Primary navigation">
+              <button class="nav-item" type="button"><span class="nav-mark"></span>Today</button><button class="nav-item" type="button"><span class="nav-mark"></span>Journal</button><button class="nav-item active" type="button"><span class="nav-mark"></span>Prepare</button><button class="nav-item" type="button"><span class="nav-mark"></span>History</button><button class="nav-item" type="button"><span class="nav-mark"></span>Settings</button>
+            </nav>
+          </div>
+        </article>
+      </div>
+
+      <div class="frame-wrap" data-frame-wrap="goals">
+        <p class="frame-label">Goals</p>
+        <article class="frame" data-frame="goals" aria-label="Goals concept frame">
+          <div class="scene">
+            <div class="status-bar"><span>9:41</span><span class="status-icons"><span class="signal"><i></i><i></i><i></i></span><span class="battery"></span></span></div>
+            <div class="content">
+              <div class="topline"><span class="date">Your continuity ledger</span><button class="quiet-action" type="button">Add</button></div>
+              <h1>Goals</h1>
+              <p class="goals-intro">What you chose, what was assigned, and what still needs your approval.</p>
+              <section class="goal-section">
+                <div class="goal-heading"><span>Today</span><span class="goal-count">1</span></div>
+                <div class="goal-row"><button class="check" type="button" aria-label="Mark complete"></button><div><p class="goal-text">Notice when moving-forward guilt appears</p><div class="provenance"><svg class="kernel user" aria-hidden="true"><use href="#kernel-shape"></use></svg><span>You chose this on Sep 3</span></div></div></div>
+              </section>
+              <section class="goal-section">
+                <div class="goal-heading"><span>This week</span><span class="goal-count">1</span></div>
+                <div class="goal-row"><button class="check" type="button" aria-label="Mark complete"></button><div><p class="goal-text">Write down one example if guilt shows up</p><div class="provenance"><svg class="kernel candy" aria-hidden="true"><use href="#kernel-shape"></use></svg><span>Candy Corn suggested this, not added yet</span></div></div></div>
+              </section>
+              <section class="goal-section">
+                <div class="goal-heading"><span>This month</span><span class="goal-count">1</span></div>
+                <div class="goal-row"><button class="check" type="button" aria-label="Mark complete"></button><div><p class="goal-text">Understand what proof would mean now</p><div class="provenance"><svg class="kernel user" aria-hidden="true"><use href="#kernel-shape"></use></svg><span>You chose this from your Sep 5 journal</span></div></div></div>
+              </section>
+              <section class="goal-section">
+                <div class="goal-heading"><span>Ongoing</span><span class="goal-count">1</span></div>
+                <div class="goal-row"><button class="check done" type="button" aria-label="Completed">✓</button><div><p class="goal-text">Use exercise when it helps</p><div class="provenance"><svg class="kernel user" aria-hidden="true"><use href="#kernel-shape"></use></svg><span>You chose this on Sep 5</span></div></div></div>
+              </section>
+              <section class="goal-section">
+                <div class="goal-heading"><span>Homework</span><span class="goal-count">1</span></div>
+                <div class="goal-row"><button class="check" type="button" aria-label="Mark complete"></button><div><p class="goal-text">Finish the senior-year timeline</p><div class="provenance"><svg class="kernel provider" aria-hidden="true"><use href="#kernel-shape"></use></svg><span>Therapist assigned this on Sep 2 at 42:18</span></div></div></div>
+              </section>
+            </div>
+            <nav class="bottom-nav" aria-label="Primary navigation">
+              <button class="nav-item active" type="button"><span class="nav-mark"></span>Today</button><button class="nav-item" type="button"><span class="nav-mark"></span>Journal</button><button class="nav-item" type="button"><span class="nav-mark"></span>Prepare</button><button class="nav-item" type="button"><span class="nav-mark"></span>History</button><button class="nav-item" type="button"><span class="nav-mark"></span>Settings</button>
+            </nav>
+          </div>
+        </article>
+      </div>
+    </main>
+
+    <script>
+      const allowedFrames = new Set(["today", "talk-recording", "journal-result", "prepare-brief", "session-detail", "goals"]);
+      const requestedFrame = window.location.hash.slice(1);
+      if (allowedFrames.has(requestedFrame)) {
+        document.body.classList.add("focus-mode");
+        document.querySelector(`[data-frame-wrap="${requestedFrame}"]`)?.classList.add("selected");
+        document.title = `Candy Corn · ${requestedFrame}`;
+      }
+    </script>
+  </body>
+</html>
