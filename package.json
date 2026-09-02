@@ -1,0 +1,14 @@
+{
+  "name": "candycorn",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Candy Corn: a private second brain for your mental-health journey.",
+  "engines": { "node": ">=22", "pnpm": ">=9" },
+  "scripts": {
+    "dev": "pnpm --filter candycorn-prototype dev",
+    "build": "pnpm --filter candycorn-prototype build",
+    "preview": "pnpm --filter candycorn-prototype preview",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test"
+  }
+}
