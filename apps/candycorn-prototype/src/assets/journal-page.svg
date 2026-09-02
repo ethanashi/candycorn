@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 960" role="img" aria-labelledby="title description">
+  <title id="title">Jamie Rivera’s photographed journal page</title>
+  <desc id="description">A lined white notebook page with handwritten-style notes about senior year football, exercise, and guilt after feeling better.</desc>
+  <rect width="760" height="960" fill="#2D2825"/>
+  <g transform="translate(86 42) rotate(-1 294 438)">
+    <rect width="588" height="876" rx="10" fill="#FFFFFF"/>
+    <path d="M82 0v876" stroke="#C9877C" stroke-width="3" opacity=".65"/>
+    <g stroke="#EBE2D8" stroke-width="2">
+      <path d="M0 112h588M0 166h588M0 220h588M0 274h588M0 328h588M0 382h588M0 436h588M0 490h588M0 544h588M0 598h588M0 652h588M0 706h588M0 760h588M0 814h588"/>
+    </g>
+    <g fill="#2D2825" font-family="Avenir Next, Avenir, sans-serif" font-size="27" font-style="italic">
+      <text x="108" y="86" font-size="22" font-style="normal" fill="#766D67">September 5</text>
+      <text x="104" y="152" transform="rotate(-1 104 152)">I keep thinking about senior year.</text>
+      <text x="102" y="206" transform="rotate(.5 102 206)">I wanted the chance to prove I could</text>
+      <text x="107" y="260" transform="rotate(-.7 107 260)">have played. That part still feels</text>
+      <text x="101" y="314" transform="rotate(.4 101 314)">unfinished.</text>
+      <text x="105" y="422" transform="rotate(-.6 105 422)">The gym helped me get unstuck today.</text>
+      <text x="100" y="476" transform="rotate(.6 100 476)">Then I felt guilty because I had felt</text>
+      <text x="108" y="530" transform="rotate(-.4 108 530)">better for a while.</text>
+      <text x="104" y="638" transform="rotate(.5 104 638)">Why does moving forward feel like</text>
+      <text x="101" y="692" transform="rotate(-.5 101 692)">I am dismissing what happened?</text>
+    </g>
+    <path d="M105 727c89 8 192 5 308-1" fill="none" stroke="#F28A3C" stroke-linecap="round" stroke-width="4"/>
+    <path d="M105 747c63 5 123 4 181-1" fill="none" stroke="#F4C95D" stroke-linecap="round" stroke-width="4"/>
+  </g>
+</svg>
