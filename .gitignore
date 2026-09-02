@@ -13,3 +13,4 @@ xcuserdata/
 DerivedData/
 .swiftpm/
 Pods/
+.worktrees/
