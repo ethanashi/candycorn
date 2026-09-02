@@ -1,0 +1,37 @@
+:root {
+  color-scheme: light;
+  --cc-canvas: #ffffff;
+  --cc-surface: #ffffff;
+  --cc-surface-warm: #fff4e8;
+  --cc-orange: #f28a3c;
+  --cc-orange-pressed: #d9732f;
+  --cc-yellow: #f4c95d;
+  --cc-yellow-deep: #e0ae3a;
+  --cc-cocoa: #2d2825;
+  --cc-cocoa-soft: #766d67;
+  --cc-hairline: #ebe2d8;
+  --cc-sage: #8fa58b;
+  --cc-rose: #c9877c;
+  --cc-yellow-text: #9a6812;
+  --cc-sage-text: #71876d;
+  --cc-rose-text: #a85f55;
+  --cc-shadow-floating: 0 2px 8px rgb(45 40 37 / 6%);
+  --cc-space-1: 4px;
+  --cc-space-2: 8px;
+  --cc-space-3: 12px;
+  --cc-space-4: 16px;
+  --cc-space-5: 20px;
+  --cc-space-6: 24px;
+  --cc-space-8: 32px;
+  --cc-space-10: 40px;
+  --cc-space-12: 48px;
+  --cc-space-16: 64px;
+  --cc-radius-card: 20px;
+  --cc-radius-control: 16px;
+  --cc-control-min: 44px;
+  --cc-font: "Avenir Next", Avenir, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --cc-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --cc-motion-fast: 140ms;
+  --cc-motion-base: 200ms;
+  --cc-z-nav: 10;
+}
