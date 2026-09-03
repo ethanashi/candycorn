@@ -1,0 +1,6 @@
+CandyCorn.xcodeproj/
+DerivedData/
+build/
+xcuserdata/
+.build/
+.pnpm-store/
