@@ -133,8 +133,21 @@ actor SessionProcessingCoordinator: SessionProcessing {
     ) async {
         guard let snapshot = try? await careStore.snapshot() else { return }
         if let record = snapshot.sessionProcessing.first(where: { $0.appointmentID == appointmentID }) {
-            if record.stage == .ready { return }
-            if record.failure != nil, !allowsFailedRetry { return }
+            // A ready record only counts if its artifacts belong to the appointment's current
+            // recording. A replaced recording has no checkpoint yet and must run again.
+            let currentAttachment = snapshot.appointments.first { $0.id == appointmentID }?.recordingAttachmentID
+            let checkpointed = currentAttachment.map { attachmentID in
+                let sources = [appointmentID, attachmentID]
+                return snapshot.artifacts.contains {
+                    ($0.kind == .transcript || $0.kind == .diarization || $0.kind == .sessionSummary)
+                        && sources.allSatisfy($0.sourceIDs.contains)
+                }
+            } ?? true
+            // No checkpoint for the current recording means it was replaced: always process.
+            if checkpointed {
+                if record.stage == .ready { return }
+                if record.failure != nil, !allowsFailedRetry { return }
+            }
         }
         await process(appointmentID: appointmentID, token: token)
     }
