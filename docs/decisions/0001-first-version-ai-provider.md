@@ -22,8 +22,10 @@ The specification prefers on-device Apple Intelligence (SystemLanguageModel, Spe
 | Session transcript (after diarization) to structured summary, homework, goals, talking points | OpenRouter | `deepseek/deepseek-v4-flash-0731` |
 | Journal rant to cleaned text, summary, candidate goals, talking points | OpenRouter | `deepseek/deepseek-v4-flash-0731` |
 | Appointment prep brief | OpenRouter | `deepseek/deepseek-v4-flash-0731` |
-| Photographed handwritten journal page to text | OpenRouter | a vision-capable model, to be chosen before Phase 2; the extracted text is then handed to the same flash model |
+| Photographed handwritten journal page to text | OpenRouter | leading candidate `deepseek/deepseek-v4-flash-vision-exp` (text and image input, about 3.4 times the flash price, experimental); fall back to a Claude Haiku class vision model if its handwriting accuracy is poor. The extracted text is then handed to the flash model |
 | Speech to text and speaker separation | On-device where available (SpeechAnalyzer, FluidAudio), cloud transcription fallback | n/a |
+
+Verified 2026-09-02 from the build Mac: the vault key reaches OpenRouter, `deepseek/deepseek-v4-flash-0731` is listed (text only, 1.3M context, about $0.065 per million prompt tokens and $0.18 per million completion tokens), and a live journal rewrite returned faithful first-person text for about $0.00014. The model reasons before answering by default (237 reasoning tokens on a two-sentence rewrite), so the client must set a generous completion budget or request a reasoning cap; an 80-token budget returned empty content.
 
 Model ids are configuration, not code (spec section 40). Every artifact records the provider and model that produced it. Distress support classification stays on its own interface and policy layer (spec section 23) and is not routed through the organizer model by default.
 
