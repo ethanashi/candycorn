@@ -190,6 +190,7 @@ struct OrganizerOutputValidator: Sendable {
         "i'm going to", "i am going to", "i will", "i plan to", "i want to",
         "i'd like you to", "i would like you to", "your homework", "please ",
     ]
+    // nyx: This bounded phrase gate catches deterministic fixture failures. A future local evaluator can widen it without making organizer output authoritative.
     private static let diagnosisTerms = [
         "ptsd", "post-traumatic stress", "bipolar", "ocd", "diagnosis", "clinical depression",
         "personality disorder", "psychotic", "narcissist", "adhd",
