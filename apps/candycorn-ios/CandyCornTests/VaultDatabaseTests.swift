@@ -35,7 +35,7 @@ struct VaultDatabaseTests {
         defer { VaultTestSupport.remove(root) }
         try await database.open()
         #expect(!(try await database.cipherVersion()).isEmpty)
-        #expect(try await database.appliedMigrations() == ["v1_core", "v2_relations", "v3_search"])
+        #expect(try await database.appliedMigrations() == ["v1_core", "v2_relations", "v3_search", VaultMigrations.latestIdentifier])
         #expect(FileManager.default.fileExists(atPath: root.appending(path: "care.db").path))
     }
 

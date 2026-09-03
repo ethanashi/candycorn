@@ -17,7 +17,7 @@ struct VaultMigrationTests {
         #expect(try queue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM grdb_migrations") } == 1)
         try migrator.migrate(queue)
         try migrator.migrate(queue)
-        #expect(try queue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM grdb_migrations") } == 3)
+        #expect(try queue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM grdb_migrations") } == 4)
     }
 
     @Test("Foreign keys reject dangling records")

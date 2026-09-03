@@ -260,6 +260,7 @@ struct SearchMemoryView: View {
         case .appointment: .therapySession
         case .goal: .goals
         case .talkingPoint: .bringUp
+        case .transcript: .therapySession
         case .summary: .therapySession
         }
     }
