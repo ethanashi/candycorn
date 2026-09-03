@@ -243,7 +243,7 @@ struct TodayView: View {
                     Spacer()
                     Button { navigation.navigate(to: .goals) } label: {
                         HStack(spacing: 2) {
-                            Text("\(openGoals.count) \(openGoals.count == 1 ? "goal" : "goals")")
+                            Text(upNextTrailing)
                             AppIcon.chevronRight.image.font(.system(size: 12, weight: .semibold))
                         }
                         .font(TypeScale.metaStrong)
@@ -302,6 +302,12 @@ struct TodayView: View {
     private var moodAccessibilityValue: String {
         guard let mood = state.mood else { return "No check-in yet" }
         return "Anxiety \(mood.anxiety.map(String.init) ?? "not logged"), mood \(mood.mood.map(String.init) ?? "not logged"), energy \(mood.energy.map(String.init) ?? "not logged")"
+    }
+
+    private var upNextTrailing: String {
+        let goals = "\(openGoals.count) \(openGoals.count == 1 ? "goal" : "goals")"
+        let review = state.pendingProgressSuggestions.count
+        return review > 0 ? "\(goals) · \(review) to review" : goals
     }
 
     private var openGoals: [Goal] {

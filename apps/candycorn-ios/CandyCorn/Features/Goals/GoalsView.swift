@@ -83,6 +83,22 @@ struct GoalsView: View {
                         SuggestionCard(goal: goal, onAdd: { updateStatus(goal, .active) }, onDismiss: { updateStatus(goal, .dismissed) })
                     }
                 }
+                if !progressSuggestions.isEmpty {
+                    SectionLine(title: "Progress noticed", trailing: "\(progressSuggestions.count) to review")
+                    V2Card(padding: 0) {
+                        VStack(spacing: 0) {
+                            ForEach(Array(progressSuggestions.enumerated()), id: \.element.id) { index, suggestion in
+                                if index > 0 { Rectangle().fill(DesignTokens.hairline).frame(height: 1).padding(.horizontal, DesignTokens.Spacing.base) }
+                                ProgressSuggestionRow(
+                                    suggestion: suggestion,
+                                    goalTitle: goalTitle(for: suggestion.goalID),
+                                    onAccept: { Task { _ = await state.accept(suggestionID: suggestion.id) } },
+                                    onDismiss: { Task { _ = await state.dismiss(suggestionID: suggestion.id) } }
+                                )
+                            }
+                        }
+                    }
+                }
                 if visibleSections.isEmpty && suggestions.isEmpty {
                     V2Card(background: DesignTokens.surfaceWarm, showsBorder: false) {
                         VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
@@ -135,6 +151,14 @@ struct GoalsView: View {
     }
 
     private var suggestions: [Goal] { GoalLedgerModel.suggestions(for: state.goals) }
+
+    private var progressSuggestions: [GoalProgressSuggestion] {
+        state.pendingProgressSuggestions.filter { suggestion in state.goals.contains { $0.id == suggestion.goalID } }
+    }
+
+    private func goalTitle(for goalID: UUID) -> String {
+        state.goals.first { $0.id == goalID }?.title ?? "A goal"
+    }
 
     private var openTalkingPoints: Int { state.talkingPoints.filter { $0.status == .open }.count }
 
@@ -325,6 +349,82 @@ private extension Goal.Cadence {
         case .ongoing: "Ongoing"
         case .observation: "Observation"
         case .homework: "Homework"
+        }
+    }
+}
+
+/// One progress suggestion from a journal or session: what Candy Corn noticed, the goal, your words, accept or dismiss.
+private struct ProgressSuggestionRow: View {
+    let suggestion: GoalProgressSuggestion
+    let goalTitle: String
+    let onAccept: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
+            HStack(alignment: .top, spacing: DesignTokens.Spacing.compact) {
+                IconTile(icon: icon, size: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(kicker)
+                        .font(TypeScale.metaStrong)
+                        .foregroundStyle(DesignTokens.cocoaSoft)
+                    Text(goalTitle)
+                        .font(TypeScale.cardTitle)
+                        .foregroundStyle(DesignTokens.cocoa)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            if !suggestion.note.isEmpty {
+                Text(suggestion.note)
+                    .font(TypeScale.label)
+                    .foregroundStyle(DesignTokens.cocoaSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let quote = suggestion.evidence.first?.quote, !quote.isEmpty {
+                HStack(alignment: .top, spacing: DesignTokens.Spacing.small) {
+                    KernelGlyph(voice: .user, height: 14, decorative: true)
+                        .padding(.top, 2)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Your exact words")
+                            .font(TypeScale.metaStrong)
+                            .foregroundStyle(DesignTokens.cocoa)
+                        Text("“\(quote)”")
+                            .font(TypeScale.meta)
+                            .foregroundStyle(DesignTokens.cocoaSoft)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(DesignTokens.Spacing.compact)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(DesignTokens.surfaceWarm)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            HStack(spacing: DesignTokens.Spacing.small) {
+                Button("Mark it", action: onAccept).buttonStyle(CompactDarkButtonStyle())
+                Button("Not quite", action: onDismiss).buttonStyle(CompactGhostButtonStyle())
+                Spacer(minLength: 0)
+                ProvenanceInline(voice: .candyCorn, text: "Candy Corn noticed this")
+            }
+        }
+        .padding(DesignTokens.Spacing.base)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(kicker): \(goalTitle). \(suggestion.note)")
+    }
+
+    private var kicker: String {
+        switch suggestion.mark {
+        case .doneToday: "Done today?"
+        case .partial: "Partly done?"
+        case .blocked: "Blocked?"
+        }
+    }
+
+    private var icon: AppIcon {
+        switch suggestion.mark {
+        case .doneToday: .checkCircle
+        case .partial: .clock
+        case .blocked: .close
         }
     }
 }

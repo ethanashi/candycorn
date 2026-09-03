@@ -148,6 +148,10 @@ struct HistoryView: View {
     @Bindable var navigation: NavigationModel
     @Bindable var state: DemoState
     @State private var filter: HistoryFilter = .all
+    @State private var pendingSend: PendingAISend?
+    @State private var sendTask: Task<Void, Never>?
+    @State private var isPreparingWeekly = false
+    @State private var weeklyNotice: String?
 
     private var allRecords: [HistoryRecord] {
         HistoryModel.records(journals: state.journals, moods: state.moods, appointments: state.appointments)
@@ -173,6 +177,9 @@ struct HistoryView: View {
                     })
                 )
                 filterBar
+                if filter == .all {
+                    weeklyBlock
+                }
                 if visibleRecords.isEmpty {
                     emptyState
                 } else {
@@ -193,6 +200,98 @@ struct HistoryView: View {
             .padding(.bottom, DesignTokens.tabBarClearance)
         }
         .background(DesignTokens.canvas.ignoresSafeArea())
+        .sheet(item: $pendingSend, onDismiss: cancelSend) { pending in
+            WhatLeavesDeviceSheet(
+                pending: pending,
+                processingState: state.aiProcessingState(for: pending.action),
+                onSend: { send(pending) },
+                onCancel: cancelSend
+            )
+        }
+        .onDisappear(perform: cancelSend)
+    }
+
+    // MARK: Weekly summary (Phase 5)
+
+    @ViewBuilder private var weeklyBlock: some View {
+        if let summary = state.currentWeeklySummary {
+            WeeklySummaryCard(summary: summary)
+        } else if weeklyAvailable {
+            V2GroupCard {
+                V2ListRow(
+                    icon: .sparkles,
+                    title: isPreparingWeekly ? "Preparing" : "Summarize this week",
+                    detail: "Mood trend, what got done, what kept coming up. You review what leaves first.",
+                    divider: false,
+                    disabled: isPreparingWeekly
+                ) { prepareWeekly() }
+            }
+        } else {
+            V2GroupCard {
+                V2ListRow(
+                    icon: .sparkles,
+                    title: "Weekly summary is off",
+                    detail: "Turn on Organizer to summarize your week from your own entries.",
+                    value: "Settings",
+                    divider: false
+                ) { navigation.openSettings(.ai) }
+            }
+        }
+        if let weeklyNotice {
+            StatusNotice(title: "No weekly summary yet", detail: weeklyNotice, kind: .information)
+        }
+    }
+
+    private var weeklyAvailable: Bool {
+        state.aiMode != .off && state.aiProvider == .router && state.hasOpenRouterKey && state.routerAvailable
+    }
+
+    private func prepareWeekly() {
+        guard !isPreparingWeekly, pendingSend == nil else { return }
+        isPreparingWeekly = true
+        weeklyNotice = nil
+        Task {
+            defer { isPreparingWeekly = false }
+            do {
+                if let pending = try await state.refreshWeeklySummary() {
+                    pendingSend = pending
+                } else if state.currentWeeklySummary == nil {
+                    weeklyNotice = "Not enough saved this week to summarize yet. Journals, check-ins, and sessions count."
+                }
+            } catch let error as UserFacingError {
+                weeklyNotice = error.message
+            } catch {
+                weeklyNotice = "This week could not be prepared. Your entries are unchanged."
+            }
+        }
+    }
+
+    private func send(_ pending: PendingAISend) {
+        guard sendTask == nil else { return }
+        if case .failed = state.aiProcessingState(for: pending.action) {
+            pendingSend = nil
+            prepareWeekly()
+            return
+        }
+        sendTask = Task {
+            let succeeded = await state.performAISend(pending)
+            guard !Task.isCancelled, pendingSend?.id == pending.id else {
+                sendTask = nil
+                return
+            }
+            sendTask = nil
+            if succeeded {
+                pendingSend = nil
+            } else if case let .failed(message) = state.aiProcessingState(for: pending.action) {
+                weeklyNotice = message
+            }
+        }
+    }
+
+    private func cancelSend() {
+        sendTask?.cancel()
+        sendTask = nil
+        pendingSend = nil
     }
 
     private var filterBar: some View {
@@ -305,6 +404,77 @@ private struct HistoryRow: View {
         case .mood: .heart
         case .therapy: .calendar
         case .tms: .bolt
+        }
+    }
+}
+
+/// The week in review: four short sections, every line traced to your own entries.
+private struct WeeklySummaryCard: View {
+    let summary: WeeklySummaryResult
+
+    var body: some View {
+        V2Card(padding: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: DesignTokens.Spacing.compact) {
+                    IconTile(icon: .sparkles, size: 34)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("This week")
+                            .font(TypeScale.cardTitle)
+                            .foregroundStyle(DesignTokens.cocoa)
+                        Text(intervalText)
+                            .font(TypeScale.meta)
+                            .foregroundStyle(DesignTokens.cocoaSoft)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(DesignTokens.Spacing.base)
+                ForEach(summary.sections.filter { !$0.items.isEmpty }) { section in
+                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+                        Text(Self.title(for: section.kind))
+                            .font(TypeScale.metaStrong)
+                            .foregroundStyle(DesignTokens.cocoaSoft)
+                        ForEach(section.items) { item in
+                            HStack(alignment: .top, spacing: DesignTokens.Spacing.small) {
+                                KernelGlyph(voice: item.provenance, height: 12, decorative: true)
+                                    .padding(.top, 4)
+                                Text(item.text)
+                                    .font(TypeScale.label)
+                                    .foregroundStyle(DesignTokens.cocoa)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, DesignTokens.Spacing.base)
+                    .padding(.vertical, DesignTokens.Spacing.compact)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .overlay(alignment: .top) {
+                        Rectangle().fill(DesignTokens.hairline).frame(height: 1).padding(.horizontal, DesignTokens.Spacing.base)
+                    }
+                }
+                ProvenanceStack(provenance: Provenance(
+                    voice: .candyCorn,
+                    label: "Candy Corn summarized your week",
+                    detail: "\(summary.metadata.provider), \(summary.metadata.model). Every line points at something you saved.",
+                    occurredAt: summary.interval.end,
+                    sourceRoute: nil
+                ))
+                .padding(.horizontal, DesignTokens.Spacing.base)
+                .padding(.vertical, DesignTokens.Spacing.compact)
+            }
+        }
+    }
+
+    private var intervalText: String {
+        let end = summary.interval.end.addingTimeInterval(-1)
+        return "\(summary.interval.start.formatted(.dateTime.month(.abbreviated).day())) to \(end.formatted(.dateTime.month(.abbreviated).day()))"
+    }
+
+    static func title(for kind: WeeklySummarySectionKind) -> String {
+        switch kind {
+        case .moodTrend: "Mood this week"
+        case .completedWork: "What got done"
+        case .recurringTopics: "What kept coming up"
+        case .openForNextAppointment: "Open for your next appointment"
         }
     }
 }
