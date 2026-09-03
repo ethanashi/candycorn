@@ -1,7 +1,7 @@
 import GRDB
 
 enum VaultMigrations {
-    static let latestIdentifier = "v3_search"
+    static let latestIdentifier = "v4_appointment_audio"
 
     static func makeMigrator(includeSearch: Bool = true, forcedFailure: Bool = false) -> DatabaseMigrator {
         var migrator = DatabaseMigrator()
@@ -12,7 +12,7 @@ enum VaultMigrations {
             try createRelationTables(db)
             try createIndexes(db)
         }
-        migrator.registerMigration(latestIdentifier) { db in
+        migrator.registerMigration("v3_search") { db in
             if forcedFailure {
                 try db.execute(sql: "CREATE TABLE forced_rollback_marker (id INTEGER PRIMARY KEY)")
                 throw VaultMigrationError.forcedFailure
@@ -28,6 +28,9 @@ enum VaultMigrations {
                     tokenize = 'unicode61 remove_diacritics 2'
                 )
                 """)
+        }
+        migrator.registerMigration(latestIdentifier) { db in
+            try createAppointmentAudioTables(db)
         }
         return migrator
     }
@@ -156,6 +159,60 @@ enum VaultMigrations {
             CREATE INDEX talking_points_created_at ON talking_points(created_at DESC, id);
             CREATE INDEX transcript_segments_appointment ON transcript_segments(appointment_id, start_milliseconds, id);
             CREATE INDEX attachments_sample ON attachments(is_sample);
+            """)
+    }
+
+    private static func createAppointmentAudioTables(_ db: Database) throws {
+        try db.execute(sql: """
+            CREATE TABLE session_processing (
+                id TEXT PRIMARY KEY NOT NULL,
+                appointment_id TEXT NOT NULL UNIQUE REFERENCES appointments(id) ON DELETE CASCADE,
+                stage TEXT NOT NULL CHECK (stage IN ('recordingSaved', 'transcribing', 'separatingSpeakers', 'summarizing', 'ready')),
+                progress REAL CHECK (progress IS NULL OR (progress >= 0 AND progress <= 1)),
+                summary_consent_granted INTEGER NOT NULL CHECK (summary_consent_granted IN (0, 1)),
+                updated_at REAL NOT NULL,
+                payload BLOB NOT NULL
+            );
+            CREATE TABLE speaker_cluster_assignments (
+                id TEXT PRIMARY KEY NOT NULL,
+                appointment_id TEXT NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
+                raw_speaker_label TEXT NOT NULL CHECK (length(trim(raw_speaker_label)) BETWEEN 1 AND 200),
+                speaker TEXT NOT NULL CHECK (speaker IN ('patient', 'provider')),
+                updated_at REAL NOT NULL,
+                payload BLOB NOT NULL,
+                UNIQUE (appointment_id, raw_speaker_label)
+            );
+            CREATE TABLE speaker_embeddings (
+                appointment_id TEXT NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
+                raw_speaker_label TEXT NOT NULL CHECK (length(trim(raw_speaker_label)) BETWEEN 1 AND 200),
+                model_id TEXT NOT NULL CHECK (length(trim(model_id)) BETWEEN 1 AND 200),
+                dimensions INTEGER NOT NULL CHECK (dimensions BETWEEN 1 AND 4096),
+                payload BLOB NOT NULL,
+                PRIMARY KEY (appointment_id, raw_speaker_label, model_id)
+            );
+            CREATE TABLE patient_voice_profiles (
+                id TEXT PRIMARY KEY NOT NULL,
+                source_assignment_id TEXT NOT NULL REFERENCES speaker_cluster_assignments(id) ON DELETE CASCADE,
+                model_id TEXT NOT NULL UNIQUE CHECK (length(trim(model_id)) BETWEEN 1 AND 200),
+                dimensions INTEGER NOT NULL CHECK (dimensions BETWEEN 1 AND 4096),
+                created_at REAL NOT NULL,
+                payload BLOB NOT NULL
+            );
+            CREATE TABLE session_debrief_decisions (
+                id TEXT PRIMARY KEY NOT NULL,
+                appointment_id TEXT NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
+                summary_item_id TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK (kind IN ('addedHomework', 'addedGoal', 'ignoredGoal', 'markedTalkingPointDiscussed', 'pinnedQuestion')),
+                target_entity_id TEXT,
+                created_at REAL NOT NULL,
+                payload BLOB NOT NULL,
+                UNIQUE (appointment_id, summary_item_id, kind)
+            );
+            CREATE INDEX session_processing_stage ON session_processing(stage, updated_at, id);
+            CREATE INDEX speaker_assignments_appointment ON speaker_cluster_assignments(appointment_id, raw_speaker_label);
+            CREATE INDEX speaker_embeddings_appointment ON speaker_embeddings(appointment_id, raw_speaker_label);
+            CREATE INDEX patient_voice_profiles_model ON patient_voice_profiles(model_id, id);
+            CREATE INDEX session_debrief_appointment ON session_debrief_decisions(appointment_id, created_at, id);
             """)
     }
 }

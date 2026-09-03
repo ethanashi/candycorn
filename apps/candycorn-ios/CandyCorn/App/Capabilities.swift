@@ -19,6 +19,11 @@ protocol CareStore: Sendable {
     func saveAttachment(_ attachment: Attachment) async throws
     func saveArtifact(_ artifact: AIArtifact) async throws
     func deleteArtifact(id: UUID) async throws
+    func replaceTranscriptSegments(_ segments: [TranscriptSegment], for appointmentID: UUID) async throws
+    func saveSpeakerEmbeddings(_ embeddings: [SpeakerEmbedding], for appointmentID: UUID) async throws
+    func assignSpeakerCluster(_ assignment: SpeakerClusterAssignment, rememberPatientVoice: Bool) async throws
+    func saveSessionProcessing(_ record: SessionProcessingRecord) async throws
+    func applySessionDebriefMutation(_ mutation: SessionDebriefMutation) async throws
     func search(_ query: String, limit: Int) async throws -> [SearchHit]
     func setSampleContentEnabled(_ enabled: Bool) async throws
     func updateSettings(_ settings: VaultSettings) async throws
@@ -32,6 +37,34 @@ extension CareStore {
 
     func deleteArtifact(id: UUID) async throws {
         _ = id
+        throw AIProviderError.unavailable
+    }
+
+    func replaceTranscriptSegments(_ segments: [TranscriptSegment], for appointmentID: UUID) async throws {
+        _ = segments.count
+        _ = appointmentID
+        throw AIProviderError.unavailable
+    }
+
+    func saveSpeakerEmbeddings(_ embeddings: [SpeakerEmbedding], for appointmentID: UUID) async throws {
+        _ = embeddings.count
+        _ = appointmentID
+        throw AIProviderError.unavailable
+    }
+
+    func assignSpeakerCluster(_ assignment: SpeakerClusterAssignment, rememberPatientVoice: Bool) async throws {
+        _ = assignment.id
+        _ = rememberPatientVoice
+        throw AIProviderError.unavailable
+    }
+
+    func saveSessionProcessing(_ record: SessionProcessingRecord) async throws {
+        _ = record.id
+        throw AIProviderError.unavailable
+    }
+
+    func applySessionDebriefMutation(_ mutation: SessionDebriefMutation) async throws {
+        _ = mutation
         throw AIProviderError.unavailable
     }
 }
@@ -86,9 +119,17 @@ protocol RecordingService: Sendable {
 
 protocol AudioPlaybackService: Sendable {
     func play(attachment: Attachment) async throws
+    func play(attachment: Attachment, fromMilliseconds: Int) async throws
     func pause() async
     func stop() async
     func events() async -> AsyncStream<RecordingSnapshot>
+}
+
+extension AudioPlaybackService {
+    func play(attachment: Attachment, fromMilliseconds: Int) async throws {
+        guard fromMilliseconds >= 0 else { throw UserFacingError.playback }
+        try await play(attachment: attachment)
+    }
 }
 
 protocol PhotoAttachmentService: Sendable {
@@ -156,6 +197,9 @@ struct AppDependencies: Sendable {
     let languageModel: any CandyCornLanguageModel
     let visionReader: any CandyCornVisionReader
     let transcriber: any CandyCornTranscriber
+    let diarizer: any CandyCornDiarizer
+    let sessionSummarizer: any CandyCornSessionSummarizer
+    let sessionProcessing: any SessionProcessing
     let distressClassifier: any DistressSupportClassifier
     let openRouterKeyStore: any OpenRouterAPIKeyProviding
     let aiConfigurationStore: any AIConfigurationProviding
@@ -175,7 +219,10 @@ struct AppDependencies: Sendable {
         logger: any EventLogging,
         languageModel: (any CandyCornLanguageModel)? = nil,
         visionReader: (any CandyCornVisionReader)? = nil,
-        transcriber: any CandyCornTranscriber = UnavailableTranscriber(),
+        transcriber: (any CandyCornTranscriber)? = nil,
+        diarizer: (any CandyCornDiarizer)? = nil,
+        sessionSummarizer: (any CandyCornSessionSummarizer)? = nil,
+        sessionProcessing: (any SessionProcessing)? = nil,
         distressClassifier: any DistressSupportClassifier = NoOpDistressSupportClassifier(),
         openRouterKeyStore: (any OpenRouterAPIKeyProviding)? = nil,
         aiConfigurationStore: (any AIConfigurationProviding)? = nil,
@@ -188,6 +235,14 @@ struct AppDependencies: Sendable {
         let configurationStore = aiConfigurationStore ?? InMemoryAIConfigurationStore()
         let resolvedLanguageModel = languageModel ?? AppleFoundationModelProvider()
         let resolvedVisionReader = visionReader ?? UnavailableVisionReader()
+        let resolvedTranscriber: any CandyCornTranscriber = transcriber
+            ?? (screenshotMode ? FakeTranscriber() : UnavailableTranscriber())
+        let resolvedDiarizer: any CandyCornDiarizer = diarizer
+            ?? (screenshotMode ? FakeDiarizer() : UnavailableDiarizer())
+        let resolvedSessionSummarizer: any CandyCornSessionSummarizer = sessionSummarizer
+            ?? (screenshotMode ? FakeSessionSummarizer() : UnavailableSessionSummarizer())
+        let resolvedSessionProcessing: any SessionProcessing = sessionProcessing
+            ?? (screenshotMode ? FakeSessionProcessing() : UnavailableSessionProcessing())
         self.careStore = careStore
         self.maintenance = maintenance
         self.attachments = attachments
@@ -198,7 +253,10 @@ struct AppDependencies: Sendable {
         self.logger = logger
         self.languageModel = resolvedLanguageModel
         self.visionReader = resolvedVisionReader
-        self.transcriber = transcriber
+        self.transcriber = resolvedTranscriber
+        self.diarizer = resolvedDiarizer
+        self.sessionSummarizer = resolvedSessionSummarizer
+        self.sessionProcessing = resolvedSessionProcessing
         self.distressClassifier = distressClassifier
         self.openRouterKeyStore = keyStore
         self.aiConfigurationStore = configurationStore

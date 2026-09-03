@@ -28,7 +28,12 @@ actor VaultRepositories: CareStore {
                 attachments: try Self.fetch(Attachment.self, table: "attachments", order: "created_at DESC, id", db: db),
                 providers: try Self.fetch(ProviderProfile.self, table: "providers", order: "name COLLATE NOCASE, id", db: db),
                 transcript: try Self.fetch(TranscriptSegment.self, table: "transcript_segments", order: "appointment_id, start_milliseconds, id", db: db),
-                settings: try Self.fetchSettings(db)
+                settings: try Self.fetchSettings(db),
+                sessionProcessing: try Self.fetch(SessionProcessingRecord.self, table: "session_processing", order: "updated_at DESC, id", db: db),
+                speakerAssignments: try Self.fetch(SpeakerClusterAssignment.self, table: "speaker_cluster_assignments", order: "appointment_id, raw_speaker_label, id", db: db),
+                speakerEmbeddings: try Self.fetchPayloads(SpeakerEmbedding.self, table: "speaker_embeddings", identity: "appointment_id || ':' || raw_speaker_label || ':' || model_id", order: "appointment_id, raw_speaker_label, model_id", db: db),
+                patientVoiceProfiles: try Self.fetch(PatientVoiceProfile.self, table: "patient_voice_profiles", order: "created_at DESC, id", db: db),
+                debriefDecisions: try Self.fetch(SessionDebriefDecision.self, table: "session_debrief_decisions", order: "created_at, id", db: db)
             )
         }
     }
@@ -96,6 +101,90 @@ actor VaultRepositories: CareStore {
         }
     }
 
+    func replaceTranscriptSegments(_ segments: [TranscriptSegment], for appointmentID: UUID) async throws {
+        guard segments.count <= 100_000 else { throw VaultRepositoryError.invalidInput }
+        let records = try segments.map { try TranscriptPersistenceRecord($0, isSample: false) }
+        guard records.allSatisfy({ $0.value.appointmentID == appointmentID }) else {
+            throw VaultRepositoryError.invalidInput
+        }
+        guard Set(records.map(\.value.id)).count == records.count else {
+            throw VaultRepositoryError.invalidInput
+        }
+        try await database.write { db in
+            let appointment = try Self.appointment(for: appointmentID, db: db)
+            try db.execute(sql: "DELETE FROM transcript_segments WHERE appointment_id = ?", arguments: [Self.uuid(appointmentID)])
+            for record in records.prefix(100_000) {
+                try VaultRecordWriter.save(record, in: db, insertOnly: true)
+            }
+            let body = records.map(\.value.text).joined(separator: " ")
+            try VaultRecordWriter.replaceIndex(
+                kind: .transcript,
+                id: appointmentID,
+                title: "\(appointment.kind.displayName) transcript",
+                body: body,
+                date: appointment.startedAt ?? appointment.scheduledAt ?? .distantPast,
+                db: db
+            )
+        }
+    }
+
+    func saveSpeakerEmbeddings(_ embeddings: [SpeakerEmbedding], for appointmentID: UUID) async throws {
+        guard (1...256).contains(embeddings.count) else { throw VaultRepositoryError.invalidInput }
+        let records = try embeddings.map { try SpeakerEmbeddingPersistenceRecord($0, appointmentID: appointmentID) }
+        let identities = records.map {
+            "\($0.value.rawSpeakerLabel.utf8.count)#\($0.value.rawSpeakerLabel)\($0.value.modelID)"
+        }
+        guard Set(identities).count == identities.count else { throw VaultRepositoryError.invalidInput }
+        try await database.write { db in
+            _ = try Self.appointment(for: appointmentID, db: db)
+            try db.execute(sql: "DELETE FROM speaker_embeddings WHERE appointment_id = ?", arguments: [Self.uuid(appointmentID)])
+            for record in records.prefix(256) {
+                try VaultRecordWriter.save(record, in: db)
+            }
+        }
+    }
+
+    func assignSpeakerCluster(_ assignment: SpeakerClusterAssignment, rememberPatientVoice: Bool) async throws {
+        let record = try SpeakerAssignmentPersistenceRecord(assignment)
+        guard !rememberPatientVoice || assignment.speaker == .patient else {
+            throw VaultRepositoryError.invalidInput
+        }
+        try await database.write { db in
+            _ = try Self.appointment(for: assignment.appointmentID, db: db)
+            let existingID = try String.fetchOne(
+                db,
+                sql: "SELECT id FROM speaker_cluster_assignments WHERE appointment_id = ? AND raw_speaker_label = ?",
+                arguments: [Self.uuid(assignment.appointmentID), assignment.rawSpeakerLabel]
+            )
+            guard existingID == nil || existingID == Self.uuid(assignment.id) else {
+                throw VaultRepositoryError.invalidInput
+            }
+            try VaultRecordWriter.save(record, in: db)
+            try Self.relabelTranscript(for: assignment, db: db)
+            if rememberPatientVoice {
+                try Self.rememberPatientProfile(for: assignment, db: db)
+            }
+        }
+    }
+
+    func saveSessionProcessing(_ record: SessionProcessingRecord) async throws {
+        let persistence = try SessionProcessingPersistenceRecord(record)
+        try await database.write { db in
+            _ = try Self.appointment(for: record.appointmentID, db: db)
+            try VaultRecordWriter.save(persistence, in: db)
+        }
+    }
+
+    func applySessionDebriefMutation(_ mutation: SessionDebriefMutation) async throws {
+        let decision = try Self.validate(mutation)
+        let record = try SessionDebriefDecisionPersistenceRecord(decision)
+        try await database.write { db in
+            _ = try Self.appointment(for: decision.appointmentID, db: db)
+            guard try VaultRecordWriter.insert(record, in: db) else { return }
+            try Self.apply(mutation, db: db)
+        }
+    }
+
     func search(_ query: String, limit: Int) async throws -> [SearchHit] {
         let normalized = String(query.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200))
         guard !normalized.isEmpty, (1...100).contains(limit) else { throw VaultRepositoryError.invalidInput }
@@ -151,6 +240,113 @@ actor VaultRepositories: CareStore {
             let payload: Data = row["payload"]
             return try PersistenceCoding.decode(type, from: payload, table: table, id: id)
         }
+    }
+
+    private static func fetchPayloads<Value: Decodable>(
+        _ type: Value.Type,
+        table: String,
+        identity: String,
+        order: String,
+        db: Database
+    ) throws -> [Value] {
+        let rows = try Row.fetchAll(db, sql: "SELECT \(identity) AS record_id, payload FROM \(table) ORDER BY \(order)")
+        return try rows.map { row in
+            let id: String = row["record_id"]
+            let payload: Data = row["payload"]
+            return try PersistenceCoding.decode(type, from: payload, table: table, id: id)
+        }
+    }
+
+    private static func appointment(for id: UUID, db: Database) throws -> Appointment {
+        guard let row = try Row.fetchOne(
+            db,
+            sql: "SELECT payload FROM appointments WHERE id = ?",
+            arguments: [uuid(id)]
+        ) else { throw VaultRepositoryError.invalidInput }
+        let payload: Data = row["payload"]
+        return try PersistenceCoding.decode(Appointment.self, from: payload, table: "appointments", id: uuid(id))
+    }
+
+    private static func relabelTranscript(for assignment: SpeakerClusterAssignment, db: Database) throws {
+        let rows = try Row.fetchAll(
+            db,
+            sql: "SELECT id, is_sample, payload FROM transcript_segments WHERE appointment_id = ? ORDER BY start_milliseconds, id",
+            arguments: [uuid(assignment.appointmentID)]
+        )
+        guard rows.count <= 100_000 else { throw VaultRepositoryError.invalidInput }
+        for row in rows.prefix(100_000) {
+            let id: String = row["id"]
+            let isSample: Bool = row["is_sample"]
+            let payload: Data = row["payload"]
+            var segment = try PersistenceCoding.decode(TranscriptSegment.self, from: payload, table: "transcript_segments", id: id)
+            guard segment.rawSpeakerLabel == assignment.rawSpeakerLabel else { continue }
+            segment.speaker = assignment.speaker
+            try VaultRecordWriter.save(try TranscriptPersistenceRecord(segment, isSample: isSample), in: db)
+        }
+    }
+
+    private static func rememberPatientProfile(for assignment: SpeakerClusterAssignment, db: Database) throws {
+        let rows = try Row.fetchAll(
+            db,
+            sql: "SELECT model_id, payload FROM speaker_embeddings WHERE appointment_id = ? AND raw_speaker_label = ? ORDER BY model_id LIMIT 2",
+            arguments: [uuid(assignment.appointmentID), assignment.rawSpeakerLabel]
+        )
+        guard rows.count == 1, let row = rows.first else { throw VaultRepositoryError.invalidInput }
+        let modelID: String = row["model_id"]
+        let payload: Data = row["payload"]
+        let embedding = try PersistenceCoding.decode(SpeakerEmbedding.self, from: payload, table: "speaker_embeddings", id: modelID)
+        let profile = PatientVoiceProfile(id: assignment.id, modelID: embedding.modelID, embedding: embedding.values, createdAt: assignment.updatedAt)
+        try VaultRecordWriter.save(try PatientVoiceProfilePersistenceRecord(profile), in: db)
+    }
+
+    private static func validate(_ mutation: SessionDebriefMutation) throws -> SessionDebriefDecision {
+        switch mutation {
+        case let .addGoal(decision, goal):
+            let validKind = decision.kind == .addedGoal || decision.kind == .addedHomework
+            let validCadence = decision.kind != .addedHomework || goal.cadence == .homework
+            let validProviderSource = decision.kind != .addedHomework
+                || (goal.source == .providerExplicit && goal.provenance.voice == .provider)
+            guard validKind, validCadence, validProviderSource, decision.targetEntityID == goal.id,
+                  goal.sourceEntityID == decision.appointmentID else { throw VaultRepositoryError.invalidInput }
+            return decision
+        case let .ignoreGoal(decision):
+            guard decision.kind == .ignoredGoal, decision.targetEntityID == nil else { throw VaultRepositoryError.invalidInput }
+            return decision
+        case let .markTalkingPointDiscussed(decision, point):
+            guard decision.kind == .markedTalkingPointDiscussed,
+                  decision.targetEntityID == point.id, point.status == .discussed else { throw VaultRepositoryError.invalidInput }
+            return decision
+        case let .pinQuestion(decision, point):
+            guard decision.kind == .pinnedQuestion, decision.targetEntityID == point.id,
+                  point.sourceID == decision.appointmentID, point.status == .open else { throw VaultRepositoryError.invalidInput }
+            return decision
+        }
+    }
+
+    private static func apply(_ mutation: SessionDebriefMutation, db: Database) throws {
+        switch mutation {
+        case let .addGoal(_, goal):
+            guard try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM goals WHERE id = ?", arguments: [uuid(goal.id)]) == 0 else {
+                throw VaultRepositoryError.invalidInput
+            }
+            try VaultRecordWriter.save(try GoalPersistenceRecord(goal, isSample: false), in: db, insertOnly: true)
+        case .ignoreGoal:
+            return
+        case let .markTalkingPointDiscussed(_, point):
+            guard try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM talking_points WHERE id = ?", arguments: [uuid(point.id)]) == 1 else {
+                throw VaultRepositoryError.invalidInput
+            }
+            try VaultRecordWriter.save(try TalkingPointPersistenceRecord(point, isSample: false), in: db)
+        case let .pinQuestion(_, point):
+            guard try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM talking_points WHERE id = ?", arguments: [uuid(point.id)]) == 0 else {
+                throw VaultRepositoryError.invalidInput
+            }
+            try VaultRecordWriter.save(try TalkingPointPersistenceRecord(point, isSample: false), in: db, insertOnly: true)
+        }
+    }
+
+    private static func uuid(_ value: UUID) -> String {
+        value.uuidString.lowercased()
     }
 
     private static func fetchSettings(_ db: Database) throws -> VaultSettings {
@@ -302,6 +498,76 @@ enum VaultRecordWriter {
     static func save(_ record: TranscriptPersistenceRecord, in db: Database, insertOnly: Bool = false) throws {
         let value = record.value
         try db.execute(sql: insertSQL(table: "transcript_segments", columns: "id, appointment_id, start_milliseconds, end_milliseconds, is_sample, payload", updates: "appointment_id=excluded.appointment_id, start_milliseconds=excluded.start_milliseconds, end_milliseconds=excluded.end_milliseconds, payload=excluded.payload", count: 6, insertOnly: insertOnly), arguments: [uuid(value.id), uuid(value.appointmentID), value.startMilliseconds, value.endMilliseconds, record.isSample, record.payload])
+    }
+
+    static func save(_ record: SessionProcessingPersistenceRecord, in db: Database) throws {
+        let value = record.value
+        try db.execute(sql: """
+            INSERT INTO session_processing
+                (id, appointment_id, stage, progress, summary_consent_granted, updated_at, payload)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(appointment_id) DO UPDATE SET
+                id=excluded.id, stage=excluded.stage, progress=excluded.progress,
+                summary_consent_granted=excluded.summary_consent_granted,
+                updated_at=excluded.updated_at, payload=excluded.payload
+            """, arguments: [uuid(value.id), uuid(value.appointmentID), value.stage.rawValue, value.progress, value.summaryConsentGranted, timestamp(value.updatedAt), record.payload])
+    }
+
+    static func save(_ record: SpeakerAssignmentPersistenceRecord, in db: Database) throws {
+        let value = record.value
+        try db.execute(sql: """
+            INSERT INTO speaker_cluster_assignments
+                (id, appointment_id, raw_speaker_label, speaker, updated_at, payload)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(appointment_id, raw_speaker_label) DO UPDATE SET
+                speaker=excluded.speaker,
+                updated_at=excluded.updated_at, payload=excluded.payload
+            """, arguments: [uuid(value.id), uuid(value.appointmentID), value.rawSpeakerLabel, value.speaker.rawValue, timestamp(value.updatedAt), record.payload])
+    }
+
+    static func save(_ record: SpeakerEmbeddingPersistenceRecord, in db: Database) throws {
+        let value = record.value
+        try db.execute(sql: """
+            INSERT INTO speaker_embeddings
+                (appointment_id, raw_speaker_label, model_id, dimensions, payload)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(appointment_id, raw_speaker_label, model_id) DO UPDATE SET
+                dimensions=excluded.dimensions, payload=excluded.payload
+            """, arguments: [uuid(record.appointmentID), value.rawSpeakerLabel, value.modelID, value.values.count, record.payload])
+    }
+
+    static func save(_ record: PatientVoiceProfilePersistenceRecord, in db: Database) throws {
+        let value = record.value
+        try db.execute(sql: """
+            INSERT INTO patient_voice_profiles (id, source_assignment_id, model_id, dimensions, created_at, payload)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(model_id) DO UPDATE SET
+                id=excluded.id, source_assignment_id=excluded.source_assignment_id,
+                dimensions=excluded.dimensions,
+                created_at=excluded.created_at, payload=excluded.payload
+            """, arguments: [uuid(value.id), uuid(value.id), value.modelID, value.embedding.count, timestamp(value.createdAt), record.payload])
+    }
+
+    static func insert(_ record: SessionDebriefDecisionPersistenceRecord, in db: Database) throws -> Bool {
+        let value = record.value
+        try db.execute(sql: """
+            INSERT INTO session_debrief_decisions
+                (id, appointment_id, summary_item_id, kind, target_entity_id, created_at, payload)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(appointment_id, summary_item_id, kind) DO NOTHING
+            """, arguments: [uuid(value.id), uuid(value.appointmentID), uuid(value.summaryItemID), value.kind.rawValue, optionalUUID(value.targetEntityID), timestamp(value.createdAt), record.payload])
+        return db.changesCount == 1
+    }
+
+    static func replaceIndex(
+        kind: SearchEntityKind,
+        id: UUID,
+        title: String,
+        body: String,
+        date: Date,
+        db: Database
+    ) throws {
+        try index(kind: kind, id: id, title: title, body: body, date: date, db: db)
     }
 
     static func saveSettings(_ value: VaultSettings, in db: Database) throws {

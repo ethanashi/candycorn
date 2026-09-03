@@ -122,6 +122,8 @@ struct AIArtifact: Identifiable, Codable, Equatable, Sendable {
         case journalSummary
         case journalSignals
         case photoText
+        case transcript
+        case diarization
         case sessionSummary
         case appointmentBrief
         case goalSuggestions
@@ -148,6 +150,79 @@ struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
     let endMilliseconds: Int
     var text: String
     var confidence: Double?
+}
+
+enum SessionProcessingStage: String, Codable, CaseIterable, Sendable {
+    case recordingSaved
+    case transcribing
+    case separatingSpeakers
+    case summarizing
+    case ready
+}
+
+enum SessionProcessingFailureCode: String, Codable, Sendable {
+    case recordingMissing
+    case transcriptionUnavailable
+    case transcriptionFailed
+    case modelDownloadOffline
+    case diarizationFailed
+    case summaryPermissionRequired
+    case summaryFailed
+}
+
+struct SessionProcessingFailure: Codable, Equatable, Sendable {
+    let code: SessionProcessingFailureCode
+    let message: String
+}
+
+struct SessionProcessingRecord: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    let appointmentID: UUID
+    var stage: SessionProcessingStage
+    var progress: Double?
+    var summaryConsentGranted: Bool
+    var failure: SessionProcessingFailure?
+    var updatedAt: Date
+}
+
+struct SpeakerClusterAssignment: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    let appointmentID: UUID
+    let rawSpeakerLabel: String
+    var speaker: TranscriptSegment.Speaker
+    var updatedAt: Date
+}
+
+struct PatientVoiceProfile: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    let modelID: String
+    let embedding: [Float]
+    let createdAt: Date
+}
+
+enum SessionDebriefDecisionKind: String, Codable, Sendable {
+    case addedHomework
+    case addedGoal
+    case ignoredGoal
+    case markedTalkingPointDiscussed
+    case pinnedQuestion
+}
+
+struct SessionDebriefDecision: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    let appointmentID: UUID
+    let summaryItemID: UUID
+    let kind: SessionDebriefDecisionKind
+    let targetEntityID: UUID?
+    let editedText: String?
+    let createdAt: Date
+}
+
+enum SessionDebriefMutation: Sendable {
+    case addGoal(decision: SessionDebriefDecision, goal: Goal)
+    case ignoreGoal(decision: SessionDebriefDecision)
+    case markTalkingPointDiscussed(decision: SessionDebriefDecision, talkingPoint: TalkingPoint)
+    case pinQuestion(decision: SessionDebriefDecision, talkingPoint: TalkingPoint)
 }
 
 enum AttachmentKind: String, Codable, Sendable {
@@ -207,6 +282,11 @@ struct CareSnapshot: Sendable, Equatable {
     var providers: [ProviderProfile]
     var transcript: [TranscriptSegment]
     var settings: VaultSettings
+    var sessionProcessing: [SessionProcessingRecord] = []
+    var speakerAssignments: [SpeakerClusterAssignment] = []
+    var speakerEmbeddings: [SpeakerEmbedding] = []
+    var patientVoiceProfiles: [PatientVoiceProfile] = []
+    var debriefDecisions: [SessionDebriefDecision] = []
 }
 
 enum SearchEntityKind: String, Codable, Sendable {
@@ -215,6 +295,7 @@ enum SearchEntityKind: String, Codable, Sendable {
     case appointment
     case goal
     case talkingPoint
+    case transcript
     case summary
 }
 

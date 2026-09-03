@@ -151,6 +151,120 @@ struct TranscriptResult: Codable, Equatable, Sendable {
     let segments: [TranscriptPiece]
 }
 
+enum LocalModelAvailability: Equatable, Sendable {
+    case available
+    case downloadRequired
+    case unavailableOnDevice
+}
+
+enum TranscriptionFailure: Error, Equatable, Sendable {
+    case unavailableOnDevice
+    case assetInstallationFailed
+    case invalidAudio
+    case emptyResult
+}
+
+struct DiarizationInterval: Codable, Equatable, Sendable {
+    let rawSpeakerLabel: String
+    let startMilliseconds: Int
+    let endMilliseconds: Int
+    let confidence: Double?
+}
+
+struct SpeakerEmbedding: Codable, Equatable, Sendable {
+    let rawSpeakerLabel: String
+    let modelID: String
+    let values: [Float]
+}
+
+enum DiarizationProgress: Equatable, Sendable {
+    case checkingModels
+    case downloadingModels(fractionCompleted: Double?)
+    case processing(completed: Int, total: Int)
+}
+
+struct DiarizationResult: Codable, Equatable, Sendable {
+    let intervals: [DiarizationInterval]
+    let speakerEmbeddings: [SpeakerEmbedding]
+    let modelID: String
+}
+
+struct SessionTranscriptSource: Codable, Equatable, Sendable, Identifiable {
+    let id: UUID
+    let speaker: TranscriptSegment.Speaker
+    let rawSpeakerLabel: String?
+    let startMilliseconds: Int
+    let endMilliseconds: Int
+    let text: String
+}
+
+struct SessionTalkingPointSource: Codable, Equatable, Sendable, Identifiable {
+    let id: UUID
+    let text: String
+}
+
+enum SessionSummaryTemplate: String, Codable, Sendable {
+    case therapy
+    case tms
+}
+
+enum SessionSummarySectionKind: String, Codable, CaseIterable, Sendable {
+    case mainTopics
+    case patientRealizations
+    case providerObservations
+    case homework
+    case goals
+    case beliefsOrStuckPoints
+    case copingTools
+    case questionsToRevisit
+    case unfinishedTopics
+    case nextSessionItems
+    case currentFeelingsBeforeSession
+    case distressOrAnxiety
+    case triggersOrProvocations
+    case questionsForProvider
+    case providerInstructions
+    case changesDiscussed
+    case feelingsAfterSession
+    case thingsToMonitor
+}
+
+enum SessionSummaryItemProvenance: String, Codable, Sendable {
+    case patient
+    case provider
+    case candyCorn
+}
+
+struct StructuredSessionSummaryItem: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    let text: String
+    let provenance: SessionSummaryItemProvenance
+    let evidence: [EvidenceCitation]
+    let relatedEntityID: UUID?
+}
+
+struct StructuredSessionSummarySection: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    let kind: SessionSummarySectionKind
+    let title: String
+    let items: [StructuredSessionSummaryItem]
+}
+
+struct StructuredSessionSummaryInput: Codable, Equatable, Sendable {
+    let appointmentID: UUID
+    let template: SessionSummaryTemplate
+    let transcript: [SessionTranscriptSource]
+    let openTalkingPoints: [SessionTalkingPointSource]
+}
+
+struct StructuredSessionSummaryResult: Codable, Equatable, Sendable {
+    let template: SessionSummaryTemplate
+    let debriefTopics: [StructuredSessionSummaryItem]
+    let sections: [StructuredSessionSummarySection]
+    let discussedTalkingPoints: [StructuredSessionSummaryItem]
+    let metadata: AIResultMetadata
+}
+
 struct VisionReadInput: Sendable {
     let journalID: UUID
     let attachmentID: UUID
@@ -190,8 +304,39 @@ protocol CandyCornLanguageModel: Sendable {
 
 protocol CandyCornTranscriber: Sendable {
     var id: String { get }
+    func availability(for locale: Locale) async -> LocalModelAvailability
     func transcribeJournal(audioURL: URL) async throws -> TranscriptResult
     func transcribeSession(audioURL: URL) async throws -> TranscriptResult
+}
+
+extension CandyCornTranscriber {
+    func availability(for locale: Locale) async -> LocalModelAvailability {
+        _ = locale.identifier
+        return .unavailableOnDevice
+    }
+}
+
+protocol CandyCornDiarizer: Sendable {
+    var id: String { get }
+    func diarize(
+        audioURL: URL,
+        progress: @escaping @Sendable (DiarizationProgress) -> Void
+    ) async throws -> DiarizationResult
+}
+
+protocol CandyCornSessionSummarizer: Sendable {
+    var id: String { get }
+    func summarizeSession(_ input: StructuredSessionSummaryInput) async throws -> StructuredSessionSummaryResult
+}
+
+protocol SessionProcessing: Sendable {
+    func status(for appointmentID: UUID) async -> SessionProcessingRecord?
+    func beginOrResume(appointmentID: UUID) async
+    func resumePending() async
+    func retry(appointmentID: UUID) async
+    func noteSummaryStarted(appointmentID: UUID) async throws
+    func noteSummaryCompleted(appointmentID: UUID, artifactID: UUID) async throws
+    func events() async -> AsyncStream<SessionProcessingRecord>
 }
 
 protocol CandyCornVisionReader: Sendable {
