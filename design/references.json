@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 1,
+  "productId": "candycorn-prototype",
+  "researchedAt": "2026-09-02",
+  "method": "Mobbin MCP searches by screen intent; images inspected, not metadata. Skeleton only: hierarchy, spacing, control anatomy, navigation. Never colors, logos, imagery, or copy voice.",
+  "references": [
+    {
+      "screen": "Today",
+      "app": "Apple Health",
+      "source": "mobbin",
+      "url": "https://mobbin.com/screens/e60672f4-262f-478f-9326-6a6a2262f43f",
+      "screenId": "e60672f4-262f-478f-9326-6a6a2262f43f",
+      "observedMechanics": [
+        "Large left-aligned page title (Summary) with a small avatar at top right; no eyebrow text above it.",
+        "Section header (Pinned) with a quiet trailing Edit action, then a vertical stack of white cards on a soft tinted canvas.",
+        "Each card: colored category label with glyph at top left, relative date at top right, one large tabular number with unit on the second row, a small data graphic on the right.",
+        "Card corner radius roughly 18px, spacing roughly 12px between cards, 16px horizontal page margin.",
+        "Floating bottom tab bar with two tabs plus a detached search circle; the tab bar floats over content."
+      ]
+    },
+    {
+      "screen": "Today",
+      "app": "stoic.",
+      "source": "mobbin",
+      "url": "https://mobbin.com/screens/f97f3994-4a60-4b79-96b5-ecb944e23697",
+      "screenId": "f97f3994-4a60-4b79-96b5-ecb944e23697",
+      "observedMechanics": [
+        "Greeting in bold lowercase sentence at top, a horizontal week strip under it with today ringed.",
+        "Two side-by-side tall cards for the two daily rituals, one active with a single Begin button, one completed with result chips.",
+        "One wide reflection card below with prompt text and one dark circular action; only one primary action is visible per card.",
+        "Bottom tab bar with a large central plus capture button raised above the bar."
+      ]
+    },
+    {
+      "screen": "Quick mood check-in",
+      "app": "Liven",
+      "source": "mobbin",
+      "url": "https://mobbin.com/screens/4ddcb17d-e1ed-45c5-a190-e5812fefd336",
+      "screenId": "4ddcb17d-e1ed-45c5-a190-e5812fefd336",
+      "observedMechanics": [
+        "The question (How do you feel right now?) is the page title; the answer control is a ring about 60 percent of viewport width centered under it.",
+        "A four-up row of equal square quick actions with glyph above label sits directly under the ring.",
+        "Routine progress is a single card with a count at right (3 of 3 completed) rather than a stats grid."
+      ]
+    },
+    {
+      "screen": "Voice rant recording",
+      "app": "Apple Notes",
+      "source": "mobbin",
+      "url": "https://mobbin.com/screens/8d9a3b97-ce5f-4e8c-a06c-e4c1af9d7e2b",
+      "screenId": "8d9a3b97-ce5f-4e8c-a06c-e4c1af9d7e2b",
+      "observedMechanics": [
+        "Recording opens as a sheet: title and date centered at top, waveform band edge to edge across the middle with a vertical playhead and a time ruler under it.",
+        "Very large tabular timer (00:02.01) centered below the waveform, then a row of transport controls, then one round record/stop control centered at the bottom with Done at the right.",
+        "No pulsing indicator; recording state is carried by the moving waveform and the filled control."
+      ]
+    },
+    {
+      "screen": "Voice rant recording",
+      "app": "Quo",
+      "source": "mobbin",
+      "url": "https://mobbin.com/screens/60735723-eb81-40e8-a1b0-bccec827fa9e",
+      "screenId": "60735723-eb81-40e8-a1b0-bccec827fa9e",
+      "observedMechanics": [
+        "Almost empty white sheet: close at top left, Save at top right, a soft wave band in the lower third, a single round stop control with the elapsed time in a small filled label under it.",
+        "Whitespace is the design; the only saturated element is the stop control."
+      ]
+    },
+    {
+      "screen": "Journal detail: original, cleaned, summary",
+      "app": "Fabric",
+      "source": "mobbin",
+      "url": "https://mobbin.com/screens/2b97cdc6-e03e-4811-94a7-1d5c8bf648da",
+      "screenId": "2b97cdc6-e03e-4811-94a7-1d5c8bf648da",
+      "observedMechanics": [
+        "Three text tabs (My notes, Transcript, Summary) under the title bar switch the body; the summary is bulleted prose followed by an Action items section.",
+        "Body copy is a calm 16 to 17px with generous line height; no cards around the prose.",
+        "Recording controls persist as a floating dark capsule above the bottom sheet."
+      ]
+    },
+    {
+      "screen": "Journal detail: AI noticed",
+      "app": "ABY Journal",
+      "source": "mobbin",
+      "url": "https://mobbin.com/screens/f1a56ab6-6c52-46e7-9f6d-66fb287b00b0",
+      "screenId": "f1a56ab6-6c52-46e7-9f6d-66fb287b00b0",
+      "observedMechanics": [
+        "The user's original text stays on top in plain body type; the AI note (ABY Noticed) rises as a separate sheet from the bottom with its own title and close control.",
+        "The AI text is visually separated from the source by the sheet boundary, never interleaved with it."
+      ]
+    },
+    {
+      "screen": "Session detail: speaker-separated transcript",
+      "app": "Otter AI",
+      "source": "mobbin",
+      "url": "https://mobbin.com/screens/0729d416-6675-4081-9910-8d508e5adbd8",
+      "screenId": "0729d416-6675-4081-9910-8d508e5adbd8",
+      "observedMechanics": [
+        "Title, then a metadata row (date, duration, owner) in small secondary type, then a tab row (Summary, Transcript, AI Chat, Comments).",
+        "Each transcript paragraph starts with a colored speaker avatar circle, the speaker name in that color, and the timestamp in secondary type on the same line; the spoken text is a plain paragraph beneath.",
+        "A playback scrubber with elapsed and total time and a centered play control is pinned to the bottom."
+      ]
+    },
+    {
+      "screen": "Session detail: summary linked to source",
+      "app": "Coursera",
+      "source": "mobbin",
+      "url": "https://mobbin.com/screens/890eec2c-43da-4ad2-b1fe-12b954b078f9",
+      "screenId": "890eec2c-43da-4ad2-b1fe-12b954b078f9",
+      "observedMechanics": [
+        "Segmented control (Transcript, Notes, Summary, Attachments) above the body.",
+        "Each transcript block is a two-column row: timestamp in a narrow left column, text in the wide right column, aligned to a shared baseline."
+      ]
+    },
+    {
+      "screen": "Goals grouped by cadence",
+      "app": "Asana",
+      "source": "mobbin",
+      "url": "https://mobbin.com/screens/d6028f74-c15c-4e8d-aa4b-6b10faa9abcc",
+      "screenId": "d6028f74-c15c-4e8d-aa4b-6b10faa9abcc",
+      "observedMechanics": [
+        "Collapsible section headers (Recently assigned, Do today, Do next week, Do later) with a count at right and a disclosure chevron at left.",
+        "Rows are one line of title with an optional secondary line, a circular check control at left, and a date at right; hairline dividers, no cards.",
+        "One pinned primary action (New task) at bottom right."
+      ]
+    },
+    {
+      "screen": "Goals grouped by cadence",
+      "app": "Attio",
+      "source": "mobbin",
+      "url": "https://mobbin.com/screens/24d97071-f951-4c50-b21a-cabe794fe10e",
+      "screenId": "24d97071-f951-4c50-b21a-cabe794fe10e",
+      "observedMechanics": [
+        "Each row carries a second line of small metadata (date, source workspace glyph and name) under the title, which is the pattern Candy Corn adapts for goal provenance.",
+        "Completion state is a filled blue check circle; incomplete is an empty circle with a hairline."
+      ]
+    },
+    {
+      "screen": "History timeline",
+      "app": "stoic.",
+      "source": "mobbin",
+      "url": "https://mobbin.com/screens/9e2ec79b-87e2-4b3b-a320-2da19c13775b",
+      "screenId": "9e2ec79b-87e2-4b3b-a320-2da19c13775b",
+      "observedMechanics": [
+        "A dark period-insights band at top (Entries, Avg sleep, Avg stress in three columns) with a Filter and a period selector.",
+        "Day header (Today, 19 Jul) with a chevron, then white entry cards each with a small type glyph and label, a time at right, the prompt in secondary type, and the entry excerpt in body type.",
+        "Entry cards are the only cards; headers sit directly on the canvas."
+      ]
+    },
+    {
+      "screen": "History timeline",
+      "app": "Bloom",
+      "source": "mobbin",
+      "url": "https://mobbin.com/screens/473992d6-253b-44b2-b5a9-ed8ba17066fd",
+      "screenId": "473992d6-253b-44b2-b5a9-ed8ba17066fd",
+      "observedMechanics": [
+        "Vertical timeline: each day gets a date block (large day number over month) at left with a relative label beside it; entries hang beneath it as compact rows with a colored mood glyph at left.",
+        "Rows are short: one title line and one metadata line."
+      ]
+    },
+    {
+      "screen": "Recording consent",
+      "app": "X",
+      "source": "mobbin",
+      "url": "https://mobbin.com/screens/7b64e433-82f3-4bfd-ac35-66e72fd6d8c8",
+      "screenId": "7b64e433-82f3-4bfd-ac35-66e72fd6d8c8",
+      "observedMechanics": [
+        "Bottom sheet with a single glyph, a title, one line of explanation, then labeled toggle rows each with a one-line reason, then one full-width primary button.",
+        "The sheet is white on a dimmed page; nothing else competes."
+      ]
+    },
+    {
+      "screen": "Recording consent",
+      "app": "Wispr Flow",
+      "source": "mobbin",
+      "url": "https://mobbin.com/screens/9ab0732f-4f26-4516-888c-8934dfe144eb",
+      "screenId": "9ab0732f-4f26-4516-888c-8934dfe144eb",
+      "observedMechanics": [
+        "Progress segments at top, a centered title and one sentence of reason, a single flat illustration, and one full-width Continue button pinned at the sheet bottom.",
+        "The permission screen is given full-screen craft rather than a system dialog alone."
+      ]
+    },
+    {
+      "screen": "Prepare (therapy brief)",
+      "app": "Hers",
+      "source": "mobbin",
+      "url": "https://mobbin.com/screens/fea54d82-85d4-43d3-9c26-2c9c271c6709",
+      "screenId": "fea54d82-85d4-43d3-9c26-2c9c271c6709",
+      "observedMechanics": [
+        "A brief written as prose: a large heading sentence, then short statements separated by hairlines, with the patient's own data highlighted inline by a soft tinted background.",
+        "One pinned full-width Continue button; no cards, no icons, the text is the object."
+      ]
+    },
+    {
+      "screen": "Privacy and AI processing status",
+      "app": "Runna",
+      "source": "mobbin",
+      "url": "https://mobbin.com/screens/85a339d4-c914-4a3d-a527-15d2bb33dae1",
+      "screenId": "85a339d4-c914-4a3d-a527-15d2bb33dae1",
+      "observedMechanics": [
+        "A centered navigation title sits above a short ledger of plain settings rows; each primary control remains a full 44px-tall row rather than a compact switch floating by itself.",
+        "The AI-sharing row names the external processor directly and places a concrete explanation immediately beneath the control.",
+        "Long privacy consequences stay in readable body copy within the same section, while policy destinations form a separate two-row list with trailing chevrons.",
+        "Groups are separated by generous vertical space and bounded surfaces; there is no metrics grid or decorative privacy illustration."
+      ]
+    },
+    {
+      "screen": "Photographed note extraction",
+      "app": "Splitwise",
+      "source": "mobbin",
+      "url": "https://mobbin.com/screens/ba220c78-9ede-4bd0-ba41-16c6476716fa",
+      "screenId": "ba220c78-9ede-4bd0-ba41-16c6476716fa",
+      "observedMechanics": [
+        "The confirmation screen keeps a visible thumbnail of the photographed source beside the extracted subtotal and tax values.",
+        "Extracted content is presented as editable structured rows below the source preview, with the original image remaining separately identifiable.",
+        "A single full-width confirmation action is pinned at the bottom after the user can inspect and amend the extraction.",
+        "The source preview, extracted values, and correction action have distinct hierarchy, so extraction never visually replaces the original."
+      ]
+    }
+  ]
+}
