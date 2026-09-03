@@ -1,21 +1,88 @@
 import Foundation
 
 enum PreviewDependencies {
-    static func make(screenshotMode: Bool = false) -> AppDependencies {
-        let store = InMemoryCareStore(snapshot: SeededData.careSnapshot)
-        let attachments = InMemoryAttachmentStore()
+    static func make(
+        screenshotMode: Bool = false,
+        scenario: ScreenshotScenario? = nil
+    ) -> AppDependencies {
+        let snapshot = screenshotSnapshot(scenario: scenario)
+        let store = InMemoryCareStore(snapshot: snapshot)
+        let attachments = InMemoryAttachmentStore(seedData: screenshotImageData(scenario: scenario))
+        let keyStore = InMemoryOpenRouterAPIKeyStore()
+        do {
+            try keyStore.storeKey("fictional-screenshot-key-not-valid")
+        } catch {
+            preconditionFailure("The fixed preview key must satisfy local validation")
+        }
+        let configuration = InMemoryAIConfigurationStore()
+        let languageModel = ScreenshotLanguageModel(configuration: configuration)
+        let visionReader = ScreenshotVisionReader(configuration: configuration)
+        let recording: any RecordingService = screenshotMode
+            ? ScreenshotRecordingService(attachments: attachments)
+            : FakeRecordingService(attachments: attachments)
         return AppDependencies(
             careStore: store,
             maintenance: store,
             attachments: attachments,
-            recording: FakeRecordingService(attachments: attachments),
+            recording: recording,
             playback: FakeAudioPlaybackService(),
             photos: FakePhotoAttachmentService(),
             exporter: FakeVaultExporter(store: store, attachments: attachments),
             logger: NoOpEventLogger(),
+            languageModel: languageModel,
+            visionReader: visionReader,
+            openRouterKeyStore: keyStore,
+            aiConfigurationStore: configuration,
+            screenshotScenario: scenario,
             screenshotMode: screenshotMode,
             now: { Date(timeIntervalSince1970: 1_788_654_600) }
         )
+    }
+
+    private static func screenshotSnapshot(scenario: ScreenshotScenario?) -> CareSnapshot {
+        var snapshot = SeededData.careSnapshot
+        guard scenario == .photoSend else { return snapshot }
+        let date = Date(timeIntervalSince1970: 1_788_654_600)
+        let attachment = Attachment(
+            id: ScreenshotScenario.photoAttachmentID,
+            kind: .image,
+            relativePath: "images/fictional-journal-page.jpg",
+            mediaType: "image/jpeg",
+            byteCount: 4,
+            durationMilliseconds: nil,
+            createdAt: date,
+            isSample: true
+        )
+        let journal = JournalEntry(
+            id: ScreenshotScenario.photoJournalID,
+            createdAt: date,
+            updatedAt: date,
+            inputType: .photo,
+            title: "Football notes on paper",
+            rawText: "",
+            cleanedText: nil,
+            summaryItems: [],
+            originalAttachmentID: attachment.id,
+            audioAttachmentID: nil,
+            moodLogID: nil,
+            pinnedForNextAppointment: false,
+            processingStatus: .unprocessed,
+            provenance: Provenance(
+                voice: .user,
+                label: "You photographed this",
+                detail: "Saved on this device",
+                occurredAt: date,
+                sourceRoute: .journalDetail
+            )
+        )
+        snapshot.journals.insert(journal, at: 0)
+        snapshot.attachments.insert(attachment, at: 0)
+        return snapshot
+    }
+
+    private static func screenshotImageData(scenario: ScreenshotScenario?) -> [String: Data] {
+        guard scenario == .photoSend else { return [:] }
+        return ["images/fictional-journal-page.jpg": Data([0xff, 0xd8, 0xff, 0xd9])]
     }
 }
 
@@ -61,6 +128,14 @@ actor InMemoryCareStore: CareStore, VaultMaintenance {
 
     func saveAttachment(_ attachment: Attachment) {
         Self.upsert(attachment, in: &current.attachments)
+    }
+
+    func saveArtifact(_ artifact: AIArtifact) {
+        Self.upsert(artifact, in: &current.artifacts)
+    }
+
+    func deleteArtifact(id: UUID) {
+        current.artifacts.removeAll { $0.id == id }
     }
 
     func search(_ query: String, limit: Int) async throws -> [SearchHit] {
@@ -154,6 +229,12 @@ actor InMemoryCareStore: CareStore, VaultMaintenance {
 }
 
 actor InMemoryAttachmentStore: AttachmentStore {
+    private let seedData: [String: Data]
+
+    init(seedData: [String: Data] = [:]) {
+        self.seedData = seedData
+    }
+
     func allocateURL(kind: AttachmentKind, fileExtension: String) throws -> URL {
         guard !fileExtension.isEmpty else { throw UserFacingError.saving }
         return FileManager.default.temporaryDirectory
@@ -161,8 +242,13 @@ actor InMemoryAttachmentStore: AttachmentStore {
             .appendingPathExtension(fileExtension)
     }
 
-    func url(for attachment: Attachment) -> URL {
-        FileManager.default.temporaryDirectory.appending(path: attachment.relativePath)
+    func url(for attachment: Attachment) throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appending(path: attachment.relativePath)
+        if let data = seedData[attachment.relativePath] {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: url, options: .atomic)
+        }
+        return url
     }
 
     func copyIntoExport(_ attachment: Attachment, destination: URL) throws {
@@ -270,5 +356,132 @@ struct NoOpEventLogger: EventLogging {
     func record(_ name: EventName, metrics: EventMetrics) {
         _ = name
         _ = metrics
+    }
+}
+
+final class InMemoryAIConfigurationStore: AIConfigurationProviding, @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: AIModelConfiguration
+
+    init(value: AIModelConfiguration = .defaults) {
+        self.value = value
+    }
+
+    func load() -> AIModelConfiguration {
+        lock.withLock { value }
+    }
+
+    func save(_ configuration: AIModelConfiguration) throws {
+        let organizer = configuration.organizerModelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let vision = configuration.visionModelID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !organizer.isEmpty, !vision.isEmpty else { throw AIConfigurationStoreError.invalidModelIdentifier }
+        lock.withLock { value = AIModelConfiguration(organizerModelID: organizer, visionModelID: vision) }
+    }
+
+    func reset() throws {
+        lock.withLock { value = .defaults }
+    }
+}
+
+actor ScreenshotLanguageModel: CandyCornLanguageModel {
+    nonisolated let id = "screenshot-organizer"
+    private let configuration: any AIConfigurationProviding
+
+    init(configuration: any AIConfigurationProviding) {
+        self.configuration = configuration
+    }
+
+    func rewriteJournal(_ input: RewriteJournalInput) throws -> RewriteJournalResult {
+        let citation = try Self.citation(input.source)
+        let segment = RewriteSegment(
+            id: UUID(uuid: (0x91, 0, 0, 0, 0, 0, 0x40, 0, 0x80, 0, 0, 0, 0, 0, 0, 1)),
+            text: "Football thoughts interrupted the afternoon. Exercise helped, then guilt followed the relief.",
+            evidence: [citation]
+        )
+        return RewriteJournalResult(segments: [segment], unclearAreas: [], metadata: metadata())
+    }
+
+    func summarizeJournal(_ input: JournalSummaryInput) throws -> JournalSummaryResult {
+        let statement = try Self.statement(input.source, text: "Exercise helped before guilt returned.")
+        return JournalSummaryResult(statements: [statement], metadata: metadata())
+    }
+
+    func extractJournalSignals(_ input: JournalSignalInput) throws -> JournalSignalResult {
+        let quote = try Self.quote(input.source)
+        let point = JournalSignals.TalkingPointSuggestion(
+            id: UUID(uuid: (0x92, 0, 0, 0, 0, 0, 0x40, 0, 0x80, 0, 0, 0, 0, 0, 0, 1)),
+            text: "Ask why relief can be followed by guilt.",
+            reason: "This is a suggestion grounded in the journal.",
+            evidence: quote
+        )
+        let signals = JournalSignals(
+            summary: "Exercise helped before guilt returned.",
+            emotions: [.init(label: "Guilt", evidence: quote)],
+            explicitCommitments: [],
+            talkingPointSuggestions: [point],
+            possibleThemes: [.init(label: "Relief and guilt", evidence: quote)]
+        )
+        return JournalSignalResult(signals: signals, metadata: metadata())
+    }
+
+    func summarizeSession(_ input: SessionSummaryInput) throws -> SessionSummaryResult {
+        let statement = try Self.statement(input.manualNotes, text: "The session returned to football and guilt.")
+        let section = SessionSummarySection(
+            id: UUID(uuid: (0x93, 0, 0, 0, 0, 0, 0x40, 0, 0x80, 0, 0, 0, 0, 0, 0, 1)),
+            title: "What came up",
+            statements: [statement]
+        )
+        return SessionSummaryResult(sections: [section], metadata: metadata())
+    }
+
+    func generateAppointmentBrief(_ input: AppointmentBriefInput) throws -> AppointmentBriefResult {
+        guard let source = input.sources.first else { throw AIProviderError.invalidInput }
+        let statement = try Self.statement(source, text: "Start with the most recent care context.")
+        let section = AppointmentBriefSection(
+            id: UUID(uuid: (0x94, 0, 0, 0, 0, 0, 0x40, 0, 0x80, 0, 0, 0, 0, 0, 0, 1)),
+            title: "Where to begin",
+            statements: [statement]
+        )
+        return AppointmentBriefResult(sections: [section], userEditedAt: nil, metadata: metadata())
+    }
+
+    private func metadata() -> AIResultMetadata {
+        AIResultMetadata(provider: id, model: configuration.load().organizerModelID, usage: AIUsage())
+    }
+
+    private static func quote(_ source: SourceTextDocument) throws -> String {
+        let value = source.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { throw AIProviderError.invalidInput }
+        return String(value.prefix(1_000))
+    }
+
+    private static func citation(_ source: SourceTextDocument) throws -> EvidenceCitation {
+        EvidenceCitation(sourceID: source.id, quote: try quote(source), timestampMilliseconds: nil)
+    }
+
+    private static func statement(_ source: SourceTextDocument, text: String) throws -> EvidenceBackedStatement {
+        EvidenceBackedStatement(id: UUID(), text: text, evidence: [try citation(source)])
+    }
+}
+
+actor ScreenshotVisionReader: CandyCornVisionReader {
+    nonisolated let id = "screenshot-vision"
+    private let configuration: any AIConfigurationProviding
+
+    init(configuration: any AIConfigurationProviding) {
+        self.configuration = configuration
+    }
+
+    func extractText(from input: VisionReadInput) throws -> VisionReadResult {
+        guard !input.imageData.isEmpty else { throw AIProviderError.invalidInput }
+        return VisionReadResult(
+            text: "I want to bring up football and the guilt that followed feeling better.",
+            uncertainSpans: ["followed feeling better"],
+            metadata: AIResultMetadata(
+                provider: id,
+                model: configuration.load().visionModelID,
+                usage: AIUsage()
+            )
+        )
     }
 }
