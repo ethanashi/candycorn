@@ -103,9 +103,13 @@ actor VaultRepositories: CareStore {
         guard !terms.isEmpty else { return [] }
         let hits = try await database.read { db in
             if try Self.hasSearchTable(db) {
-                do { return try Self.ftsSearch(terms: terms, limit: limit, db: db) } catch { }
+                do {
+                    return try Self.ftsSearch(terms: terms, limit: limit, db: db)
+                } catch let error as VaultRepositoryError {
+                    throw error
+                } catch { }
             }
-            return try Self.likeSearch(query: normalized, limit: limit, db: db)
+            return try Self.likeSearch(terms: terms, limit: limit, db: db)
         }
         logger.record(.searchCompleted, metrics: EventMetrics(count: hits.count))
         return hits
@@ -166,7 +170,14 @@ actor VaultRepositories: CareStore {
     private static func searchTerms(_ query: String) -> [String] {
         let parts = query.unicodeScalars.split { !CharacterSet.alphanumerics.contains($0) }
         let operators = Set(["and", "or", "not", "near"])
-        return parts.prefix(20).map(String.init).filter { $0.count > 1 && !operators.contains($0.lowercased()) }
+        var terms: [String] = []
+        for part in parts.prefix(200) {
+            let term = String(part).lowercased()
+            guard term.count > 1, !operators.contains(term), !terms.contains(term) else { continue }
+            terms.append(term)
+            if terms.count == 20 { break }
+        }
+        return terms
     }
 
     private static func ftsSearch(terms: [String], limit: Int, db: Database) throws -> [SearchHit] {
@@ -179,28 +190,32 @@ actor VaultRepositories: CareStore {
         return try rows.map(Self.hit(from:))
     }
 
-    private static func likeSearch(query: String, limit: Int, db: Database) throws -> [SearchHit] {
-        let escaped = query.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "%", with: "\\%")
-            .replacingOccurrences(of: "_", with: "\\_")
-        let pattern = "%\(escaped)%"
+    private static func likeSearch(terms: [String], limit: Int, db: Database) throws -> [SearchHit] {
+        let predicate = Array(repeating: "(title LIKE ? ESCAPE '\\' COLLATE NOCASE OR body LIKE ? ESCAPE '\\' COLLATE NOCASE)", count: terms.count)
+            .joined(separator: " AND ")
+        var arguments = StatementArguments()
+        for term in terms {
+            let escaped = term.replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "%", with: "\\%")
+                .replacingOccurrences(of: "_", with: "\\_")
+            let pattern = "%\(escaped)%"
+            arguments += [pattern, pattern]
+        }
+        arguments += [limit]
         let rows = try Row.fetchAll(db, sql: """
-            SELECT 'journal' kind, id entity_id, title, raw_text body, created_at occurred_at
-              FROM journal_entries WHERE title LIKE ? ESCAPE '\\' COLLATE NOCASE OR raw_text LIKE ? ESCAPE '\\' COLLATE NOCASE OR cleaned_text LIKE ? ESCAPE '\\' COLLATE NOCASE OR summary_text LIKE ? ESCAPE '\\' COLLATE NOCASE
-            UNION ALL
-            SELECT 'goal', id, title, COALESCE(detail, title), created_at
-              FROM goals WHERE title LIKE ? ESCAPE '\\' COLLATE NOCASE OR detail LIKE ? ESCAPE '\\' COLLATE NOCASE
-            UNION ALL
-            SELECT 'talkingPoint', id, 'Bring up next time', text, created_at
-              FROM talking_points WHERE text LIKE ? ESCAPE '\\' COLLATE NOCASE
-            UNION ALL
-            SELECT 'appointment', id, 'Appointment', manual_notes, COALESCE(started_at, scheduled_at, 0)
-              FROM appointments WHERE manual_notes LIKE ? ESCAPE '\\' COLLATE NOCASE
-            UNION ALL
-            SELECT 'mood', id, 'Mood check-in', COALESCE(note, ''), created_at
-              FROM mood_logs WHERE note LIKE ? ESCAPE '\\' COLLATE NOCASE
+            SELECT kind, entity_id, title, body, occurred_at FROM (
+                SELECT 'journal' kind, id entity_id, title,
+                       TRIM(raw_text || ' ' || COALESCE(cleaned_text, '') || ' ' || summary_text) body,
+                       created_at occurred_at
+                  FROM journal_entries
+                UNION ALL
+                SELECT 'goal', id, title, COALESCE(detail, title), created_at FROM goals
+                UNION ALL
+                SELECT 'talkingPoint', id, 'Bring up next time', text, created_at FROM talking_points
+            ) searchable
+            WHERE \(predicate)
             ORDER BY occurred_at DESC, entity_id ASC LIMIT ?
-            """, arguments: [pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern, limit])
+            """, arguments: arguments)
         return try rows.map(Self.hit(from:))
     }
 
@@ -229,6 +244,7 @@ enum VaultRecordWriter {
     static func save(_ record: JournalPersistenceRecord, in db: Database, insertOnly: Bool = false) throws {
         let value = record.value
         try db.execute(sql: insertSQL(table: "journal_entries", columns: "id, created_at, updated_at, title, raw_text, cleaned_text, summary_text, original_attachment_id, audio_attachment_id, mood_log_id, is_sample, payload", updates: "created_at=excluded.created_at, updated_at=excluded.updated_at, title=excluded.title, raw_text=excluded.raw_text, cleaned_text=excluded.cleaned_text, summary_text=excluded.summary_text, original_attachment_id=excluded.original_attachment_id, audio_attachment_id=excluded.audio_attachment_id, mood_log_id=excluded.mood_log_id, payload=excluded.payload", count: 12, insertOnly: insertOnly), arguments: [uuid(value.id), timestamp(value.createdAt), timestamp(value.updatedAt), value.title, value.rawText, value.cleanedText, value.summaryItems.joined(separator: "\n"), optionalUUID(value.originalAttachmentID), optionalUUID(value.audioAttachmentID), optionalUUID(value.moodLogID), record.isSample, record.payload])
+        guard !insertOnly || db.changesCount == 1 else { return }
         try index(kind: .journal, id: value.id, title: value.title, body: [value.rawText, value.cleanedText ?? "", value.summaryItems.joined(separator: " ")].joined(separator: " "), date: value.createdAt, db: db)
     }
 
@@ -245,6 +261,7 @@ enum VaultRecordWriter {
     static func save(_ record: GoalPersistenceRecord, in db: Database, insertOnly: Bool = false) throws {
         let value = record.value
         try db.execute(sql: insertSQL(table: "goals", columns: "id, created_at, title, detail, status, source_entity_id, is_sample, payload", updates: "created_at=excluded.created_at, title=excluded.title, detail=excluded.detail, status=excluded.status, source_entity_id=excluded.source_entity_id, payload=excluded.payload", count: 8, insertOnly: insertOnly), arguments: [uuid(value.id), timestamp(value.createdAt), value.title, value.detail, value.status.rawValue, optionalUUID(value.sourceEntityID), record.isSample, record.payload])
+        guard !insertOnly || db.changesCount == 1 else { return }
         try index(kind: .goal, id: value.id, title: value.title, body: value.detail ?? value.title, date: value.createdAt, db: db)
     }
 
@@ -256,12 +273,14 @@ enum VaultRecordWriter {
     static func save(_ record: TalkingPointPersistenceRecord, in db: Database, insertOnly: Bool = false) throws {
         let value = record.value
         try db.execute(sql: insertSQL(table: "talking_points", columns: "id, created_at, text, status, source_id, is_sample, payload", updates: "created_at=excluded.created_at, text=excluded.text, status=excluded.status, source_id=excluded.source_id, payload=excluded.payload", count: 7, insertOnly: insertOnly), arguments: [uuid(value.id), timestamp(value.createdAt), value.text, value.status.rawValue, optionalUUID(value.sourceID), record.isSample, record.payload])
+        guard !insertOnly || db.changesCount == 1 else { return }
         try index(kind: .talkingPoint, id: value.id, title: "Bring up next time", body: value.text, date: value.createdAt, db: db)
     }
 
     static func save(_ record: ArtifactPersistenceRecord, in db: Database, insertOnly: Bool = false) throws {
         let value = record.value
         try db.execute(sql: insertSQL(table: "ai_artifacts", columns: "id, kind, provider, model, created_at, is_sample, payload", updates: "kind=excluded.kind, provider=excluded.provider, model=excluded.model, created_at=excluded.created_at, payload=excluded.payload", count: 7, insertOnly: insertOnly), arguments: [uuid(value.id), value.kind.rawValue, value.provider, value.model, timestamp(value.createdAt), record.isSample, record.payload])
+        guard !insertOnly || db.changesCount == 1 else { return }
         if !insertOnly {
             try db.execute(sql: "DELETE FROM ai_artifact_sources WHERE artifact_id = ?", arguments: [uuid(value.id)])
         }

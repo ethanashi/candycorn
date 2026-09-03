@@ -2,12 +2,11 @@ import GRDB
 
 enum SampleContentSeeder {
     static func prepareIfNeeded(in db: Database) throws {
-        if try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM app_settings WHERE id = 1") == 0 {
-            let defaults = VaultSettings(useSampleContent: true, audioRetention: .ask, aiMode: .off, aiProvider: .off)
-            try VaultRecordWriter.saveSettings(defaults, in: db)
-        }
-        let enabled = try Bool.fetchOne(db, sql: "SELECT use_sample_content FROM app_settings WHERE id = 1") ?? false
-        if enabled { try seed(in: db) }
+        let settingsCount = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM app_settings WHERE id = 1") ?? 0
+        guard settingsCount == 0 else { return }
+        let defaults = VaultSettings(useSampleContent: true, audioRetention: .ask, aiMode: .off, aiProvider: .off)
+        try VaultRecordWriter.saveSettings(defaults, in: db)
+        try seed(in: db)
     }
 
     static func seed(in db: Database) throws {
