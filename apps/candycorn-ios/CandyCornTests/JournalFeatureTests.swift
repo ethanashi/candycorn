@@ -12,8 +12,10 @@ struct JournalFeatureTests {
         #expect(JournalRecordingState.format(seconds: recording.elapsedSeconds) == "02:17")
         recording.tick()
         #expect(JournalRecordingState.format(seconds: recording.elapsedSeconds) == "02:18")
-        #expect(recording.stop())
-        #expect(!recording.stop())
+        let firstStop = recording.stop()
+        let secondStop = recording.stop()
+        #expect(firstStop)
+        #expect(!secondStop)
         recording.tick()
         #expect(recording.elapsedSeconds == 138)
         #expect(JournalRecordingState.format(seconds: -1) == "00:00")
@@ -23,16 +25,19 @@ struct JournalFeatureTests {
     func originalValidation() {
         var blank = JournalDraftState(text: " \n\t ")
         #expect(!blank.canSave)
-        #expect(!blank.saveOriginal())
+        let blankSaved = blank.saveOriginal()
+        #expect(!blankSaved)
         #expect(blank.savedOriginal == nil)
 
         let exact = "  My exact words.\nSecond line.  "
         var draft = JournalDraftState(text: exact)
         #expect(draft.canSave)
-        #expect(draft.saveOriginal())
+        let firstSave = draft.saveOriginal()
+        #expect(firstSave)
         #expect(draft.savedOriginal == exact)
         draft.text = "A later edit"
-        #expect(!draft.saveOriginal())
+        let secondSave = draft.saveOriginal()
+        #expect(!secondSave)
         #expect(draft.savedOriginal == exact)
     }
 
@@ -43,7 +48,8 @@ struct JournalFeatureTests {
         let original = source?.rawText
 
         var draft = JournalDraftState(text: original ?? "Fallback")
-        #expect(draft.saveOriginal())
+        let saved = draft.saveOriginal()
+        #expect(saved)
         draft.show(.rewrite)
         #expect(draft.result == .rewrite)
         #expect(draft.savedOriginal == original)
