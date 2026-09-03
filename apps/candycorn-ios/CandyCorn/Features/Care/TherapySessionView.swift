@@ -8,39 +8,15 @@ enum TherapySessionTab: String, CaseIterable, Sendable {
     case notes = "Notes"
 }
 
-struct TherapySummaryEvidence: Identifiable, Equatable, Sendable {
-    let id: UUID
-    let text: String
-    let voice: ProvenanceVoice
-    let source: String
-
-    static let items: [TherapySummaryEvidence] = [
-        TherapySummaryEvidence(
-            id: SeededData.transcript[0].id,
-            text: "The missed chance to prove you could have played still feels more important than playing again.",
-            voice: .user,
-            source: "You said this at 12:24"
-        ),
-        TherapySummaryEvidence(
-            id: SeededData.transcript[1].id,
-            text: "Dr. Park reflected that the grief may be about never getting to test what you believed about yourself.",
-            voice: .provider,
-            source: "Therapist said this on Sep 2 at 12:48"
-        ),
-    ]
-
-    static func segment(for evidenceID: UUID, in transcript: [TranscriptSegment]) -> TranscriptSegment? {
-        transcript.first { $0.id == evidenceID }
-    }
-}
-
 struct TherapySessionView: View {
     @Bindable var navigation: NavigationModel
     @Bindable var state: DemoState
     @State private var selection = TherapySessionTab.transcript
-    @State private var pendingEvidenceID: UUID?
     @State private var notes = ""
-    @AccessibilityFocusState private var focusedSegmentID: UUID?
+    @State private var pendingSend: PendingAISend?
+    @State private var sendTask: Task<Void, Never>?
+    @State private var isPreparingSummary = false
+    @State private var actionError: String?
 
     @ViewBuilder
     var body: some View {
@@ -58,34 +34,32 @@ struct TherapySessionView: View {
     }
 
     private var sessionContent: some View {
-        ScrollViewReader { proxy in
-            ScreenLayout(
-                title: "Therapy with \(sessionAppointment?.providerName ?? "your provider")",
-                subtitle: sessionMetadata,
-                backAction: navigation.backAction(for: .therapySession),
-                bottomInset: 260
-            ) {
-                UnderlinePicker(options: TherapySessionTab.allCases, selection: $selection) { $0.rawValue }
-                panel
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if sessionAppointment?.recordingAttachmentID != nil {
-                    PlaybackScrubber(onPlay: playRecording)
-                        .padding(.horizontal, DesignTokens.screenInset)
-                        .padding(.bottom, 82)
-                }
-            }
-            .onChange(of: selection) { _, tab in
-                guard tab == .transcript, let id = pendingEvidenceID else { return }
-                Task { @MainActor in
-                    await Task.yield()
-                    proxy.scrollTo(id, anchor: .center)
-                    focusedSegmentID = id
-                    pendingEvidenceID = nil
-                }
+        ScreenLayout(
+            title: "Therapy with \(sessionAppointment?.providerName ?? "your provider")",
+            subtitle: sessionMetadata,
+            backAction: navigation.backAction(for: .therapySession),
+            bottomInset: 260
+        ) {
+            UnderlinePicker(options: TherapySessionTab.allCases, selection: $selection) { $0.rawValue }
+            panel
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if sessionAppointment?.recordingAttachmentID != nil {
+                PlaybackScrubber(onPlay: playRecording)
+                    .padding(.horizontal, DesignTokens.screenInset)
+                    .padding(.bottom, 82)
             }
         }
         .onAppear { notes = sessionAppointment?.manualNotes ?? "" }
+        .sheet(item: $pendingSend, onDismiss: cancelSend) { pending in
+            WhatLeavesDeviceSheet(
+                pending: pending,
+                processingState: state.aiProcessingState(for: pending.action),
+                onSend: { send(pending) },
+                onCancel: cancelSend
+            )
+        }
+        .onDisappear(perform: cancelSend)
     }
 
     @ViewBuilder private var panel: some View {
@@ -100,31 +74,78 @@ struct TherapySessionView: View {
 
     private var summaryPanel: some View {
         VStack(spacing: 0) {
-            if summaryEvidence.isEmpty {
-                StatusNotice(title: "No summary", detail: "The original recording and your manual notes remain available.", kind: .information)
-            }
-            ForEach(summaryEvidence) { item in
-                HStack(alignment: .top, spacing: DesignTokens.Spacing.compact) {
-                    KernelGlyph(voice: item.voice, height: 18, decorative: true).padding(.top, 3)
-                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.xSmall) {
-                        Text(item.text).font(TypeScale.body).fixedSize(horizontal: false, vertical: true)
-                        Button(item.source) { openEvidence(item.id) }
-                            .font(TypeScale.provenance)
-                            .foregroundStyle(DesignTokens.cocoaSoft)
-                            .underline()
-                            .frame(minHeight: DesignTokens.controlMinimum)
+            if let summary = sessionSummary {
+                ForEach(summary.result.sections) { section in
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(section.title)
+                            .font(TypeScale.sectionCompact)
+                            .foregroundStyle(DesignTokens.cocoa)
+                            .padding(.top, DesignTokens.Spacing.medium)
+                        ForEach(section.statements) { statement in
+                            VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+                                Text(statement.text)
+                                    .font(TypeScale.body)
+                                    .foregroundStyle(DesignTokens.cocoa)
+                                    .lineSpacing(5)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                ProvenanceLine(
+                                    provenance: Provenance(
+                                        voice: .candyCorn,
+                                        label: "Candy Corn suggested this summary",
+                                        detail: "\(summary.artifact.provider), \(summary.artifact.model)",
+                                        occurredAt: summary.artifact.createdAt,
+                                        sourceRoute: nil
+                                    ),
+                                    compact: true
+                                )
+                                ForEach(Array(statement.evidence.enumerated()), id: \.offset) { _, evidence in
+                                    Button {
+                                        selection = .notes
+                                    } label: {
+                                        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xSmall) {
+                                            Text("From your manual notes")
+                                                .font(TypeScale.provenance)
+                                                .underline()
+                                            Text("“\(evidence.quote)”")
+                                                .font(TypeScale.provenance)
+                                                .multilineTextAlignment(.leading)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                        }
+                                        .foregroundStyle(DesignTokens.cocoaSoft)
+                                        .frame(maxWidth: .infinity, minHeight: DesignTokens.controlMinimum, alignment: .leading)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.vertical, DesignTokens.Spacing.base)
+                            .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
+                        }
                     }
                 }
-                .padding(.vertical, DesignTokens.Spacing.base)
-                .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
+            } else if hasCorruptSessionSummary {
+                StatusNotice(
+                    title: "Summary unavailable",
+                    detail: "Candy Corn could not read the saved summary. Your manual notes and recording are unchanged.",
+                    kind: .warning
+                )
+            } else {
+                StatusNotice(
+                    title: "No organized summary yet",
+                    detail: "Use Summarize notes from the Notes tab. Audio and transcript text are never included.",
+                    kind: .information
+                )
             }
         }
     }
 
     private var transcriptPanel: some View {
-        Group {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+            Text("Voice transcription: Not yet available")
+                .font(TypeScale.provenance)
+                .foregroundStyle(DesignTokens.cocoaSoft)
+                .fixedSize(horizontal: false, vertical: true)
             if sessionTranscript.isEmpty {
-                StatusNotice(title: "No transcript", detail: "The original recording and your manual notes are available. Transcription is not part of this version.", kind: .information)
+                StatusNotice(title: "No transcript", detail: "The original recording and your manual notes remain available.", kind: .information)
             } else {
                 LazyVStack(spacing: 0) {
             ForEach(sessionTranscript) { segment in
@@ -134,10 +155,9 @@ struct TherapySessionView: View {
                     correct: { speaker in _ = state.correctSpeaker(segmentID: segment.id, to: speaker) }
                 )
                 .id(segment.id)
-                .accessibilityFocused($focusedSegmentID, equals: segment.id)
             }
                 }
-        }
+            }
         }
         .accessibilityLabel("Source-preserving transcript")
     }
@@ -162,11 +182,31 @@ struct TherapySessionView: View {
                 .frame(minHeight: 220)
                 .overlay(RoundedRectangle(cornerRadius: DesignTokens.controlRadius).stroke(DesignTokens.hairline))
             Button("Save notes") {
-                guard var appointment = sessionAppointment else { return }
-                appointment.manualNotes = String(notes.prefix(4_000))
-                Task { _ = await state.saveAppointment(appointment) }
+                Task { _ = await saveNotes() }
             }
             .buttonStyle(PrimaryButtonStyle())
+            Button(isPreparingSummary ? "Preparing" : "Summarize notes") {
+                prepareSummary()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .disabled(trimmedNotes.isEmpty || !organizerAvailable || isPreparingSummary || pendingSend != nil)
+            if !organizerAvailable {
+                Text(state.aiMode == .off
+                    ? "Organizer is off. Your notes remain editable and on this device."
+                    : "Add a Router key in Settings to organize these notes.")
+                    .font(TypeScale.provenance)
+                    .foregroundStyle(DesignTokens.cocoaSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if state.aiMode == .reflection {
+                Text("Reflection uses Organizer for this summary. It does not start a conversation.")
+                    .font(TypeScale.provenance)
+                    .foregroundStyle(DesignTokens.yellowText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let actionError {
+                StatusNotice(title: "Could not organize notes", detail: actionError, kind: .warning)
+            }
             Button("Add to next appointment") {
                 Task { _ = await state.createTalkingPoint(text: notes, source: .session, sourceID: sessionAppointment?.id) }
             }
@@ -190,10 +230,37 @@ struct TherapySessionView: View {
         return state.transcript.filter { $0.appointmentID == id }
     }
 
-    private var summaryEvidence: [TherapySummaryEvidence] {
+    private var sessionSummary: (artifact: AIArtifact, result: SessionSummaryResult)? {
         guard let id = sessionAppointment?.id,
-              state.artifacts.contains(where: { $0.kind == .sessionSummary && $0.sourceIDs.contains(id) }) else { return [] }
-        return TherapySummaryEvidence.items.filter { TherapySummaryEvidence.segment(for: $0.id, in: sessionTranscript) != nil }
+              let artifact = state.latestArtifact(kind: .sessionSummary, sourceID: id),
+              let result = try? JSONDecoder().decode(SessionSummaryResult.self, from: artifact.structuredPayload),
+              Self.isUsableSessionSummary(result) else { return nil }
+        return (artifact, result)
+    }
+
+    private var hasCorruptSessionSummary: Bool {
+        guard let id = sessionAppointment?.id,
+              state.latestArtifact(kind: .sessionSummary, sourceID: id) != nil else { return false }
+        return sessionSummary == nil
+    }
+
+    private var trimmedNotes: String {
+        notes.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var organizerAvailable: Bool {
+        state.aiMode != .off && state.aiProvider == .router && state.hasOpenRouterKey && state.routerAvailable
+    }
+
+    private static func isUsableSessionSummary(_ result: SessionSummaryResult) -> Bool {
+        guard !result.sections.isEmpty, result.sections.count <= 24 else { return false }
+        return result.sections.allSatisfy { section in
+            !section.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !section.statements.isEmpty
+                && section.statements.allSatisfy {
+                    !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !$0.evidence.isEmpty
+                }
+        }
     }
 
     private var sessionMetadata: String {
@@ -214,10 +281,59 @@ struct TherapySessionView: View {
         Task { try? await state.dependencies.playback.play(attachment: attachment) }
     }
 
-    private func openEvidence(_ id: UUID) {
-        guard TherapySummaryEvidence.segment(for: id, in: state.transcript) != nil else { return }
-        pendingEvidenceID = id
-        selection = .transcript
+    @discardableResult
+    private func saveNotes() async -> Bool {
+        guard var appointment = sessionAppointment else { return false }
+        appointment.manualNotes = String(notes.prefix(4_000))
+        let saved = await state.saveAppointment(appointment)
+        if !saved { actionError = state.operationError ?? "Your notes could not be saved." }
+        return saved
+    }
+
+    private func prepareSummary() {
+        guard !trimmedNotes.isEmpty, !isPreparingSummary, pendingSend == nil else { return }
+        actionError = nil
+        isPreparingSummary = true
+        Task {
+            defer { isPreparingSummary = false }
+            guard organizerAvailable, await saveNotes(), let id = sessionAppointment?.id else { return }
+            do {
+                pendingSend = try state.prepareAISend(.summarizeSession(id))
+            } catch let error as UserFacingError {
+                actionError = error.message
+            } catch {
+                actionError = "These notes are not ready to send."
+            }
+        }
+    }
+
+    private func send(_ pending: PendingAISend) {
+        guard sendTask == nil else { return }
+        if case .failed = state.aiProcessingState(for: pending.action) {
+            pendingSend = nil
+            prepareSummary()
+            return
+        }
+        sendTask = Task {
+            let succeeded = await state.performAISend(pending)
+            guard !Task.isCancelled, pendingSend?.id == pending.id else {
+                sendTask = nil
+                return
+            }
+            sendTask = nil
+            if succeeded {
+                pendingSend = nil
+                selection = .summary
+            } else if case let .failed(message) = state.aiProcessingState(for: pending.action) {
+                actionError = message
+            }
+        }
+    }
+
+    private func cancelSend() {
+        sendTask?.cancel()
+        sendTask = nil
+        pendingSend = nil
     }
 }
 
