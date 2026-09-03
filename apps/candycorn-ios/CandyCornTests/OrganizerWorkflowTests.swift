@@ -99,21 +99,24 @@ struct OrganizerWorkflowTests {
     @Test("Appointment brief keeps required context and uses its appointment boundary")
     func appointmentBriefSelection() async throws {
         let fixture = try await makeFixture()
-        let pending = try fixture.state.prepareAISend(.generateAppointmentBrief(.therapy))
+        let pending = try await fixture.state.prepareAppointmentBriefSend(kind: .therapy)
+
+        #expect(await fixture.model.callCount == 0)
 
         #expect(await fixture.state.performAISend(pending))
 
         let input = try #require(await fixture.model.briefInput)
-        let kinds = input.sources.map(\.kind)
+        let kinds = input.contextPacket.items.map(\.kind)
         #expect(input.appointmentKind == .therapy)
-        #expect(kinds.contains(.sessionNotes))
-        #expect(kinds.contains(.homework))
-        #expect(kinds.contains(.goal))
+        #expect(kinds.contains(.activeGoal))
         #expect(kinds.contains(.talkingPoint))
         #expect(kinds.contains(.moodTrend))
+        #expect(kinds.contains(.moodLog))
         #expect(kinds.filter { $0 == .journal }.count == 2)
         #expect(input.sources.contains { $0.text.contains("Riverbend TMS") } == false)
-        #expect(pending.disclosure.totalCharacterCount == input.sources.reduce(0) { $0 + $1.text.count })
+        #expect(pending.disclosure.sources.count == 1)
+        #expect(pending.disclosure.totalCharacterCount == input.contextPacket.text.count)
+        #expect(pending.disclosure.omittedSourceCount == input.contextPacket.omittedItemCount)
     }
 
     @Test("Photo disclosure sends one image and extraction preserves it")

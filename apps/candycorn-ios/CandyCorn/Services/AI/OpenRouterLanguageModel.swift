@@ -83,16 +83,28 @@ actor OpenRouterLanguageModel: CandyCornLanguageModel {
     }
 
     func generateAppointmentBrief(_ input: AppointmentBriefInput) async throws -> AppointmentBriefResult {
+        guard input.appointmentKind == input.contextPacket.request.appointmentKind else {
+            throw AIProviderError.invalidInput
+        }
         try validator.validateInputSources(input.sources)
-        let completion = try await request(
-            input,
-            task: "Create an editable appointment brief grouped into useful titled sections. Include only supplied facts. Every statement must cite an exact quote and known source id. Provider homework remains provider homework.",
+        guard !input.contextPacket.text.isEmpty,
+              input.contextPacket.text.count <= ContextPacketLimits.appointment.maximumCharacters else {
+            throw AIProviderError.invalidInput
+        }
+        let completion = try await client.complete(
+            route: .organizer,
+            taskInstructions: "Create an editable appointment brief grouped into useful titled sections. Include only supplied facts. Every statement must cite an exact quote and known source id. Provider homework remains provider homework.",
+            userContent: .string(input.contextPacket.text),
             schemaName: "appointment_brief",
             schema: OpenRouterSchemas.appointmentBrief
         )
         let payload: BriefPayload = try decode(completion.content)
         try validator.validateBrief(payload.sections, sources: input.sources)
-        return AppointmentBriefResult(sections: payload.sections, userEditedAt: nil, metadata: completion.metadata)
+        let result = AppointmentBriefResult(sections: payload.sections, userEditedAt: nil, metadata: completion.metadata)
+        guard input.appointmentKind != .tms || AppointmentBriefSafety.isSafeForTMS(result) else {
+            throw AIProviderError.invalidResponse
+        }
+        return result
     }
 
     private func request<T: Encodable & Sendable>(

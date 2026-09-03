@@ -129,9 +129,57 @@ struct AppointmentBriefSection: Codable, Equatable, Sendable, Identifiable {
     var statements: [EvidenceBackedStatement]
 }
 
-struct AppointmentBriefInput: Codable, Equatable, Sendable {
+struct AppointmentBriefInput: Equatable, Sendable {
     let appointmentKind: Appointment.Kind
-    let sources: [SourceTextDocument]
+    let contextPacket: ContextPacket
+
+    var sources: [SourceTextDocument] { contextPacket.sources }
+
+    init(appointmentKind: Appointment.Kind, contextPacket: ContextPacket) {
+        self.appointmentKind = appointmentKind
+        self.contextPacket = contextPacket
+    }
+
+    // nyx: This compatibility initializer keeps Phase 3 fixtures source-compatible. Runtime preparation always supplies a retrieved packet.
+    init(appointmentKind: Appointment.Kind, sources: [SourceTextDocument]) {
+        let now = sources.compactMap(\.occurredAt).max() ?? Date(timeIntervalSince1970: 0)
+        let request = MemoryRetrievalRequest(
+            appointmentKind: appointmentKind,
+            window: DateInterval(start: now, end: now),
+            now: now
+        )
+        let items = sources.map { source in
+            ContextPacketItem(
+                id: source.id,
+                sourceIDs: [source.id],
+                kind: Self.packetKind(source.kind),
+                title: source.title,
+                text: source.text,
+                occurredAt: source.occurredAt,
+                provenance: .user,
+                evidence: [],
+                relevanceRank: nil
+            )
+        }
+        contextPacket = ContextPacket(
+            request: request,
+            items: items,
+            text: sources.map(\.text).joined(separator: "\n\n"),
+            omittedItemCount: 0
+        )
+        self.appointmentKind = appointmentKind
+    }
+
+    private static func packetKind(_ kind: SourceTextDocument.Kind) -> ContextPacketItem.Kind {
+        switch kind {
+        case .sessionNotes: .sessionSummary
+        case .homework: .homework
+        case .goal: .activeGoal
+        case .talkingPoint: .talkingPoint
+        case .journal, .extractedPhotoText: .journal
+        case .moodTrend: .moodTrend
+        }
+    }
 }
 
 struct AppointmentBriefResult: Codable, Equatable, Sendable {

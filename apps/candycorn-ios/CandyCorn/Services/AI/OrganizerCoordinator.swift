@@ -96,13 +96,17 @@ actor OrganizerCoordinator {
     }
 
     func generateAppointmentBrief(_ input: AppointmentBriefInput) async throws -> OrganizerWorkProduct {
-        guard !input.sources.isEmpty else { throw AIProviderError.invalidInput }
+        guard input.appointmentKind == input.contextPacket.request.appointmentKind,
+              !input.sources.isEmpty else { throw AIProviderError.invalidInput }
         for source in input.sources.prefix(100_000) { try Self.validate(source) }
         guard input.sources.count <= 100_000 else { throw AIProviderError.invalidInput }
         let result = try await languageModel.generateAppointmentBrief(input)
+        var seen: Set<UUID> = []
+        let packetItemIDs = input.contextPacket.items.map(\.id).filter { seen.insert($0).inserted }
+        guard !packetItemIDs.isEmpty else { throw AIProviderError.invalidInput }
         let artifact = try makeArtifact(
             .appointmentBrief,
-            sourceIDs: input.sources.map(\.id),
+            sourceIDs: packetItemIDs,
             payload: result,
             metadata: result.metadata
         )

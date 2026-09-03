@@ -13,11 +13,16 @@ private struct PreparedAIContext: Equatable, Sendable {
     let careRevision: Int
 }
 
+private enum BriefDisclosureStyle: Equatable, Sendable {
+    case individualSources
+    case contextPacket
+}
+
 private enum PreparedAIPayload: Equatable, Sendable {
     case journal(JournalEntry, SourceTextDocument)
     case photo(JournalEntry, Attachment)
     case session(Appointment, SourceTextDocument)
-    case brief(AppointmentBriefInput, Int)
+    case brief(AppointmentBriefInput, Int, BriefDisclosureStyle)
     case processedSession(ProcessedSessionAIContext)
 
     var sourceRevision: Date? {
@@ -26,7 +31,7 @@ private enum PreparedAIPayload: Equatable, Sendable {
             journal.updatedAt
         case let .session(appointment, _):
             appointment.endedAt ?? appointment.startedAt ?? appointment.scheduledAt
-        case let .brief(input, _):
+        case let .brief(input, _, _):
             input.sources.compactMap(\.occurredAt).max()
         case let .processedSession(context):
             context.appointment.endedAt ?? context.appointment.startedAt ?? context.appointment.scheduledAt
@@ -46,6 +51,12 @@ private struct ProcessedSessionAIContext: Equatable, Sendable {
     let attachmentID: UUID
     let transcript: [SessionTranscriptSource]
     let talkingPoints: [SessionTalkingPointSource]
+}
+
+private struct AppointmentBriefPreparation: Sendable {
+    let id: UUID
+    let careRevision: Int
+    let task: Task<ContextPacket, Error>
 }
 
 enum AIProvider: String, CaseIterable, Codable, Sendable {
@@ -116,6 +127,8 @@ final class DemoState {
     private var busyTalkingPointIDs: Set<UUID> = []
     private var preparedAISends: [UUID: PreparedAIContext] = [:]
     private var preparedAISendOrder: [UUID] = []
+    private var appointmentBriefPreparations: [Appointment.Kind: AppointmentBriefPreparation] = [:]
+    private var preparedAppointmentBriefIDs: [Appointment.Kind: UUID] = [:]
     private var activeAISends: Set<AISendAction> = []
     private var aiProcessingStates: [AISendAction: AIProcessingState] = [:]
     private var careRevision = 0
@@ -614,6 +627,115 @@ final class DemoState {
         try prepareAISend(.summarizeProcessedSession(appointmentID))
     }
 
+    /// Retrieves the bounded, source-attributed vault context used by Prepare.
+    func appointmentContextPacket(
+        kind: Appointment.Kind,
+        window: DateInterval
+    ) async throws -> ContextPacket {
+        let now = dependencies.now()
+        guard window.start <= window.end, window.end <= now else { throw UserFacingError.aiSource }
+        let retriever: any MemoryRetrieving = MemoryRetriever(careStore: dependencies.careStore)
+        return try await retriever.retrieve(MemoryRetrievalRequest(
+            appointmentKind: kind,
+            window: window,
+            now: now
+        ))
+    }
+
+    /// Prepares one consent disclosure. No provider request occurs until `performAISend` receives this token.
+    func prepareAppointmentBriefSend(
+        kind: Appointment.Kind,
+        window: DateInterval? = nil
+    ) async throws -> PendingAISend {
+        if let existing = preparedAppointmentBrief(kind: kind) { return existing }
+        let revision = careRevision
+        let now = dependencies.now()
+        let resolvedWindow = window ?? DateInterval(
+            start: now.addingTimeInterval(-90 * 24 * 60 * 60),
+            end: now
+        )
+        let packet = try await retrieveAppointmentBriefPacket(
+            kind: kind,
+            window: resolvedWindow,
+            now: now,
+            revision: revision
+        )
+        try Task.checkCancellation()
+        guard revision == careRevision else { throw UserFacingError.aiStale }
+        if let existing = preparedAppointmentBrief(kind: kind) { return existing }
+        return try storeAppointmentBriefSend(kind: kind, packet: packet, revision: revision)
+    }
+
+    private func retrieveAppointmentBriefPacket(
+        kind: Appointment.Kind,
+        window: DateInterval,
+        now: Date,
+        revision: Int
+    ) async throws -> ContextPacket {
+        let preparation: AppointmentBriefPreparation
+        if let active = appointmentBriefPreparations[kind], active.careRevision == revision {
+            preparation = active
+        } else {
+            appointmentBriefPreparations[kind]?.task.cancel()
+            let retriever: any MemoryRetrieving = MemoryRetriever(careStore: dependencies.careStore)
+            let request = MemoryRetrievalRequest(appointmentKind: kind, window: window, now: now)
+            preparation = AppointmentBriefPreparation(
+                id: UUID(),
+                careRevision: revision,
+                task: Task { try await retriever.retrieve(request) }
+            )
+            appointmentBriefPreparations[kind] = preparation
+        }
+        defer {
+            if appointmentBriefPreparations[kind]?.id == preparation.id {
+                appointmentBriefPreparations[kind] = nil
+            }
+        }
+        return try await preparation.task.value
+    }
+
+    private func storeAppointmentBriefSend(
+        kind: Appointment.Kind,
+        packet: ContextPacket,
+        revision: Int
+    ) throws -> PendingAISend {
+        guard !packet.items.isEmpty, !packet.text.isEmpty,
+              packet.text.count <= ContextPacketLimits.appointment.maximumCharacters,
+              let descriptorID = packet.items.first?.id else {
+            throw UserFacingError.aiSource
+        }
+        let input = AppointmentBriefInput(appointmentKind: kind, contextPacket: packet)
+        let action = AISendAction.generateAppointmentBrief(kind)
+        let descriptor = OutgoingSourceDescriptor(
+            id: descriptorID,
+            kind: .text,
+            title: "\(kind.displayName) context packet",
+            characterCount: packet.text.count,
+            imageCount: 0
+        )
+        let pending = PendingAISend(
+            id: UUID(),
+            action: action,
+            sourceRevision: packet.items.compactMap(\.occurredAt).max(),
+            disclosure: WhatLeavesDeviceSummary(
+                purpose: Self.purpose(for: action),
+                destination: "OpenRouter",
+                sources: [descriptor],
+                totalCharacterCount: packet.text.count,
+                totalImageCount: 0,
+                omittedSourceCount: packet.omittedItemCount
+            )
+        )
+        storePreparedSend(PreparedAIContext(
+            pending: pending,
+            payload: .brief(input, packet.omittedItemCount, .contextPacket),
+            careRevision: revision
+        ))
+        preparedAppointmentBriefIDs[kind] = pending.id
+        aiProcessingStates[action] = .idle
+        return pending
+    }
+
     @discardableResult
     func performAISend(_ pending: PendingAISend) async -> Bool {
         guard let prepared = consumePreparedSend(pending.id), prepared.pending == pending else {
@@ -893,6 +1015,9 @@ final class DemoState {
         operationError = nil
         preparedAISends = [:]
         preparedAISendOrder = []
+        for preparation in appointmentBriefPreparations.values { preparation.task.cancel() }
+        appointmentBriefPreparations = [:]
+        preparedAppointmentBriefIDs = [:]
         activeAISends = []
         aiProcessingStates = [:]
     }
@@ -1006,7 +1131,7 @@ final class DemoState {
             total += source.text.count
         }
         guard !required.isEmpty else { throw UserFacingError.aiSource }
-        return .brief(AppointmentBriefInput(appointmentKind: kind, sources: required), omitted)
+        return .brief(AppointmentBriefInput(appointmentKind: kind, sources: required), omitted, .individualSources)
     }
 
     private func requiredBriefSources(
@@ -1123,8 +1248,18 @@ final class DemoState {
         case let .session(_, source):
             sources = [textDescriptor(source)]
             omitted = 0
-        case let .brief(input, omittedCount):
-            sources = input.sources.map(textDescriptor)
+        case let .brief(input, omittedCount, disclosureStyle):
+            if disclosureStyle == .contextPacket, let first = input.contextPacket.items.first {
+                sources = [OutgoingSourceDescriptor(
+                    id: first.id,
+                    kind: .text,
+                    title: "\(input.appointmentKind.displayName) context packet",
+                    characterCount: input.contextPacket.text.count,
+                    imageCount: 0
+                )]
+            } else {
+                sources = input.sources.map(textDescriptor)
+            }
             omitted = omittedCount
         case let .processedSession(context):
             sources = context.transcript.map { source in
@@ -1178,6 +1313,7 @@ final class DemoState {
         if preparedAISendOrder.count >= maximumPreparedSends {
             let oldest = preparedAISendOrder.removeFirst()
             preparedAISends.removeValue(forKey: oldest)
+            preparedAppointmentBriefIDs = preparedAppointmentBriefIDs.filter { $0.value != oldest }
         }
         preparedAISends[context.pending.id] = context
         preparedAISendOrder.append(context.pending.id)
@@ -1185,7 +1321,19 @@ final class DemoState {
 
     private func consumePreparedSend(_ id: UUID) -> PreparedAIContext? {
         preparedAISendOrder.removeAll { $0 == id }
+        preparedAppointmentBriefIDs = preparedAppointmentBriefIDs.filter { $0.value != id }
         return preparedAISends.removeValue(forKey: id)
+    }
+
+    private func preparedAppointmentBrief(kind: Appointment.Kind) -> PendingAISend? {
+        guard let id = preparedAppointmentBriefIDs[kind],
+              let context = preparedAISends[id],
+              context.careRevision == careRevision,
+              context.pending.action == .generateAppointmentBrief(kind) else {
+            preparedAppointmentBriefIDs[kind] = nil
+            return nil
+        }
+        return context.pending
     }
 
     private func canDispatchAI() -> Bool {
@@ -1214,7 +1362,7 @@ final class DemoState {
                 appointmentKind: appointment.kind,
                 manualNotes: source
             ))
-        case (.generateAppointmentBrief, let .brief(input, _)):
+        case (.generateAppointmentBrief, let .brief(input, _, _)):
             return try await dependencies.organizer.generateAppointmentBrief(input)
         case (.summarizeProcessedSession, .processedSession):
             throw AIProviderError.invalidInput
@@ -1248,11 +1396,8 @@ final class DemoState {
         case let .session(appointment, source):
             guard appointments.first(where: { $0.id == appointment.id }) == appointment else { return false }
             return appointment.manualNotes == source.text
-        case let .brief(input, omitted):
-            guard case let .brief(current, currentOmitted)? = try? briefPayload(kind: input.appointmentKind) else {
-                return false
-            }
-            return current == input && currentOmitted == omitted
+        case .brief:
+            return true
         case let .processedSession(context):
             guard case let .processedSession(current)? = try? preparedPayload(
                 for: .summarizeProcessedSession(context.appointment.id)
