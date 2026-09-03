@@ -1,6 +1,6 @@
 # Candy Corn for iPhone
 
-Candy Corn is a native, offline-first SwiftUI journal for continuity between mental health visits. Phase 3 adds optional organizer AI through OpenRouter while preserving the local care vault and every immutable source. A cloud request can begin only after the user reviews the exact source and character or image counts in a "What leaves this device" sheet and taps Send. The app remains fully usable with AI off.
+Candy Corn is a native, offline-first SwiftUI journal for continuity between mental health visits. Phase 5 adds bounded memory retrieval over the encrypted care vault, real-source appointment briefs, tap-confirmed goal progress suggestions, and weekly consolidation. Optional organizer AI runs through OpenRouter while preserving every immutable source. A cloud request can begin only after the user reviews the exact source and character or image counts in a "What leaves this device" sheet and taps Send. The app remains fully usable with AI off.
 
 The app targets iOS 26 in Swift 6 language mode with Observation and Swift Testing. The Xcode project is generated from `project.yml`. Never edit or commit the generated project.
 
@@ -12,15 +12,36 @@ Run these commands from `apps/candycorn-ios`:
 
 ```sh
 /opt/homebrew/bin/xcodegen generate
-xcodebuild -project CandyCorn.xcodeproj -scheme CandyCorn -scmProvider system -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/candycorn-ios-derived-data CODE_SIGNING_ALLOWED=NO build
-xcodebuild -project CandyCorn.xcodeproj -scheme CandyCorn -scmProvider system -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/candycorn-ios-derived-data CODE_SIGNING_ALLOWED=NO test
+xcodebuild -project CandyCorn.xcodeproj -scheme CandyCorn -scmProvider system -disableAutomaticPackageResolution -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/candycorn-ios-derived-data CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project CandyCorn.xcodeproj -scheme CandyCorn -scmProvider system -disableAutomaticPackageResolution -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/candycorn-ios-derived-data CODE_SIGNING_ALLOWED=NO test
 ```
 
-If package resolution hangs during SwiftPM Keychain lookup, follow the SQLCipher artifact-placement procedure in the [host handoff](../../docs/HANDOFF-2026-09-02.md), then rerun the command with `-disableAutomaticPackageResolution` and `-scmProvider system`.
+The current handoff host must reuse `/private/tmp/claude-501/-Users-ethanashihundu/b754a6a3-17cd-4bd9-968b-f3dd6e9d3d2a/scratchpad/dd5`, which already contains the SQLCipher and FluidAudio artifacts. Every `xcodebuild` command on that host must include `-scmProvider system -disableAutomaticPackageResolution`. Do not resolve packages into a fresh directory. See the [host handoff](../../docs/HANDOFF-2026-09-02.md) for the artifact-placement procedure.
 
-The tests cover vault migrations, SQLCipher availability and wrong-key rejection, repositories, Keychain behavior through test seams, FTS5 and LIKE search, exports, logging privacy, navigation, mood interactions, media state machines, runtime bootstrap, OpenRouter request shape, structured output validation, evidence rejection, retry policy, disclosure counts, immutable AI artifact persistence, and organizer workflows. Provider tests inject fake transports and do not make live network calls.
+The tests cover vault migrations, SQLCipher availability and wrong-key rejection, repositories, Keychain behavior through test seams, FTS5 and LIKE search, exports, logging privacy, navigation, mood interactions, media state machines, runtime bootstrap, OpenRouter request shape, structured output validation, evidence rejection, retry policy, disclosure counts, immutable AI artifact persistence, organizer workflows, bounded memory retrieval, appointment brief packet fidelity, goal progress suggestions, and weekly consolidation. Provider tests inject fake transports and do not make live network calls.
 
 The app supports iPhone portrait orientation. Simulator builds disable code signing. Device builds require the operator's normal signing setup and must not add secrets to the repository.
+
+## Phase 5 memory and prepare handoff
+
+Context packets are assembled from the encrypted vault through the CareStore search seam, which uses FTS5 before its existing LIKE fallback. Retrieval is deterministically ranked and bounded by item, category, per-item character, and total character limits. Packet items retain source IDs, evidence, timestamps, and provenance.
+
+Appointment brief generation sends the selected context packet text byte for byte. The disclosure character count is the packet character count, and validated brief statements keep exact-quote citations to packet sources. Goal progress suggestions use a journal or processed session as evidence, target active goals, and remain pending until the user accepts or dismisses each suggestion. Accepting creates the progress record; dismissing does not. Weekly consolidation produces at most one validated, cited artifact for the user's current calendar week.
+
+Claude owns the Phase 5 views for Today, Goals, History, and Prepare. Wire them to this `DemoState` surface:
+
+```swift
+func appointmentContextPacket(kind: Appointment.Kind, window: DateInterval) async throws -> ContextPacket
+func prepareAppointmentBriefSend(kind: Appointment.Kind, window: DateInterval? = nil) async throws -> PendingAISend
+var pendingProgressSuggestions: [GoalProgressSuggestion] { get }
+func prepareGoalProgressSuggestions(from source: GoalProgressSuggestionSource) async throws -> PendingAISend
+func accept(suggestionID: UUID) async -> Bool
+func dismiss(suggestionID: UUID) async -> Bool
+var currentWeeklySummary: WeeklySummaryResult? { get }
+func refreshWeeklySummary() async throws -> PendingAISend?
+```
+
+`refreshWeeklySummary()` only prepares the current week's consent disclosure. It never sends automatically. Present the returned `PendingAISend`, then call `performAISend` only after the user taps Send. It returns `nil` when a valid summary already exists for the current week or there is no eligible weekly source material.
 
 ## Runtime modes and storage
 
