@@ -188,6 +188,60 @@ struct AppointmentBriefResult: Codable, Equatable, Sendable {
     let metadata: AIResultMetadata
 }
 
+enum GoalProgressSuggestionSource: Hashable, Codable, Sendable {
+    case journal(UUID)
+    case processedSession(UUID)
+}
+
+struct GoalProgressSourceDocument: Identifiable, Codable, Equatable, Sendable {
+    let document: SourceTextDocument
+    let startMilliseconds: Int?
+    let endMilliseconds: Int?
+
+    var id: UUID { document.id }
+}
+
+struct GoalProgressGoalContext: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    let title: String
+    let detail: String?
+    let cadence: Goal.Cadence
+}
+
+enum GoalProgressSuggestionResolution: String, Codable, Sendable {
+    case pending
+    case accepted
+    case dismissed
+}
+
+struct GoalProgressSuggestion: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    let goalID: UUID
+    let mark: GoalProgressMark
+    let note: String
+    let evidence: [EvidenceCitation]
+    var resolution: GoalProgressSuggestionResolution
+}
+
+struct GoalProgressSuggestionInput: Codable, Equatable, Sendable {
+    let originID: UUID
+    let origin: GoalProgressSuggestionSource
+    let sources: [GoalProgressSourceDocument]
+    let goals: [GoalProgressGoalContext]
+    let requestText: String
+}
+
+struct GoalProgressSuggestionResult: Codable, Equatable, Sendable {
+    var suggestions: [GoalProgressSuggestion]
+    let metadata: AIResultMetadata
+}
+
+struct GoalProgressSuggestionArtifactPayload: Codable, Equatable, Sendable {
+    let origin: GoalProgressSuggestionSource
+    let input: GoalProgressSuggestionInput
+    var result: GoalProgressSuggestionResult
+}
+
 struct TranscriptPiece: Codable, Equatable, Sendable {
     let text: String
     let startMilliseconds: Int?
@@ -349,6 +403,14 @@ protocol CandyCornLanguageModel: Sendable {
     func extractJournalSignals(_ input: JournalSignalInput) async throws -> JournalSignalResult
     func summarizeSession(_ input: SessionSummaryInput) async throws -> SessionSummaryResult
     func generateAppointmentBrief(_ input: AppointmentBriefInput) async throws -> AppointmentBriefResult
+    func suggestGoalProgress(_ input: GoalProgressSuggestionInput) async throws -> GoalProgressSuggestionResult
+}
+
+extension CandyCornLanguageModel {
+    func suggestGoalProgress(_ input: GoalProgressSuggestionInput) async throws -> GoalProgressSuggestionResult {
+        _ = input.originID
+        throw AIProviderError.unavailable
+    }
 }
 
 protocol CandyCornTranscriber: Sendable {
@@ -427,6 +489,13 @@ enum AISendAction: Hashable, Sendable {
     case summarizeSession(UUID)
     case generateAppointmentBrief(Appointment.Kind)
     case summarizeProcessedSession(UUID)
+}
+
+extension AISendAction {
+    // nyx: The factory preserves protected Feature switches. A dedicated enum case can replace it when Claude owns those views.
+    static func suggestGoalProgress(_ source: GoalProgressSuggestionSource) -> AISendAction {
+        .extractJournalSignals(source.sourceID)
+    }
 }
 
 struct OutgoingSourceDescriptor: Equatable, Sendable, Identifiable {

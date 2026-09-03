@@ -107,6 +107,31 @@ actor OpenRouterLanguageModel: CandyCornLanguageModel {
         return result
     }
 
+    func suggestGoalProgress(_ input: GoalProgressSuggestionInput) async throws -> GoalProgressSuggestionResult {
+        try validator.validateGoalProgressInput(input)
+        guard input.requestText == (try GoalProgressSuggester.canonicalRequestText(
+            origin: input.origin,
+            sources: input.sources,
+            goals: input.goals
+        )) else { throw AIProviderError.invalidInput }
+        let completion = try await client.complete(
+            route: .organizer,
+            taskInstructions: "Suggest progress only for the supplied active goals. Use doneToday only for explicit completed action, partial for explicit incomplete progress, and blocked only for an explicit obstacle. Every suggestion must cite an exact supplied quote. Do not diagnose, invent motives, or recommend treatment changes.",
+            userContent: .string(input.requestText),
+            schemaName: "goal_progress_suggestions",
+            schema: OpenRouterSchemas.goalProgressSuggestions
+        )
+        let payload: GoalProgressPayload = try decode(completion.content)
+        let proposed = payload.suggestions.map {
+            GoalProgressSuggestion(
+                id: $0.id, goalID: $0.goalID, mark: $0.mark,
+                note: $0.note, evidence: $0.evidence, resolution: .pending
+            )
+        }
+        let suggestions = try validator.validatedGoalProgressSuggestions(proposed, input: input)
+        return GoalProgressSuggestionResult(suggestions: suggestions, metadata: completion.metadata)
+    }
+
     private func request<T: Encodable & Sendable>(
         _ input: T,
         task: String,
@@ -151,6 +176,14 @@ private struct RewritePayload: Codable {
 private struct StatementListPayload: Codable { let statements: [EvidenceBackedStatement] }
 private struct SessionPayload: Codable { let sections: [SessionSummarySection] }
 private struct BriefPayload: Codable { let sections: [AppointmentBriefSection] }
+private struct GoalProgressPayload: Codable { let suggestions: [GoalProgressProviderSuggestion] }
+private struct GoalProgressProviderSuggestion: Codable {
+    let id: UUID
+    let goalID: UUID
+    let mark: GoalProgressMark
+    let note: String
+    let evidence: [EvidenceCitation]
+}
 
 enum OpenRouterSchemas {
     static let citation = object(
@@ -205,6 +238,22 @@ enum OpenRouterSchemas {
 
     static let appointmentBrief = sessionSummary
 
+    static let goalProgressSuggestions = object(
+        properties: [
+            "suggestions": array(object(
+                properties: [
+                    "id": uuid,
+                    "goalID": uuid,
+                    "mark": stringEnum(GoalProgressMark.allCases.map(\.rawValue)),
+                    "note": boundedString(1_000),
+                    "evidence": array(citation, maximum: 8, minimum: 1),
+                ],
+                required: ["id", "goalID", "mark", "note", "evidence"]
+            ), maximum: 16, minimum: 1),
+        ],
+        required: ["suggestions"]
+    )
+
     static let vision = object(
         properties: [
             "text": boundedString(8_000),
@@ -252,6 +301,13 @@ enum OpenRouterSchemas {
 
     private static func nullable(_ value: JSONValue) -> JSONValue {
         .object(["anyOf": .array([value, .object(["type": .string("null")])])])
+    }
+
+    private static func stringEnum(_ values: [String]) -> JSONValue {
+        .object([
+            "type": .string("string"),
+            "enum": .array(values.map(JSONValue.string)),
+        ])
     }
 
     private static func array(_ items: JSONValue, maximum: Int, minimum: Int = 0) -> JSONValue {

@@ -50,6 +50,69 @@ struct OrganizerOutputValidator: Sendable {
         }
     }
 
+    func validateGoalProgressInput(_ input: GoalProgressSuggestionInput) throws {
+        guard input.originID == input.origin.sourceID,
+              !input.sources.isEmpty, input.sources.count <= 128,
+              !input.goals.isEmpty, input.goals.count <= 64,
+              Set(input.sources.map(\.id)).count == input.sources.count,
+              Set(input.goals.map(\.id)).count == input.goals.count,
+              !input.requestText.isEmpty, input.requestText.count <= 50_000 else {
+            throw AIProviderError.invalidInput
+        }
+        try validateSources(input.sources.map(\.document))
+        for source in input.sources {
+            let pairedBounds = source.startMilliseconds != nil && source.endMilliseconds != nil
+            let journalBounds = source.startMilliseconds == nil && source.endMilliseconds == nil
+            guard pairedBounds || journalBounds else { throw AIProviderError.invalidInput }
+            if let start = source.startMilliseconds, let end = source.endMilliseconds {
+                guard start >= 0, end > start else { throw AIProviderError.invalidInput }
+            }
+        }
+        for goal in input.goals {
+            let title = goal.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !title.isEmpty, title.count <= 240, (goal.detail?.count ?? 0) <= 1_000 else {
+                throw AIProviderError.invalidInput
+            }
+        }
+    }
+
+    func validatedGoalProgressSuggestions(
+        _ suggestions: [GoalProgressSuggestion],
+        input: GoalProgressSuggestionInput
+    ) throws -> [GoalProgressSuggestion] {
+        try validateGoalProgressInput(input)
+        guard !suggestions.isEmpty, suggestions.count <= 16,
+              Set(suggestions.map(\.id)).count == suggestions.count,
+              Set(suggestions.map(\.goalID)).count == suggestions.count else {
+            throw AIProviderError.invalidResponse
+        }
+        let goals = Dictionary(uniqueKeysWithValues: input.goals.map { ($0.id, $0) })
+        let sources = Dictionary(uniqueKeysWithValues: input.sources.map { ($0.id, $0) })
+        for suggestion in suggestions {
+            guard goals[suggestion.goalID] != nil,
+                  !suggestion.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  suggestion.note.count <= 1_000,
+                  !suggestion.evidence.isEmpty, suggestion.evidence.count <= Self.maximumEvidenceItems else {
+                throw AIProviderError.invalidResponse
+            }
+            try validateGoalProgressEvidence(suggestion, sources: sources)
+            try validateText(suggestion.note, maximumCharacters: 1_000, sources: input.sources.map(\.document))
+            try validateNoTreatmentRecommendation(suggestion.note)
+        }
+        return suggestions
+            .map {
+                GoalProgressSuggestion(
+                    id: $0.id, goalID: $0.goalID, mark: $0.mark,
+                    note: $0.note, evidence: $0.evidence, resolution: .pending
+                )
+            }
+            .sorted {
+                let left = goals[$0.goalID]?.title.lowercased() ?? ""
+                let right = goals[$1.goalID]?.title.lowercased() ?? ""
+                return left == right ? $0.goalID.uuidString < $1.goalID.uuidString : left < right
+            }
+    }
+
     func validateSignals(_ signals: JournalSignals, source: SourceTextDocument) throws {
         try validateSources([source])
         try validateText(signals.summary, sources: [source])
@@ -94,6 +157,40 @@ struct OrganizerOutputValidator: Sendable {
         for item in items {
             try validateText(item.label, maximumCharacters: 1_000, sources: [source])
             try validateVerbatim(item.evidence, source: source)
+        }
+    }
+
+    private func validateGoalProgressEvidence(
+        _ suggestion: GoalProgressSuggestion,
+        sources: [UUID: GoalProgressSourceDocument]
+    ) throws {
+        var combinedEvidence = ""
+        for citation in suggestion.evidence {
+            guard let source = sources[citation.sourceID],
+                  !source.document.title.lowercased().hasPrefix("unknown speaker") else {
+                throw AIProviderError.invalidResponse
+            }
+            try validateVerbatim(citation.quote, source: source.document)
+            try validateUncertainty(sourceQuote: citation.quote, output: suggestion.note)
+            if let start = source.startMilliseconds, let end = source.endMilliseconds {
+                guard let timestamp = citation.timestampMilliseconds,
+                      (start...end).contains(timestamp) else {
+                    throw AIProviderError.invalidResponse
+                }
+            } else if citation.timestampMilliseconds != nil {
+                throw AIProviderError.invalidResponse
+            }
+            combinedEvidence += " " + citation.quote.lowercased()
+        }
+        if suggestion.mark == .doneToday {
+            guard Self.isExplicitCompletion(combinedEvidence) else { throw AIProviderError.invalidResponse }
+        }
+    }
+
+    private func validateNoTreatmentRecommendation(_ text: String) throws {
+        let normalized = text.lowercased()
+        guard !Self.treatmentRecommendationPhrases.contains(where: normalized.contains) else {
+            throw AIProviderError.invalidResponse
         }
     }
 
@@ -182,6 +279,11 @@ struct OrganizerOutputValidator: Sendable {
         return explicitCommitmentMarkers.contains(where: text.contains)
     }
 
+    private static func isExplicitCompletion(_ evidence: String) -> Bool {
+        guard !optionalCommitmentMarkers.contains(where: evidence.contains) else { return false }
+        return completionMarkers.contains(where: evidence.contains)
+    }
+
     private static let uncertaintyMarkers = [
         "i think", "i don't remember", "i do not remember", "maybe", "might", "possibly", "not sure", "unclear",
     ]
@@ -189,6 +291,14 @@ struct OrganizerOutputValidator: Sendable {
     private static let explicitCommitmentMarkers = [
         "i'm going to", "i am going to", "i will", "i plan to", "i want to",
         "i'd like you to", "i would like you to", "your homework", "please ",
+    ]
+    private static let completionMarkers = [
+        "i completed", "i finished", "i did ", "i went ", "i made it", "i followed through",
+        "completed today", "finished today", "done today",
+    ]
+    private static let treatmentRecommendationPhrases = [
+        "you should change", "you should stop", "stop taking", "start taking", "increase the dose",
+        "decrease the dose", "change medication", "change treatment", "treatment should",
     ]
     // nyx: This bounded phrase gate catches deterministic fixture failures. A future local evaluator can widen it without making organizer output authoritative.
     private static let diagnosisTerms = [

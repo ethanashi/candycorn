@@ -24,6 +24,7 @@ private enum PreparedAIPayload: Equatable, Sendable {
     case session(Appointment, SourceTextDocument)
     case brief(AppointmentBriefInput, Int, BriefDisclosureStyle)
     case processedSession(ProcessedSessionAIContext)
+    case goalProgress(GoalProgressSuggestionInput)
 
     var sourceRevision: Date? {
         switch self {
@@ -35,13 +36,15 @@ private enum PreparedAIPayload: Equatable, Sendable {
             input.sources.compactMap(\.occurredAt).max()
         case let .processedSession(context):
             context.appointment.endedAt ?? context.appointment.startedAt ?? context.appointment.scheduledAt
+        case let .goalProgress(input):
+            input.sources.compactMap(\.document.occurredAt).max()
         }
     }
 
     var journalID: UUID? {
         switch self {
         case let .journal(journal, _), let .photo(journal, _): journal.id
-        case .session, .brief, .processedSession: nil
+        case .session, .brief, .processedSession, .goalProgress: nil
         }
     }
 }
@@ -125,10 +128,12 @@ final class DemoState {
     private var processingEventsTask: Task<Void, Never>?
     private var busyGoalIDs: Set<UUID> = []
     private var busyTalkingPointIDs: Set<UUID> = []
+    private var busyProgressSuggestionIDs: Set<UUID> = []
     private var preparedAISends: [UUID: PreparedAIContext] = [:]
     private var preparedAISendOrder: [UUID] = []
     private var appointmentBriefPreparations: [Appointment.Kind: AppointmentBriefPreparation] = [:]
     private var preparedAppointmentBriefIDs: [Appointment.Kind: UUID] = [:]
+    private var preparedGoalProgressIDs: [GoalProgressSuggestionSource: UUID] = [:]
     private var activeAISends: Set<AISendAction> = []
     private var aiProcessingStates: [AISendAction: AIProcessingState] = [:]
     private var careRevision = 0
@@ -146,6 +151,18 @@ final class DemoState {
     }
     var aiMode: AIMode { settings.aiMode }
     var aiProvider: AIProvider { settings.aiProvider }
+    var pendingProgressSuggestions: [GoalProgressSuggestion] {
+        artifacts
+            .filter { $0.kind == .goalProgressSuggestions }
+            .sorted { ($0.createdAt, $0.id.uuidString) > ($1.createdAt, $1.id.uuidString) }
+            .prefix(256)
+            .flatMap { artifact in
+                (try? JSONDecoder().decode(
+                    GoalProgressSuggestionArtifactPayload.self,
+                    from: artifact.structuredPayload
+                ))?.result.suggestions.filter { $0.resolution == .pending } ?? []
+            }
+    }
 
     init(
         dependencies: AppDependencies? = nil,
@@ -736,6 +753,87 @@ final class DemoState {
         return pending
     }
 
+    /// Prepares a consent disclosure for evidence-backed goal progress suggestions without contacting a provider.
+    func prepareGoalProgressSuggestions(
+        from source: GoalProgressSuggestionSource
+    ) async throws -> PendingAISend {
+        if let existing = preparedGoalProgress(source: source) { return existing }
+        let revision = careRevision
+        let suggester = GoalProgressSuggester(
+            careStore: dependencies.careStore,
+            languageModel: dependencies.languageModel,
+            now: dependencies.now
+        )
+        let input: GoalProgressSuggestionInput
+        do {
+            input = try await suggester.prepareInput(from: source)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw UserFacingError.aiSource
+        }
+        try Task.checkCancellation()
+        guard revision == careRevision else { throw UserFacingError.aiStale }
+        if let existing = preparedGoalProgress(source: source) { return existing }
+        let action = AISendAction.suggestGoalProgress(source)
+        let pending = PendingAISend(
+            id: UUID(),
+            action: action,
+            sourceRevision: input.sources.compactMap(\.document.occurredAt).max(),
+            disclosure: WhatLeavesDeviceSummary(
+                purpose: "Suggest goal progress",
+                destination: "OpenRouter",
+                sources: [OutgoingSourceDescriptor(
+                    id: input.originID,
+                    kind: .text,
+                    title: "Goal progress source and active goals",
+                    characterCount: input.requestText.count,
+                    imageCount: 0
+                )],
+                totalCharacterCount: input.requestText.count,
+                totalImageCount: 0,
+                omittedSourceCount: 0
+            )
+        )
+        storePreparedSend(PreparedAIContext(pending: pending, payload: .goalProgress(input), careRevision: revision))
+        preparedGoalProgressIDs[source] = pending.id
+        aiProcessingStates[action] = .idle
+        return pending
+    }
+
+    @discardableResult
+    func accept(suggestionID: UUID) async -> Bool {
+        await resolveProgressSuggestion(id: suggestionID, as: .accepted)
+    }
+
+    @discardableResult
+    func dismiss(suggestionID: UUID) async -> Bool {
+        await resolveProgressSuggestion(id: suggestionID, as: .dismissed)
+    }
+
+    private func resolveProgressSuggestion(
+        id: UUID,
+        as resolution: GoalProgressSuggestionResolution
+    ) async -> Bool {
+        guard !busyProgressSuggestionIDs.contains(id) else { return false }
+        busyProgressSuggestionIDs.insert(id)
+        defer { busyProgressSuggestionIDs.remove(id) }
+        do {
+            try await dependencies.careStore.resolveGoalProgressSuggestion(
+                id: id,
+                as: resolution,
+                at: dependencies.now()
+            )
+            apply(try await dependencies.careStore.snapshot())
+            refreshLoadState()
+            operationError = nil
+            return true
+        } catch {
+            operationError = UserFacingError.saving.message
+            return false
+        }
+    }
+
     @discardableResult
     func performAISend(_ pending: PendingAISend) async -> Bool {
         guard let prepared = consumePreparedSend(pending.id), prepared.pending == pending else {
@@ -1018,6 +1116,7 @@ final class DemoState {
         for preparation in appointmentBriefPreparations.values { preparation.task.cancel() }
         appointmentBriefPreparations = [:]
         preparedAppointmentBriefIDs = [:]
+        preparedGoalProgressIDs = [:]
         activeAISends = []
         aiProcessingStates = [:]
     }
@@ -1275,6 +1374,15 @@ final class DemoState {
                 )
             }
             omitted = 0
+        case let .goalProgress(input):
+            sources = [OutgoingSourceDescriptor(
+                id: input.originID,
+                kind: .text,
+                title: "Goal progress source and active goals",
+                characterCount: input.requestText.count,
+                imageCount: 0
+            )]
+            omitted = 0
         }
         return WhatLeavesDeviceSummary(
             purpose: purpose(for: action),
@@ -1314,6 +1422,7 @@ final class DemoState {
             let oldest = preparedAISendOrder.removeFirst()
             preparedAISends.removeValue(forKey: oldest)
             preparedAppointmentBriefIDs = preparedAppointmentBriefIDs.filter { $0.value != oldest }
+            preparedGoalProgressIDs = preparedGoalProgressIDs.filter { $0.value != oldest }
         }
         preparedAISends[context.pending.id] = context
         preparedAISendOrder.append(context.pending.id)
@@ -1322,6 +1431,7 @@ final class DemoState {
     private func consumePreparedSend(_ id: UUID) -> PreparedAIContext? {
         preparedAISendOrder.removeAll { $0 == id }
         preparedAppointmentBriefIDs = preparedAppointmentBriefIDs.filter { $0.value != id }
+        preparedGoalProgressIDs = preparedGoalProgressIDs.filter { $0.value != id }
         return preparedAISends.removeValue(forKey: id)
     }
 
@@ -1331,6 +1441,17 @@ final class DemoState {
               context.careRevision == careRevision,
               context.pending.action == .generateAppointmentBrief(kind) else {
             preparedAppointmentBriefIDs[kind] = nil
+            return nil
+        }
+        return context.pending
+    }
+
+    private func preparedGoalProgress(source: GoalProgressSuggestionSource) -> PendingAISend? {
+        guard let id = preparedGoalProgressIDs[source],
+              let context = preparedAISends[id],
+              context.careRevision == careRevision,
+              context.pending.action == .suggestGoalProgress(source) else {
+            preparedGoalProgressIDs[source] = nil
             return nil
         }
         return context.pending
@@ -1364,6 +1485,13 @@ final class DemoState {
             ))
         case (.generateAppointmentBrief, let .brief(input, _, _)):
             return try await dependencies.organizer.generateAppointmentBrief(input)
+        case (.extractJournalSignals, let .goalProgress(input)):
+            let product = try await GoalProgressSuggester(
+                careStore: dependencies.careStore,
+                languageModel: dependencies.languageModel,
+                now: dependencies.now
+            ).generate(input)
+            return OrganizerWorkProduct(artifact: product.artifact, journalMutation: nil)
         case (.summarizeProcessedSession, .processedSession):
             throw AIProviderError.invalidInput
         default:
@@ -1403,6 +1531,8 @@ final class DemoState {
                 for: .summarizeProcessedSession(context.appointment.id)
             ) else { return false }
             return current == context
+        case .goalProgress:
+            return true
         }
     }
 
