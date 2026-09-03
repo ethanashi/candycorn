@@ -1,4 +1,94 @@
-# Phase 2 native acceptance comparison
+# Phase 3 native acceptance comparison
+
+Status on September 3, 2026: Blocked before native compilation, test execution, simulator interaction, accessibility inspection, and Phase 3 capture. XcodeGen succeeded, but the managed macOS session could not connect to CoreSimulatorService and SwiftPM could not write its manifest diagnostics cache. No stale screenshot is presented as Phase 3 proof.
+
+## Phase 3 environment and gates
+
+| Gate | Result |
+| --- | --- |
+| Source commit | `229c0e5` |
+| Host | macOS 26.5.2, build 25F84, Apple silicon |
+| XcodeGen | Passed with 2.46.0 |
+| Xcode | 26.6, build 17F113 |
+| Swift | 6.3.3 |
+| Project generation | Passed, exit 0 |
+| Required iPhone 17 build | Blocked, exit 74 before source compilation |
+| Required iPhone 17 test | Blocked, exit 74 before test execution |
+| Swift Testing inventory | 172 declared tests in 33 declared suites, 0 executed, 0 passed, 0 failed |
+| Live network use in tests | None observed in source inspection. Provider tests inject `FakeAITransport`; runtime bootstrap injects `BootCountingTransport` and asserts zero requests. The blocked suite did not execute. |
+| Simulator boot | Blocked, exit 1, no device set |
+| Fresh Phase 3 captures | 0 of 13 |
+| Accessibility-size runtime checks | 0 of 7 required surfaces |
+| Reduce Motion runtime checks | 0, simulator unavailable |
+
+The exact commands run from `apps/candycorn-ios` were:
+
+```sh
+/opt/homebrew/bin/xcodegen generate
+xcodebuild -project CandyCorn.xcodeproj -scheme CandyCorn -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/candycorn-ios-derived-data CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project CandyCorn.xcodeproj -scheme CandyCorn -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/candycorn-ios-derived-data CODE_SIGNING_ALLOWED=NO test
+xcrun simctl boot 'iPhone 17'
+```
+
+Both `xcodebuild` commands exited 74 with these decisive errors:
+
+```text
+CoreSimulatorService connection became invalid. Simulator services will no longer be available.
+Unable to discover any Simulator runtimes.
+The service used to manage runtime disk images (simdiskimaged) crashed or is not responding.
+xcodebuild: error: Could not resolve package dependencies:
+cannot open file '/Users/ethanashihundu/Library/Caches/org.swift.swiftpm/manifests/ManifestLoading/grdb.swift.dia' for diagnostics emission (Operation not permitted)
+```
+
+The boot attempt exited 1 with `Unable to locate device set` and connection refused. There was no built Phase 3 app eligible for installation, no route could launch, and `simctl io` could not produce a valid screenshot.
+
+## Phase 3 screenshot inventory
+
+| Screenshot | Deterministic route and scenario | Result |
+| --- | --- | --- |
+| `07-journal-photo.png` | `/journal/photo` | Retained Phase 1 image from commit `b10348f`, not Phase 3 evidence |
+| `08-journal-detail.png` | `/journal/entry/football-and-guilt` | Retained Phase 1 image from commit `b10348f`, not Phase 3 evidence |
+| `09-ai-suggestions.png` | `/journal/suggestions` | Retained Phase 1 image from commit `b10348f`, not Phase 3 evidence |
+| `15-therapy-session.png` | `/sessions/therapy-sep-2` | Retained Phase 1 image from commit `b10348f`, not Phase 3 evidence |
+| `18-prepare-therapy.png` | `/prepare/therapy` | Retained Phase 1 image from commit `b10348f`, not Phase 3 evidence |
+| `19-prepare-tms.png` | `/prepare/tms` | Retained Phase 1 image from commit `b10348f`, not Phase 3 evidence |
+| `22-settings-privacy.png` | `/settings/privacy` | Retained Phase 1 image from commit `b10348f`, not Phase 3 evidence |
+| `23-settings-ai.png` | `/settings/ai` | Retained Phase 1 image from commit `b10348f`, not Phase 3 evidence |
+| `25-openrouter-key-sheet.png` | `/settings/ai`, `openrouter-key` | Not captured, file intentionally absent |
+| `26-what-leaves-journal.png` | `/journal/entry/football-and-guilt`, `journal-send` | Not captured, file intentionally absent |
+| `27-what-leaves-photo.png` | `/journal/photo`, `photo-send` | Not captured, file intentionally absent |
+| `28-what-leaves-session.png` | `/sessions/therapy-sep-2`, `session-send` | Not captured, file intentionally absent. Source inspection found no scenario trigger in Therapy session. |
+| `29-what-leaves-prepare.png` | `/prepare/therapy`, `prepare-send` | Not captured, file intentionally absent. Source inspection found no scenario trigger in Prepare. |
+
+The eight retained images are direct 1206 by 2622 simulator PNGs, but their repository history predates Phase 3. They were not resized, retouched, modified, or reused as acceptance evidence. The five new sheet files were not created because a manually composed image would violate the native-capture contract.
+
+## Phase 3 visual and accessibility review
+
+No Phase 3 pixel comparison against `design/sheet/journal-result.png`, `session-detail.png`, or `prepare-brief.png` was possible. Source inspection confirms deterministic fake-provider handling for the OpenRouter key, journal disclosure, and photo disclosure sheets. It also found an implementation failure: `ScreenshotScenario` defines `session-send` and `prepare-send`, but `TherapySessionView`, `PrepareTherapyView`, and `PrepareTMSView` contain no launch-scenario trigger that prepares and presents those sheets. Captures 28 and 29 therefore remain blocked even after the host infrastructure is restored. Static inspection cannot prove source-versus-derived hierarchy, kernel colors, visible ledger counts, wrapping, safe areas, clipping, or absence of stale copy in rendered output.
+
+Static inspection found the shared `ScreenLayout` scroll container, fixed vertical text growth for the reviewed prose, 44-point `controlMinimum`, 56-point primary and secondary actions, accessibility labels on the key and disclosure controls, and Reduce Motion-aware waveform animation. These are implementation signals only.
+
+| Required surface | Static finding | Native accessibility result |
+| --- | --- | --- |
+| Journal detail | Uses the shared scroll layout, fixed vertical prose growth, an accessible original-photo label, and 44-point navigation and action targets. | Blocked |
+| Suggestions | Uses the shared scroll layout and 44-point Add, Edit, and Ignore targets with added-state accessibility values. | Blocked |
+| Therapy session | Uses the shared scroll layout, fixed vertical summary text, a labeled source-preserving transcript, and bottom inset reserved for playback. | Blocked |
+| Prepare therapy | Generated and manual statements allow vertical growth inside the screen scroll composition. | Blocked |
+| AI settings | Uses the shared scroll layout, 44-point model fields, 56-point actions, and explicit current-mode and model-field labels. | Blocked |
+| OpenRouter key sheet | Uses the shared scroll layout, a secure labeled field, interactive keyboard dismissal, and 56-point Save and Cancel actions. | Blocked |
+| What leaves this device | Source rows scroll and controls are 56 points. The header and action footer sit outside the ledger scroll view, which is a large-text reachability risk that requires a native accessibility-size render. | Blocked |
+
+The required accessibility-size runs, scroll reachability, text wrapping and overlap inspection, keyboard and Save interaction, target measurement, VoiceOver ordering, and Reduce Motion transitions remain blocked because no simulator device set could boot.
+
+## Phase 3 repository hygiene
+
+The worktree was clean before verification. Project generation created only the ignored `CandyCorn.xcodeproj`; after the blocked lane it was moved out of the worktree to `/tmp/candycorn-phase3-verification-CandyCorn.xcodeproj` and was not committed. DerivedData remained at `/tmp/candycorn-ios-derived-data`. No database, attachment, recording, export, Keychain material, API key, provider payload, or secret was written in the repository. No live provider call, signing, device installation, or deployment occurred.
+
+## Phase 3 rerun requirement
+
+First wire `session-send` into Therapy session and `prepare-send` into the Prepare surfaces so their disclosure sheets open deterministically. Then run the exact four commands above in a normal macOS user session where CoreSimulatorService and simdiskimaged are registered and SwiftPM can write its manifest cache. Require all 172 declared tests to execute, install only the newly built app, and replace the 13 listed screenshots directly with `simctl io`. Inspect every capture against the three pinned renders and repeat the seven named surfaces at an accessibility content size plus Reduce Motion. Record signed real-iPhone results separately in `PHASE3-DEVICE-CONTRACT.md`.
+
+## Prior Phase 2 report
 
 Status on September 3, 2026: Blocked before native build, test execution, simulator interaction, and capture. The 24 PNGs in this directory are retained real Phase 1 iPhone 17 Pro captures from September 2. They were not presented as Phase 2 evidence and were not modified.
 
