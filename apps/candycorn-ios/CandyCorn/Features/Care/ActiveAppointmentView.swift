@@ -20,98 +20,65 @@ struct ActiveAppointmentView: View {
     }
 
     private var permissionGuard: some View {
-        ScreenLayout(title: "Recording is not active", subtitle: "Confirm permission before a recording can start.", backAction: navigation.backAction(for: .activeAppointment)) {
+        V2Screen(
+            title: "Recording is not active",
+            subtitle: "Confirm permission before a recording can start.",
+            backAction: navigation.backAction(for: .activeAppointment),
+            backLabel: "Close",
+            backIcon: .close
+        ) {
             StatusNotice(title: "Permission has not been confirmed", detail: "No microphone request was made and no recording started.", kind: .warning)
-            Button("Review recording permission") {
-                navigation.goBack(from: .activeAppointment)
-                navigation.navigate(to: .recordAppointment)
+            V2GroupCard {
+                V2ListRow(icon: .shield, title: "Review recording permission", detail: "Choose the visit type and confirm consent.", divider: false) {
+                    navigation.goBack(from: .activeAppointment)
+                    navigation.navigate(to: .recordAppointment)
+                }
             }
-            .buttonStyle(SecondaryButtonStyle())
         }
     }
 
     private var activeRecorder: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: DesignTokens.Spacing.large) {
             HStack {
-                Button(action: close) {
-                    Image(systemName: AppIcon.close.rawValue)
-                        .font(.system(size: 17, weight: .semibold))
-                        .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Leave recording screen")
+                RoundActionButton(icon: .back, label: "Leave recording screen", action: close)
                 Spacer()
-                Button("Cancel", action: close)
-                    .font(TypeScale.label)
-                    .fontWeight(.semibold)
-                    .tracking(0)
-                    .frame(minHeight: DesignTokens.controlMinimum)
-                    .buttonStyle(.plain)
-            }
-            VStack(spacing: DesignTokens.Spacing.xSmall) {
-                Text("\(state.selectedAppointmentKind.displayName) appointment")
-                    .font(TypeScale.section)
-                    .tracking(-0.2)
-                Text("Recording stays on this device")
-                    .font(TypeScale.label)
-                    .tracking(0)
+                Text(state.selectedAppointmentKind.displayName)
+                    .font(TypeScale.metaStrong)
                     .foregroundStyle(DesignTokens.cocoaSoft)
             }
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity)
-
-            Spacer(minLength: DesignTokens.Spacing.xLarge)
-
-            VStack(spacing: 0) {
-                Text(state.dependencies.screenshotMode ? "Simulated recording" : "Recording")
-                    .font(TypeScale.label)
-                    .fontWeight(.semibold)
-                    .tracking(0)
-                    .padding(.bottom, 18)
-                Text(VoiceJournalView.format(milliseconds: state.recordingSnapshot.elapsedMilliseconds))
-                    .font(Font.custom("AvenirNext-DemiBold", size: 54, relativeTo: .largeTitle))
-                    .tracking(-2)
-                    .monospacedDigit()
-                    .accessibilityLabel("Appointment recording duration")
-                    .padding(.bottom, 28)
-                AppointmentWaveform(
-                    level: state.dependencies.screenshotMode ? 1 : state.recordingSnapshot.normalizedLevel
-                )
-                .frame(height: 112)
-                .padding(.bottom, 36)
-                Button(isStopping ? "Saving" : "Stop", action: finish)
-                    .font(TypeScale.button)
-                    .tracking(0)
-                    .foregroundStyle(Color.white)
-                    .frame(width: 112)
-                    .frame(minHeight: DesignTokens.primaryButtonHeight)
-                    .background(DesignTokens.orange)
-                    .clipShape(RoundedRectangle(cornerRadius: DesignTokens.controlRadius, style: .continuous))
-                    .buttonStyle(.plain)
-                    .disabled(isStopping)
-                Text("Recording continues if you leave this screen or lock the phone. The original audio is saved before any organization begins.")
-                    .font(TypeScale.provenance)
-                    .tracking(0)
-                    .foregroundStyle(DesignTokens.cocoaSoft)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 290)
-                    .padding(.top, DesignTokens.Spacing.large)
-            }
-            .frame(maxWidth: .infinity)
-
             Spacer(minLength: DesignTokens.Spacing.large)
+            HStack(spacing: 6) {
+                Circle().fill(DesignTokens.rose).frame(width: 8, height: 8)
+                Text("Recording").font(TypeScale.metaStrong).foregroundStyle(DesignTokens.cocoaSoft)
+            }
+            Text(VoiceJournalView.format(milliseconds: state.recordingSnapshot.elapsedMilliseconds))
+                .font(TypeScale.timer).monospacedDigit()
+                .accessibilityLabel("Appointment recording duration")
+            AppointmentWaveform(level: state.dependencies.screenshotMode ? 1 : state.recordingSnapshot.normalizedLevel)
+                .frame(height: 112)
+                .padding(.vertical, DesignTokens.Spacing.xLarge)
+            Button(isStopping ? "Saving" : "Stop", action: finish)
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(isStopping)
+                .frame(maxWidth: 160)
+            Spacer(minLength: DesignTokens.Spacing.large)
+            Text("Recording continues if you leave this screen or lock the phone.")
+                .font(TypeScale.meta).foregroundStyle(DesignTokens.cocoaSoft)
+                .multilineTextAlignment(.center)
         }
         .foregroundStyle(DesignTokens.cocoa)
         .padding(.horizontal, DesignTokens.screenInset)
-        .padding(.bottom, DesignTokens.Spacing.large)
+        .padding(.top, DesignTokens.Spacing.small)
+        .padding(.bottom, DesignTokens.Spacing.section)
     }
 
     private var savedRecording: some View {
-        ScreenLayout(
+        V2Screen(
             title: state.latestRecording?.stopReason == .interruption ? "Recording stopped" : "Saved on this device",
             subtitle: "The original recording is preserved locally.",
-            backAction: navigation.backAction(for: .activeAppointment)
+            backAction: navigation.backAction(for: .activeAppointment),
+            backLabel: "Close",
+            backIcon: .close
         ) {
             StatusNotice(
                 title: "Saved on this device",
@@ -119,12 +86,11 @@ struct ActiveAppointmentView: View {
                 kind: .saved
             )
             if let attachment = state.latestRecording?.attachment {
-                Button {
-                    Task { try? await state.dependencies.playback.play(attachment: attachment) }
-                } label: {
-                    Label("Play recording", systemImage: AppIcon.play.rawValue)
+                V2GroupCard {
+                    V2ListRow(icon: .play, title: "Play recording", detail: "Listen to the saved original.", divider: false) {
+                        Task { try? await state.dependencies.playback.play(attachment: attachment) }
+                    }
                 }
-                .buttonStyle(SecondaryButtonStyle())
             }
             Button(savedActionTitle, action: openSavedDestination).buttonStyle(PrimaryButtonStyle())
         }

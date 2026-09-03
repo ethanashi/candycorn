@@ -52,20 +52,26 @@ struct TMSPreSessionView: View {
     @State private var isAdding = false
 
     var body: some View {
-        ScreenLayout(
+        V2Screen(
             title: "Before TMS",
-            subtitle: "A short check-in for Jamie’s next visit.",
+            subtitle: "A short check-in before your visit.",
             backAction: navigation.backAction(for: .tmsPre),
             bottomInset: DesignTokens.Spacing.section
         ) {
             TMSMeasuresEditor(snapshot: $snapshot)
             noteField(title: "What has been bothering you most today?", text: $bothering)
-            Button(isAdded ? "Added for the provider" : "Add this to tell the provider", action: addForProvider)
-                .buttonStyle(SecondaryButtonStyle())
-                .disabled(trimmedBothering.isEmpty || isAdded || isAdding)
+            V2GroupCard {
+                V2ListRow(
+                    icon: .listPlus,
+                    title: isAdded ? "Added for the provider" : "Tell the provider about this",
+                    detail: "Adds this note to your TMS talking points.",
+                    trailing: isAdded ? .check : .chevron,
+                    divider: false,
+                    disabled: trimmedBothering.isEmpty || isAdded || isAdding
+                ) { addForProvider() }
                 .accessibilityHint(trimmedBothering.isEmpty ? "Enter a note before adding it" : "Adds this note once")
-            noteField(title: "Provider-supplied focus item", text: $providerFocus)
-            ProvenanceLine(provenance: providerProvenance)
+            }
+            noteField(title: "Provider-supplied focus item", text: $providerFocus, provenance: providerProvenance)
             StatusNotice(
                 title: "You set the focus",
                 detail: "Candy Corn does not create treatment provocations. It only organizes what you and your provider supply."
@@ -93,20 +99,21 @@ struct TMSPreSessionView: View {
         )
     }
 
-    private func noteField(title: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Text(title).font(TypeScale.sectionCompact).tracking(-0.1)
-            TextEditor(text: text)
-                .font(TypeScale.body)
-                .scrollContentBackground(.hidden)
-                .padding(DesignTokens.Spacing.compact)
-                .frame(minHeight: 104)
-                .background(DesignTokens.surface)
-                .overlay(RoundedRectangle(cornerRadius: DesignTokens.controlRadius).stroke(DesignTokens.hairline))
-                .clipShape(RoundedRectangle(cornerRadius: DesignTokens.controlRadius))
-                .accessibilityLabel(title)
+    private func noteField(title: String, text: Binding<String>, provenance: Provenance? = nil) -> some View {
+        V2Card {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+                SectionLine(title: title)
+                TextEditor(text: text)
+                    .font(TypeScale.body)
+                    .foregroundStyle(DesignTokens.cocoa)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 88)
+                    .accessibilityLabel(title)
+                if let provenance {
+                    ProvenanceStack(provenance: provenance)
+                }
+            }
         }
-        .foregroundStyle(DesignTokens.cocoa)
     }
 
     private func addForProvider() {
@@ -134,29 +141,22 @@ struct TMSMeasuresEditor: View {
     @Binding var snapshot: TMSCheckInSnapshot
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
-            Text("Mood, anxiety, and distress")
-                .font(TypeScale.section)
-                .tracking(-0.2)
-                .foregroundStyle(DesignTokens.cocoa)
-            MoodBands(values: moodValues, onChange: updateMood)
-            VStack(spacing: DesignTokens.Spacing.xSmall) {
-                HStack {
-                    Text("Distress")
-                    Spacer()
-                    Text("\(snapshot.distress)/10").monospacedDigit()
+        VStack(alignment: .leading, spacing: DesignTokens.blockGap) {
+            V2Card {
+                VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
+                    SectionLine(title: "Mood, anxiety, and energy", trailing: "1 to 10")
+                    MoodBands(values: moodValues, onChange: updateMood)
                 }
-                .font(TypeScale.label)
-                .fontWeight(.semibold)
-                .tracking(0)
-                Slider(value: distress, in: 1...10, step: 1)
-                    .tint(DesignTokens.yellowDeep)
-                    .frame(minHeight: DesignTokens.controlMinimum)
-                    .accessibilityLabel("Distress")
             }
-            .padding(DesignTokens.Spacing.base)
-            .background(DesignTokens.surfaceWarm)
-            .clipShape(RoundedRectangle(cornerRadius: DesignTokens.controlRadius))
+            V2Card {
+                VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+                    SectionLine(title: "Distress", trailing: "\(snapshot.distress) of 10")
+                    Slider(value: distress, in: 1...10, step: 1)
+                        .tint(DesignTokens.yellowDeep)
+                        .frame(minHeight: DesignTokens.controlMinimum)
+                        .accessibilityLabel("Distress")
+                }
+            }
         }
     }
 

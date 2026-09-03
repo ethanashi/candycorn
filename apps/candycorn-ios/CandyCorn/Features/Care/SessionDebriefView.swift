@@ -351,7 +351,6 @@ struct SessionDebriefView: View {
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
                     Text("You showed up. Here is what came out of it.")
                         .font(TypeScale.question)
-                        .tracking(-0.35)
                         .foregroundStyle(DesignTokens.cocoa)
                         .fixedSize(horizontal: false, vertical: true)
                     ProvenanceInline(voice: .candyCorn, text: "Candy Corn")
@@ -370,27 +369,29 @@ struct SessionDebriefView: View {
                     VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
                         Text(item.text)
                             .font(TypeScale.body)
-                            .tracking(0)
                             .foregroundStyle(DesignTokens.cocoa)
                             .fixedSize(horizontal: false, vertical: true)
-                        ProvenanceStack(provenance: provenance(for: item, appointment: appointment))
-                        if let timestamp = SessionDebriefContent.firstTimestamp(in: item) {
-                            Button {
-                                play(item: item, appointmentID: appointment.id, timestamp: timestamp)
-                            } label: {
-                                Label(
-                                    "Play from \(AppointmentRecordingClock.format(milliseconds: timestamp))",
-                                    systemImage: AppIcon.play.rawValue
+                        HStack(spacing: DesignTokens.Spacing.small) {
+                            ProvenanceInline(voice: voice(for: item), text: provenanceLabel(for: item))
+                            Spacer(minLength: DesignTokens.Spacing.small)
+                            if let timestamp = SessionDebriefContent.firstTimestamp(in: item) {
+                                Button {
+                                    play(item: item, appointmentID: appointment.id, timestamp: timestamp)
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        AppIcon.play.image.font(.system(size: 10, weight: .bold))
+                                        Text(AppointmentRecordingClock.format(milliseconds: timestamp))
+                                            .font(TypeScale.metaStrong)
+                                            .monospacedDigit()
+                                    }
+                                    .foregroundStyle(DesignTokens.orangePressed)
+                                    .frame(minHeight: DesignTokens.controlMinimum)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(
+                                    SessionDebriefTimestamp.accessibilityLabel(milliseconds: timestamp)
                                 )
-                                .font(TypeScale.metaStrong)
-                                .tracking(0)
-                                .frame(minHeight: DesignTokens.controlMinimum)
                             }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(DesignTokens.orangePressed)
-                            .accessibilityLabel(
-                                SessionDebriefTimestamp.accessibilityLabel(milliseconds: timestamp)
-                            )
                         }
                         errorNotice(for: item.id)
                     }
@@ -452,7 +453,6 @@ struct SessionDebriefView: View {
             } else {
                 Text("This talking point is no longer available.")
                     .font(TypeScale.meta)
-                    .tracking(0)
                     .foregroundStyle(DesignTokens.cocoaSoft)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -485,7 +485,6 @@ struct SessionDebriefView: View {
                     VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
                         Text(item.text)
                             .font(TypeScale.body)
-                            .tracking(0)
                             .foregroundStyle(DesignTokens.cocoa)
                             .fixedSize(horizontal: false, vertical: true)
                         ProvenanceInline(voice: voice(for: item), text: provenanceLabel(for: item))
@@ -510,7 +509,6 @@ struct SessionDebriefView: View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
             Text(title)
                 .font(TypeScale.sectionCompact)
-                .tracking(-0.1)
                 .foregroundStyle(DesignTokens.cocoa)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
@@ -545,7 +543,6 @@ struct SessionDebriefView: View {
     private func completionText(_ text: String) -> some View {
         Label(text, systemImage: AppIcon.check.rawValue)
             .font(TypeScale.metaStrong)
-            .tracking(0)
             .foregroundStyle(DesignTokens.sage)
             .frame(minHeight: DesignTokens.controlMinimum, alignment: .leading)
             .accessibilityLabel(text)
@@ -807,13 +804,11 @@ private struct SessionDebriefGoalEditSheet: View {
             ) {
                 Text("Change the wording before you choose to add it.")
                     .font(TypeScale.label)
-                    .tracking(0)
                     .foregroundStyle(DesignTokens.cocoaSoft)
                     .fixedSize(horizontal: false, vertical: true)
                 V2Card {
                     TextField("Goal", text: $text, axis: .vertical)
                         .font(TypeScale.body)
-                        .tracking(0)
                         .lineLimit(3...8)
                         .frame(minHeight: 88, alignment: .topLeading)
                         .disabled(isSaving)

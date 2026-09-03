@@ -1,5 +1,6 @@
 import SwiftUI
 
+/// Source-preserving transcript as one v2 card of speaker turns.
 struct SessionTranscriptView: View {
     let segments: [TranscriptSegment]
     let patientName: String
@@ -41,67 +42,85 @@ struct SessionTranscriptView: View {
                 kind: .information
             )
         } else {
-            LazyVStack(spacing: 0) {
-                ForEach(segments.sorted(by: Self.order)) { segment in
-                    row(segment)
+            V2Card(padding: 0) {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(segments.sorted(by: Self.order).enumerated()), id: \.element.id) { index, segment in
+                        row(segment, divider: index > 0)
+                    }
                 }
             }
             .accessibilityLabel("Source-preserving transcript")
         }
     }
 
-    private func row(_ segment: TranscriptSegment) -> some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+    private func row(_ segment: TranscriptSegment, divider: Bool) -> some View {
+        let time = AppointmentRecordingClock.format(milliseconds: segment.startMilliseconds)
+        return VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
             HStack(spacing: DesignTokens.Spacing.small) {
+                speakerGlyph(segment.speaker)
                 Text(speakerName(segment.speaker))
-                    .font(TypeScale.label)
-                    .fontWeight(.semibold)
-                    .tracking(0)
+                    .font(TypeScale.metaStrong)
+                    .foregroundStyle(DesignTokens.cocoa)
+                    .lineLimit(1)
+                Spacer(minLength: DesignTokens.Spacing.small)
                 Button {
                     onTimestamp(segment)
                 } label: {
-                    Text(AppointmentRecordingClock.format(milliseconds: segment.startMilliseconds))
-                    .font(TypeScale.provenance)
-                    .tracking(0)
-                    .monospacedDigit()
+                    HStack(spacing: 4) {
+                        AppIcon.play.image.font(.system(size: 10, weight: .bold))
+                        Text(time)
+                            .font(TypeScale.metaStrong)
+                            .monospacedDigit()
+                    }
+                    .foregroundStyle(DesignTokens.orangePressed)
+                    .frame(minHeight: DesignTokens.controlMinimum)
                 }
                 .buttonStyle(.plain)
-                .frame(minHeight: DesignTokens.controlMinimum)
-                .accessibilityLabel("Play from \(AppointmentRecordingClock.format(milliseconds: segment.startMilliseconds))")
-                Spacer()
+                .accessibilityLabel("Play from \(time)")
             }
             Text(segment.text)
-                .font(Font.custom("AvenirNext-Regular", size: 15, relativeTo: .body))
-                .tracking(0)
+                .font(TypeScale.body)
                 .foregroundStyle(DesignTokens.cocoa)
-                .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
-            provenance(segment)
+            ProvenanceInline(
+                voice: segment.speaker == .provider ? .provider : .user,
+                text: provenanceText(segment, time: time)
+            )
             if showsCorrections, segment.rawSpeakerLabel != nil {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: DesignTokens.Spacing.small) { labelButtons(segment) }
-                    VStack(spacing: DesignTokens.Spacing.small) { labelButtons(segment) }
+                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) { labelButtons(segment) }
                 }
                 .disabled(isRelabeling(segment))
             }
         }
-        .foregroundStyle(DesignTokens.cocoa)
-        .padding(.vertical, DesignTokens.Spacing.base)
-        .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
+        .padding(.horizontal, DesignTokens.Spacing.base)
+        .padding(.vertical, DesignTokens.Spacing.compact)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .top) {
+            if divider {
+                Rectangle().fill(DesignTokens.hairline).frame(height: 1).padding(.horizontal, DesignTokens.Spacing.base)
+            }
+        }
     }
 
     @ViewBuilder private func labelButtons(_ segment: TranscriptSegment) -> some View {
         Button("Mark as me") { onLabel(segment, .patient) }
-            .buttonStyle(SecondaryButtonStyle())
+            .buttonStyle(CompactGhostButtonStyle())
         Button("Mark as provider") { onLabel(segment, .provider) }
-            .buttonStyle(SecondaryButtonStyle())
+            .buttonStyle(CompactGhostButtonStyle())
     }
 
-    private func provenance(_ segment: TranscriptSegment) -> some View {
-        ProvenanceInline(
-            voice: segment.speaker == .provider ? .provider : .user,
-            text: provenanceText(segment)
-        )
+    @ViewBuilder private func speakerGlyph(_ speaker: TranscriptSegment.Speaker) -> some View {
+        if speaker == .unknown {
+            AppIcon.questionmark.image
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(DesignTokens.cocoaSoft)
+                .frame(width: 14, height: 14)
+                .accessibilityHidden(true)
+        } else {
+            KernelGlyph(voice: speaker == .provider ? .provider : .user, height: 14, decorative: true)
+        }
     }
 
     private func speakerName(_ speaker: TranscriptSegment.Speaker) -> String {
@@ -112,8 +131,7 @@ struct SessionTranscriptView: View {
         }
     }
 
-    private func provenanceText(_ segment: TranscriptSegment) -> String {
-        let time = AppointmentRecordingClock.format(milliseconds: segment.startMilliseconds)
+    private func provenanceText(_ segment: TranscriptSegment, time: String) -> String {
         switch segment.speaker {
         case .patient:
             return "You said this at \(time)"

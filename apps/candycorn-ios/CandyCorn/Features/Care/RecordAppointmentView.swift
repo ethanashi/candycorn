@@ -18,54 +18,89 @@ struct RecordAppointmentView: View {
     @State private var startFailed = false
 
     var body: some View {
-        ScreenLayout(
+        V2Screen(
             title: "Record an appointment",
-            subtitle: "Choose the visit type before confirming permission.",
+            subtitle: "Choose the visit type, then confirm permission.",
             backAction: navigation.backAction(for: .recordAppointment),
+            backLabel: "Close",
+            backIcon: .close,
             bottomInset: DesignTokens.Spacing.section
         ) {
-            UnderlinePicker(options: Appointment.Kind.allCases, selection: appointmentKind, title: { $0.displayName })
+            V2GroupCard(title: "Visit type") {
+                ForEach(Appointment.Kind.allCases, id: \.self) { kind in
+                    V2ChoiceRow(
+                        title: kind.displayName,
+                        detail: detail(for: kind),
+                        selected: state.selectedAppointmentKind == kind,
+                        disabled: isStarting
+                    ) { state.selectAppointmentKind(kind) }
+                }
+            }
             consentCard
             if startFailed {
                 StatusNotice(title: "Recording could not start", detail: state.operationError ?? "Try again. Your existing records are unchanged.", kind: .warning)
             }
-            Text("The original audio stays on this device before any processing.")
-                .font(TypeScale.provenance)
-                .tracking(0)
-                .foregroundStyle(DesignTokens.cocoaSoft)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
+            ProvenanceInline(voice: .user, text: "The original audio stays on this device before any processing.")
+                .padding(.horizontal, DesignTokens.Spacing.xSmall)
         }
         .interactiveDismissDisabled(isStarting)
     }
 
-    private var consentCard: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.medium) {
-            HStack(alignment: .top, spacing: DesignTokens.Spacing.compact) {
-                KernelGlyph(voice: .user, height: 20, decorative: true)
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-                    Text("Recording requires permission").font(TypeScale.section).tracking(-0.2)
-                    Text("Ask everyone in the room before recording. Recording must be permitted where you are.")
-                        .font(TypeScale.body).tracking(0).foregroundStyle(DesignTokens.cocoaSoft)
-                }
-            }
-            Button { state.consentAcknowledged.toggle() } label: {
-                HStack(spacing: DesignTokens.Spacing.compact) {
-                    Image(systemName: state.consentAcknowledged ? "checkmark.square.fill" : "square")
-                        .font(.system(size: 24)).foregroundStyle(state.consentAcknowledged ? DesignTokens.orangePressed : DesignTokens.cocoa)
-                        .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum)
-                    Text("I have permission to record this appointment").font(TypeScale.bodyMedium).tracking(0)
-                }
-                .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-            }
-            .buttonStyle(.plain)
-            .accessibilityValue(state.consentAcknowledged ? "Checked" : "Not checked")
-            Button(isStarting ? "Starting" : "Start recording", action: start)
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(!state.consentAcknowledged || isStarting)
+    private func detail(for kind: Appointment.Kind) -> String {
+        switch kind {
+        case .therapy: "Talk therapy or counseling."
+        case .tms: "A TMS treatment visit."
+        case .psychiatry: "Medication or psychiatry visit."
+        case .other: "Any other care visit."
         }
-        .padding(DesignTokens.Spacing.medium)
-        .overlay(RoundedRectangle(cornerRadius: DesignTokens.cardRadius).stroke(DesignTokens.hairline))
+    }
+
+    private var consentCard: some View {
+        let checked = state.consentAcknowledged
+        return V2Card {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
+                HStack(alignment: .top, spacing: DesignTokens.Spacing.compact) {
+                    IconTile(icon: .shield, size: 34)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Recording needs permission")
+                            .font(TypeScale.cardTitle)
+                            .foregroundStyle(DesignTokens.cocoa)
+                        Text("Ask everyone in the room first. Recording must be allowed where you are.")
+                            .font(TypeScale.meta)
+                            .foregroundStyle(DesignTokens.cocoaSoft)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Button { state.consentAcknowledged.toggle() } label: {
+                    HStack(spacing: DesignTokens.Spacing.compact) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(checked ? DesignTokens.orange : DesignTokens.surface)
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(checked ? DesignTokens.orange : Color(hex: "#D9D0C7"), lineWidth: 2)
+                            if checked {
+                                AppIcon.check.image.font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                            }
+                        }
+                        .frame(width: 26, height: 26)
+                        Text("I have permission to record this appointment")
+                            .font(TypeScale.rowTitleCompact)
+                            .foregroundStyle(DesignTokens.cocoa)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityValue(checked ? "Checked" : "Not checked")
+                .accessibilityAddTraits(checked ? .isSelected : [])
+                Button(isStarting ? "Starting" : "Start recording", action: start)
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(!checked || isStarting)
+                    .opacity(checked ? 1 : 0.45)
+            }
+        }
     }
 
     private var appointmentKind: Binding<Appointment.Kind> {

@@ -29,34 +29,13 @@ struct TMSPostSessionView: View {
     }
 
     private var checkInView: some View {
-        ScreenLayout(
+        V2Screen(
             title: "After TMS",
             subtitle: "Record what you notice without assigning a cause.",
             backAction: navigation.backAction(for: .tmsPost),
             bottomInset: DesignTokens.Spacing.section
         ) {
-            TMSMeasuresEditor(snapshot: $snapshot)
-            noteField(title: "Provider instruction notes", text: $providerInstructions)
-            ProvenanceLine(provenance: providerProvenance)
-            noteField(title: "One thing for next session", text: $nextItem)
-            Text("This check-in records timing and context. It does not claim that TMS caused a mood or symptom change.")
-                .font(TypeScale.label)
-                .tracking(0)
-                .foregroundStyle(DesignTokens.cocoaSoft)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(DesignTokens.Spacing.base)
-                .background(DesignTokens.surfaceWarm)
-                .clipShape(RoundedRectangle(cornerRadius: DesignTokens.controlRadius))
-            Button(isSaving ? "Saving" : "Save post-session check-in") {
-                saveCheckIn()
-            }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(isSaving)
             if let appointment = sessionAppointment {
-                Text("Saved appointment audio")
-                    .font(TypeScale.sectionCompact)
-                    .tracking(-0.1)
-                    .foregroundStyle(DesignTokens.cocoa)
                 SessionProcessingStatusView(
                     record: state.sessionProcessingRecord(for: appointment.id),
                     onReviewSummary: prepareProcessedSummary,
@@ -84,11 +63,24 @@ struct TMSPostSessionView: View {
                     StatusNotice(title: "Processing paused", detail: processingError, kind: .warning)
                 }
             }
+            TMSMeasuresEditor(snapshot: $snapshot)
+            noteField(title: "Provider instruction notes", text: $providerInstructions, provenance: providerProvenance)
+            noteField(title: "One thing for next session", text: $nextItem)
+            Text("This check-in records timing and context. It does not claim that TMS caused a mood or symptom change.")
+                .font(TypeScale.meta)
+                .foregroundStyle(DesignTokens.cocoaSoft)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, DesignTokens.Spacing.xSmall)
+            Button(isSaving ? "Saving" : "Save post-session check-in") {
+                saveCheckIn()
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(isSaving)
         }
     }
 
     private var savedView: some View {
-        ScreenLayout(
+        V2Screen(
             title: "Post-session check-in saved",
             subtitle: "Saved on this device.",
             backAction: navigation.backAction(for: .tmsPost),
@@ -99,10 +91,10 @@ struct TMSPostSessionView: View {
                 detail: "Your notes are recorded without claiming what caused a change.",
                 kind: .saved
             )
-            Button("Open History") { navigation.navigate(to: .history) }
-                .buttonStyle(PrimaryButtonStyle())
-            Button("Prepare for TMS") { navigation.navigate(to: .prepareTMS) }
-                .buttonStyle(SecondaryButtonStyle())
+            V2GroupCard {
+                V2ListRow(icon: .history, title: "Open History", detail: "See this check-in in your timeline.", divider: false) { navigation.navigate(to: .history) }
+                V2ListRow(icon: .prepare, title: "Prepare for TMS", detail: "Read your brief for the next visit.") { navigation.navigate(to: .prepareTMS) }
+            }
         }
     }
 
@@ -126,20 +118,21 @@ struct TMSPostSessionView: View {
         }.max { ($0.startedAt ?? .distantPast) < ($1.startedAt ?? .distantPast) }
     }
 
-    private func noteField(title: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Text(title).font(TypeScale.sectionCompact).tracking(-0.1)
-            TextEditor(text: text)
-                .font(TypeScale.body)
-                .scrollContentBackground(.hidden)
-                .padding(DesignTokens.Spacing.compact)
-                .frame(minHeight: 104)
-                .background(DesignTokens.surface)
-                .overlay(RoundedRectangle(cornerRadius: DesignTokens.controlRadius).stroke(DesignTokens.hairline))
-                .clipShape(RoundedRectangle(cornerRadius: DesignTokens.controlRadius))
-                .accessibilityLabel(title)
+    private func noteField(title: String, text: Binding<String>, provenance: Provenance? = nil) -> some View {
+        V2Card {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+                SectionLine(title: title)
+                TextEditor(text: text)
+                    .font(TypeScale.body)
+                    .foregroundStyle(DesignTokens.cocoa)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 88)
+                    .accessibilityLabel(title)
+                if let provenance {
+                    ProvenanceStack(provenance: provenance)
+                }
+            }
         }
-        .foregroundStyle(DesignTokens.cocoa)
     }
 
     private func saveCheckIn() {

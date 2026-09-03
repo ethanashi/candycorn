@@ -15,7 +15,6 @@ struct SessionProcessingStatusView: View {
                         Text(title).font(TypeScale.rowTitle).tracking(0)
                         Text(detail)
                             .font(TypeScale.meta)
-                            .tracking(0)
                             .foregroundStyle(DesignTokens.cocoaSoft)
                             .fixedSize(horizontal: false, vertical: true)
                     }
