@@ -12,9 +12,10 @@ struct SessionProcessingStatusView: View {
                 HStack(alignment: .top, spacing: DesignTokens.Spacing.compact) {
                     IconTile(icon: icon)
                     VStack(alignment: .leading, spacing: DesignTokens.Spacing.xSmall) {
-                        Text(title).font(TypeScale.rowTitle)
+                        Text(title).font(TypeScale.rowTitle).tracking(0)
                         Text(detail)
                             .font(TypeScale.meta)
+                            .tracking(0)
                             .foregroundStyle(DesignTokens.cocoaSoft)
                             .fixedSize(horizontal: false, vertical: true)
                     }

@@ -311,16 +311,14 @@ struct SessionDebriefView: View {
                 },
                 onOpenDebrief: {}
             )
-            Button("Back to session detail") { backToSession(appointment) }
-                .buttonStyle(SecondaryButtonStyle())
+            sessionDetailLink(appointment)
         case let .ready(result):
             readyDebrief(SessionDebriefContent(result: result), appointment: appointment)
         case .unavailable:
             unavailable(
                 message: "Candy Corn could not read a complete debrief. Your transcript and recording remain available."
             )
-            Button("Back to session detail") { backToSession(appointment) }
-                .buttonStyle(SecondaryButtonStyle())
+            sessionDetailLink(appointment)
         }
     }
 
@@ -328,10 +326,18 @@ struct SessionDebriefView: View {
     private func readyDebrief(_ content: SessionDebriefContent, appointment: Appointment) -> some View {
         acknowledgement
         topicsSection(content.topics, appointment: appointment)
-        providerRequestsSection(content.providerRequests, appointment: appointment)
-        candidateGoalsSection(content.candidateGoals, appointment: appointment)
-        discussedSection(content.discussedTalkingPoints, appointment: appointment)
-        questionsSection(content.openQuestions, appointment: appointment)
+        if !content.providerRequests.isEmpty {
+            providerRequestsSection(content.providerRequests, appointment: appointment)
+        }
+        if !content.candidateGoals.isEmpty {
+            candidateGoalsSection(content.candidateGoals, appointment: appointment)
+        }
+        if !content.discussedTalkingPoints.isEmpty {
+            discussedSection(content.discussedTalkingPoints, appointment: appointment)
+        }
+        if !content.openQuestions.isEmpty {
+            questionsSection(content.openQuestions, appointment: appointment)
+        }
         Button("Done") { SessionDebriefNavigation.finish(navigation) }
             .buttonStyle(PrimaryButtonStyle())
             .accessibilityHint("Returns to Today without changing any debrief choices")
@@ -340,10 +346,12 @@ struct SessionDebriefView: View {
     private var acknowledgement: some View {
         V2Card(background: DesignTokens.surfaceWarm) {
             HStack(alignment: .top, spacing: DesignTokens.Spacing.compact) {
-                IconTile(icon: .quote)
+                KernelGlyph(voice: .candyCorn, height: 28, decorative: true)
+                    .padding(.top, 2)
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
                     Text("You showed up. Here is what came out of it.")
-                        .font(TypeScale.cardTitle)
+                        .font(TypeScale.question)
+                        .tracking(-0.35)
                         .foregroundStyle(DesignTokens.cocoa)
                         .fixedSize(horizontal: false, vertical: true)
                     ProvenanceInline(voice: .candyCorn, text: "Candy Corn")
@@ -356,14 +364,13 @@ struct SessionDebriefView: View {
         _ items: [StructuredSessionSummaryItem],
         appointment: Appointment
     ) -> some View {
-        V2GroupCard(title: SessionDebriefContent.sectionTitles[0]) {
-            if items.isEmpty {
-                emptyRow
-            } else {
+        debriefSection(title: SessionDebriefContent.sectionTitles[0]) {
+            V2GroupCard {
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                     VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
                         Text(item.text)
                             .font(TypeScale.body)
+                            .tracking(0)
                             .foregroundStyle(DesignTokens.cocoa)
                             .fixedSize(horizontal: false, vertical: true)
                         ProvenanceStack(provenance: provenance(for: item, appointment: appointment))
@@ -376,6 +383,7 @@ struct SessionDebriefView: View {
                                     systemImage: AppIcon.play.rawValue
                                 )
                                 .font(TypeScale.metaStrong)
+                                .tracking(0)
                                 .frame(minHeight: DesignTokens.controlMinimum)
                             }
                             .buttonStyle(.plain)
@@ -444,6 +452,7 @@ struct SessionDebriefView: View {
             } else {
                 Text("This talking point is no longer available.")
                     .font(TypeScale.meta)
+                    .tracking(0)
                     .foregroundStyle(DesignTokens.cocoaSoft)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -470,14 +479,13 @@ struct SessionDebriefView: View {
         items: [StructuredSessionSummaryItem],
         @ViewBuilder actions: @escaping (StructuredSessionSummaryItem) -> Actions
     ) -> some View {
-        V2GroupCard(title: title) {
-            if items.isEmpty {
-                emptyRow
-            } else {
+        debriefSection(title: title) {
+            V2GroupCard {
                 ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                     VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
                         Text(item.text)
                             .font(TypeScale.body)
+                            .tracking(0)
                             .foregroundStyle(DesignTokens.cocoa)
                             .fixedSize(horizontal: false, vertical: true)
                         ProvenanceInline(voice: voice(for: item), text: provenanceLabel(for: item))
@@ -495,15 +503,36 @@ struct SessionDebriefView: View {
         }
     }
 
-    private var emptyRow: some View {
-        V2ListRow(
-            icon: nil, title: "Nothing was suggested here.", trailing: .none,
-            divider: false, disabled: true
-        )
+    private func debriefSection<Rows: View>(
+        title: String,
+        @ViewBuilder rows: () -> Rows
+    ) -> some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+            Text(title)
+                .font(TypeScale.sectionCompact)
+                .tracking(-0.1)
+                .foregroundStyle(DesignTokens.cocoa)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            rows()
+        }
     }
 
     private func unavailable(message: String) -> some View {
         StatusNotice(title: "Debrief unavailable", detail: message, kind: .warning)
+    }
+
+    private func sessionDetailLink(_ appointment: Appointment) -> some View {
+        V2GroupCard {
+            V2ListRow(
+                icon: .history,
+                title: "Back to session detail",
+                detail: "Review the saved transcript and recording",
+                trailing: .chevron,
+                divider: false,
+                action: { backToSession(appointment) }
+            )
+        }
     }
 
     @ViewBuilder
@@ -516,6 +545,7 @@ struct SessionDebriefView: View {
     private func completionText(_ text: String) -> some View {
         Label(text, systemImage: AppIcon.check.rawValue)
             .font(TypeScale.metaStrong)
+            .tracking(0)
             .foregroundStyle(DesignTokens.sage)
             .frame(minHeight: DesignTokens.controlMinimum, alignment: .leading)
             .accessibilityLabel(text)
@@ -768,28 +798,38 @@ private struct SessionDebriefGoalEditSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                TextField("Goal", text: $text, axis: .vertical)
-                    .lineLimit(3...8)
-            }
-            .navigationTitle("Edit goal")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", action: onCancel).disabled(isSaving)
+            V2Screen(
+                title: "Edit goal",
+                backAction: onCancel,
+                backLabel: "Cancel",
+                backIcon: .close,
+                bottomInset: DesignTokens.Spacing.base
+            ) {
+                Text("Change the wording before you choose to add it.")
+                    .font(TypeScale.label)
+                    .tracking(0)
+                    .foregroundStyle(DesignTokens.cocoaSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+                V2Card {
+                    TextField("Goal", text: $text, axis: .vertical)
+                        .font(TypeScale.body)
+                        .tracking(0)
+                        .lineLimit(3...8)
+                        .frame(minHeight: 88, alignment: .topLeading)
+                        .disabled(isSaving)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(isSaving ? "Adding" : "Add edited goal") {
-                        guard !isSaving else { return }
-                        isSaving = true
-                        Task {
-                            if await onSave(text) { onCancel() }
-                            isSaving = false
-                        }
+                Button(isSaving ? "Adding" : "Add goal") {
+                    guard !isSaving else { return }
+                    isSaving = true
+                    Task {
+                        if await onSave(text) { onCancel() }
+                        isSaving = false
                     }
-                    .disabled(
-                        isSaving || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    )
                 }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(
+                    isSaving || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
             }
         }
     }

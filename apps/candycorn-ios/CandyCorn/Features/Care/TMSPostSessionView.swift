@@ -35,7 +35,28 @@ struct TMSPostSessionView: View {
             backAction: navigation.backAction(for: .tmsPost),
             bottomInset: DesignTokens.Spacing.section
         ) {
+            TMSMeasuresEditor(snapshot: $snapshot)
+            noteField(title: "Provider instruction notes", text: $providerInstructions)
+            ProvenanceLine(provenance: providerProvenance)
+            noteField(title: "One thing for next session", text: $nextItem)
+            Text("This check-in records timing and context. It does not claim that TMS caused a mood or symptom change.")
+                .font(TypeScale.label)
+                .tracking(0)
+                .foregroundStyle(DesignTokens.cocoaSoft)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(DesignTokens.Spacing.base)
+                .background(DesignTokens.surfaceWarm)
+                .clipShape(RoundedRectangle(cornerRadius: DesignTokens.controlRadius))
+            Button(isSaving ? "Saving" : "Save post-session check-in") {
+                saveCheckIn()
+            }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(isSaving)
             if let appointment = sessionAppointment {
+                Text("Saved appointment audio")
+                    .font(TypeScale.sectionCompact)
+                    .tracking(-0.1)
+                    .foregroundStyle(DesignTokens.cocoa)
                 SessionProcessingStatusView(
                     record: state.sessionProcessingRecord(for: appointment.id),
                     onReviewSummary: prepareProcessedSummary,
@@ -44,6 +65,10 @@ struct TMSPostSessionView: View {
                 )
                 SessionTranscriptView(
                     segments: state.transcript.filter { $0.appointmentID == appointment.id },
+                    providerName: appointment.providerName,
+                    providerRole: "Provider",
+                    sessionDate: (appointment.startedAt ?? appointment.scheduledAt)?
+                        .formatted(.dateTime.month(.abbreviated).day()),
                     isRelabeling: { relabelingSegmentIDs.contains($0.id) },
                     onLabel: persistLabel,
                     onTimestamp: { segment in
@@ -59,22 +84,6 @@ struct TMSPostSessionView: View {
                     StatusNotice(title: "Processing paused", detail: processingError, kind: .warning)
                 }
             }
-            TMSMeasuresEditor(snapshot: $snapshot)
-            noteField(title: "Provider instruction notes", text: $providerInstructions)
-            ProvenanceLine(provenance: providerProvenance)
-            noteField(title: "One thing for next session", text: $nextItem)
-            Text("This check-in records timing and context. It does not claim that TMS caused a mood or symptom change.")
-                .font(TypeScale.label)
-                .foregroundStyle(DesignTokens.cocoaSoft)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(DesignTokens.Spacing.base)
-                .background(DesignTokens.surfaceWarm)
-                .clipShape(RoundedRectangle(cornerRadius: DesignTokens.controlRadius))
-            Button(isSaving ? "Saving" : "Save post-session check-in") {
-                saveCheckIn()
-            }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(isSaving)
         }
     }
 
@@ -119,7 +128,7 @@ struct TMSPostSessionView: View {
 
     private func noteField(title: String, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Text(title).font(TypeScale.sectionCompact)
+            Text(title).font(TypeScale.sectionCompact).tracking(-0.1)
             TextEditor(text: text)
                 .font(TypeScale.body)
                 .scrollContentBackground(.hidden)

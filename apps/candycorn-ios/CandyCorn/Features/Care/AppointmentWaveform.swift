@@ -1,13 +1,19 @@
 import SwiftUI
 
 struct AppointmentWaveform: View {
-    private static let bars = [36, 62, 45, 78, 52, 30, 68, 84, 41, 57, 72, 35, 64, 48, 80, 39, 59, 74, 43, 67, 32, 76, 51, 88, 46, 63, 38, 70, 54, 82, 42, 61]
+    // Exact silhouette from the accepted recording frame in design/sheet.html.
+    private static let bars = [
+        22, 38, 64, 44, 78, 52, 26, 58, 94, 62, 38, 72,
+        42, 88, 52, 30, 68, 48, 82, 34, 58, 92, 46, 72,
+        28, 62, 40, 76, 48, 24, 54, 84, 44, 66, 32, 74,
+        38, 58, 88, 50, 30, 68, 46, 78, 36, 60, 26, 72,
+    ]
 
     let level: Float
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             ForEach(Array(Self.bars.enumerated()), id: \.offset) { _, height in
                 Capsule()
                     .fill(DesignTokens.orange)
@@ -16,7 +22,7 @@ struct AppointmentWaveform: View {
                     .animation(DesignTokens.Motion.animation(reduceMotion: reduceMotion), value: level)
             }
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: 358)
         .frame(height: 116)
         .clipped()
         .accessibilityElement(children: .ignore)
@@ -26,7 +32,7 @@ struct AppointmentWaveform: View {
     private func barHeight(_ percentage: Int) -> CGFloat {
         let bounded = min(max(percentage, 16), 100)
         let normalized = min(max(CGFloat(level), 0), 1)
-        return max(12, CGFloat(bounded) * 1.16 * (0.25 + normalized * 0.75))
+        return max(12, CGFloat(bounded) * (0.42 + normalized * 0.58))
     }
 }
 

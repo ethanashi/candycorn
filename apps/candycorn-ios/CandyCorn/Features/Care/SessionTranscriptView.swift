@@ -2,17 +2,32 @@ import SwiftUI
 
 struct SessionTranscriptView: View {
     let segments: [TranscriptSegment]
+    let patientName: String
+    let providerName: String
+    let providerRole: String
+    let sessionDate: String?
+    let showsCorrections: Bool
     let isRelabeling: (TranscriptSegment) -> Bool
     let onLabel: (TranscriptSegment, TranscriptSegment.Speaker) -> Void
     let onTimestamp: (TranscriptSegment) -> Void
 
     init(
         segments: [TranscriptSegment],
+        patientName: String = "You",
+        providerName: String = "Provider",
+        providerRole: String = "Provider",
+        sessionDate: String? = nil,
+        showsCorrections: Bool = true,
         isRelabeling: @escaping (TranscriptSegment) -> Bool,
         onLabel: @escaping (TranscriptSegment, TranscriptSegment.Speaker) -> Void,
         onTimestamp: @escaping (TranscriptSegment) -> Void = { _ in }
     ) {
         self.segments = segments
+        self.patientName = patientName
+        self.providerName = providerName
+        self.providerRole = providerRole
+        self.sessionDate = sessionDate
+        self.showsCorrections = showsCorrections
         self.isRelabeling = isRelabeling
         self.onLabel = onLabel
         self.onTimestamp = onTimestamp
@@ -38,30 +53,31 @@ struct SessionTranscriptView: View {
     private func row(_ segment: TranscriptSegment) -> some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
             HStack(spacing: DesignTokens.Spacing.small) {
-                speakerGlyph(segment.speaker)
                 Text(speakerName(segment.speaker))
                     .font(TypeScale.label)
                     .fontWeight(.semibold)
-                Spacer()
+                    .tracking(0)
                 Button {
                     onTimestamp(segment)
                 } label: {
-                    Label(
-                        AppointmentRecordingClock.format(milliseconds: segment.startMilliseconds),
-                        systemImage: AppIcon.play.rawValue
-                    )
+                    Text(AppointmentRecordingClock.format(milliseconds: segment.startMilliseconds))
                     .font(TypeScale.provenance)
+                    .tracking(0)
                     .monospacedDigit()
                 }
                 .buttonStyle(.plain)
                 .frame(minHeight: DesignTokens.controlMinimum)
                 .accessibilityLabel("Play from \(AppointmentRecordingClock.format(milliseconds: segment.startMilliseconds))")
+                Spacer()
             }
             Text(segment.text)
-                .font(TypeScale.body)
+                .font(Font.custom("AvenirNext-Regular", size: 15, relativeTo: .body))
+                .tracking(0)
                 .foregroundStyle(DesignTokens.cocoa)
+                .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
-            if segment.rawSpeakerLabel != nil {
+            provenance(segment)
+            if showsCorrections, segment.rawSpeakerLabel != nil {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: DesignTokens.Spacing.small) { labelButtons(segment) }
                     VStack(spacing: DesignTokens.Spacing.small) { labelButtons(segment) }
@@ -81,21 +97,31 @@ struct SessionTranscriptView: View {
             .buttonStyle(SecondaryButtonStyle())
     }
 
-    @ViewBuilder private func speakerGlyph(_ speaker: TranscriptSegment.Speaker) -> some View {
-        if speaker == .unknown {
-            Image(systemName: AppIcon.questionmark.rawValue)
-                .frame(width: 20, height: 20)
-                .accessibilityHidden(true)
-        } else {
-            KernelGlyph(voice: speaker == .provider ? .provider : .user, height: 18, decorative: true)
-        }
+    private func provenance(_ segment: TranscriptSegment) -> some View {
+        ProvenanceInline(
+            voice: segment.speaker == .provider ? .provider : .user,
+            text: provenanceText(segment)
+        )
     }
 
     private func speakerName(_ speaker: TranscriptSegment.Speaker) -> String {
         switch speaker {
-        case .patient: "You"
-        case .provider: "Provider"
+        case .patient: patientName
+        case .provider: providerName
         case .unknown: "Unknown speaker"
+        }
+    }
+
+    private func provenanceText(_ segment: TranscriptSegment) -> String {
+        let time = AppointmentRecordingClock.format(milliseconds: segment.startMilliseconds)
+        switch segment.speaker {
+        case .patient:
+            return "You said this at \(time)"
+        case .provider:
+            let date = sessionDate.map { " on \($0)" } ?? ""
+            return "\(providerRole) said this\(date) at \(time)"
+        case .unknown:
+            return "Speaker not confirmed at \(time)"
         }
     }
 

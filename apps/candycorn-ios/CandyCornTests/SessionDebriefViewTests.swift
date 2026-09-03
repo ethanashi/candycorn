@@ -311,7 +311,15 @@ struct SessionDebriefViewTests {
         #expect(record.stage == .ready)
         #expect(record.progress == 1)
         #expect(result.template == .therapy)
-        #expect(SessionDebriefContent(result: result).isUsable)
+        let content = SessionDebriefContent(result: result)
+        #expect(content.isUsable)
+        #expect(!content.providerRequests.isEmpty)
+        #expect(!content.candidateGoals.isEmpty)
+        #expect(!content.discussedTalkingPoints.isEmpty)
+        #expect(!content.openQuestions.isEmpty)
+        let discussed = try #require(content.discussedTalkingPoints.first)
+        let relatedID = try #require(discussed.relatedEntityID)
+        #expect(state.talkingPoints.contains { $0.id == relatedID && $0.status == .open })
     }
 
     private let timestamp = Date(timeIntervalSince1970: 1_800_000_000)

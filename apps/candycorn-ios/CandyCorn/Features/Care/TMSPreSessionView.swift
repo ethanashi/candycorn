@@ -95,7 +95,7 @@ struct TMSPreSessionView: View {
 
     private func noteField(title: String, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Text(title).font(TypeScale.sectionCompact)
+            Text(title).font(TypeScale.sectionCompact).tracking(-0.1)
             TextEditor(text: text)
                 .font(TypeScale.body)
                 .scrollContentBackground(.hidden)
@@ -137,6 +137,7 @@ struct TMSMeasuresEditor: View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
             Text("Mood, anxiety, and distress")
                 .font(TypeScale.section)
+                .tracking(-0.2)
                 .foregroundStyle(DesignTokens.cocoa)
             MoodBands(values: moodValues, onChange: updateMood)
             VStack(spacing: DesignTokens.Spacing.xSmall) {
@@ -147,6 +148,7 @@ struct TMSMeasuresEditor: View {
                 }
                 .font(TypeScale.label)
                 .fontWeight(.semibold)
+                .tracking(0)
                 Slider(value: distress, in: 1...10, step: 1)
                     .tint(DesignTokens.yellowDeep)
                     .frame(minHeight: DesignTokens.controlMinimum)
