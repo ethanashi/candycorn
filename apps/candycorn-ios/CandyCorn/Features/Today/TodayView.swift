@@ -28,7 +28,7 @@ struct TodayView: View {
                 }
             } else {
                 GeometryReader { geometry in
-                    blocks(heroHeight: max(200, geometry.size.height - Self.fixedTotal))
+                    blocks(heroHeight: max(200, geometry.size.height - Self.fixedTotal - DesignTokens.tabBarReserved))
                 }
             }
         }

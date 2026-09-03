@@ -190,7 +190,7 @@ struct HistoryView: View {
             }
             .padding(.horizontal, DesignTokens.screenInset)
             .padding(.top, DesignTokens.Spacing.small)
-            .padding(.bottom, DesignTokens.Spacing.large)
+            .padding(.bottom, DesignTokens.tabBarClearance)
         }
         .background(DesignTokens.canvas.ignoresSafeArea())
     }

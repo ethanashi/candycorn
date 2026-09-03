@@ -12,6 +12,10 @@ extension DesignTokens {
     static let heroRadius: CGFloat = 30
     /// Radius for the standard v2 card.
     static let v2CardRadius: CGFloat = 22
+    /// Height the floating tab bar occupies above the bottom safe area (bar 54 + inner padding 16 + outer padding 8).
+    static let tabBarReserved: CGFloat = 78
+    /// Bottom padding a scrolling root screen needs so its last block clears the floating tab bar.
+    static let tabBarClearance: CGFloat = tabBarReserved + blockGap
 }
 
 extension TypeScale {

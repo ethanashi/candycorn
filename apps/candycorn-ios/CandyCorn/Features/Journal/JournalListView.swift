@@ -30,7 +30,7 @@ struct JournalListView: View {
                 }
                 .padding(.horizontal, DesignTokens.screenInset)
                 .padding(.top, DesignTokens.Spacing.small)
-                .padding(.bottom, 96)
+                .padding(.bottom, DesignTokens.tabBarClearance)
             }
             Button { navigation.navigate(to: .journalVoice) } label: {
                 AppIcon.microphone.image
@@ -41,7 +41,7 @@ struct JournalListView: View {
             }
             .buttonStyle(.plain)
             .padding(.trailing, 22)
-            .padding(.bottom, DesignTokens.Spacing.compact)
+            .padding(.bottom, DesignTokens.tabBarReserved + DesignTokens.Spacing.small)
             .accessibilityLabel("Talk")
             .accessibilityHint("Starts a voice journal")
         }
