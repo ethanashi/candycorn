@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum AudioRetentionChoice: String, CaseIterable, Identifiable, Sendable {
+enum AudioRetentionChoice: String, CaseIterable, Codable, Identifiable, Sendable {
     case keep
     case deleteAfterVerification
     case ask
@@ -17,8 +17,8 @@ enum AudioRetentionChoice: String, CaseIterable, Identifiable, Sendable {
 
     var detail: String {
         switch self {
-        case .keep: "Keep the original beside its transcript."
-        case .deleteAfterVerification: "Intended behavior after you confirm the transcript."
+        case .keep: "Keep the original beside its notes."
+        case .deleteAfterVerification: "Delete only after you confirm the transcript in a later version."
         case .ask: "Decide separately after each recording."
         }
     }
@@ -30,28 +30,12 @@ struct SettingsDataInteractionState: Equatable, Sendable {
     private(set) var isConfirmingReset = false
     private(set) var resetComplete = false
 
-    mutating func selectRetention(_ choice: AudioRetentionChoice) {
-        retention = choice
-        resetComplete = false
-    }
+    mutating func selectRetention(_ choice: AudioRetentionChoice) { retention = choice }
+    mutating func toggleExportPreview() { showsExportPreview.toggle() }
+    mutating func beginReset() { isConfirmingReset = true }
+    mutating func cancelReset() { isConfirmingReset = false }
 
-    mutating func toggleExportPreview() {
-        showsExportPreview.toggle()
-        resetComplete = false
-    }
-
-    mutating func beginReset() {
-        guard !isConfirmingReset else { return }
-        isConfirmingReset = true
-        resetComplete = false
-    }
-
-    mutating func cancelReset() {
-        isConfirmingReset = false
-    }
-
-    @MainActor
-    @discardableResult
+    @MainActor @discardableResult
     mutating func confirmReset(in state: DemoState) -> Bool {
         guard isConfirmingReset, !resetComplete else { return false }
         state.reset()
@@ -66,8 +50,13 @@ struct SettingsDataInteractionState: Equatable, Sendable {
 struct SettingsDataView: View {
     @Bindable var navigation: NavigationModel
     @Bindable var state: DemoState
-    @State private var local = SettingsDataInteractionState()
     var embedded = false
+    @State private var deleteText = ""
+    @State private var showingDeleteConfirmation = false
+    @State private var showingShare = false
+    @State private var isUpdatingSamples = false
+    @State private var updatingRetention: AudioRetentionChoice?
+    @State private var isDeleting = false
 
     var body: some View {
         Group {
@@ -80,128 +69,136 @@ struct SettingsDataView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingShare, onDismiss: cleanupExport) {
+            if case let .ready(package) = state.exportState {
+                VStack(spacing: DesignTokens.Spacing.large) {
+                    Text("Your export is ready").font(TypeScale.section)
+                    ShareLink(item: package.directoryURL) {
+                        Label("Share export folder", systemImage: AppIcon.download.rawValue)
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                }
+                .padding(DesignTokens.Spacing.large)
+                .presentationDetents([.medium])
+            }
+        }
+        .onChange(of: state.exportState) { _, value in
+            if case .ready = value { showingShare = true }
+        }
     }
 
     @ViewBuilder private var content: some View {
+        sampleContent
         retentionChoices
-        exportPreview
-        resetDemo
+        exportControls
+        deleteControls
+    }
+
+    private var sampleContent: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+            Toggle(isOn: Binding(
+                get: { state.settings.useSampleContent },
+                set: { enabled in
+                    guard !isUpdatingSamples else { return }
+                    isUpdatingSamples = true
+                    Task {
+                        _ = await state.setSampleContentEnabled(enabled)
+                        isUpdatingSamples = false
+                    }
+                }
+            )) {
+                Text("Use sample content").font(TypeScale.bodyMedium)
+            }
+            .tint(DesignTokens.orange)
+            .frame(minHeight: DesignTokens.controlMinimum)
+            .disabled(isUpdatingSamples)
+            Text("Turning this off removes Jamie Rivera’s fictional examples. Your entries stay.")
+                .font(TypeScale.provenance)
+                .foregroundStyle(DesignTokens.cocoaSoft)
+        }
+        .padding(.bottom, DesignTokens.Spacing.base)
+        .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
     }
 
     private var retentionChoices: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Raw audio retention")
-                .font(TypeScale.sectionCompact)
-                .foregroundStyle(DesignTokens.cocoa)
+            Text("Raw audio retention").font(TypeScale.sectionCompact)
                 .padding(.bottom, DesignTokens.Spacing.compact)
             Divider().overlay(DesignTokens.hairline)
             ForEach(AudioRetentionChoice.allCases) { choice in
                 SettingsChoiceRow(
                     title: choice.title,
                     detail: choice.detail,
-                    selected: local.retention == choice,
-                    action: { local.selectRetention(choice) }
+                    selected: state.settings.audioRetention == choice,
+                    disabled: updatingRetention != nil,
+                    action: {
+                        guard updatingRetention == nil else { return }
+                        updatingRetention = choice
+                        var settings = state.settings
+                        settings.audioRetention = choice
+                        Task {
+                            _ = await state.updateSettings(settings)
+                            updatingRetention = nil
+                        }
+                    }
                 )
             }
         }
     }
 
-    private var exportPreview: some View {
-        HStack(alignment: .top, spacing: DesignTokens.Spacing.compact) {
-            KernelGlyph(voice: .user, height: 18, decorative: true)
-                .padding(.top, 3)
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-                Text("Export preview")
-                    .font(TypeScale.sectionCompact)
-                    .foregroundStyle(DesignTokens.cocoa)
-                Text("Export is planned to build a readable archive of your originals and notes. Previewing creates no file.")
-                    .font(TypeScale.label)
-                    .foregroundStyle(DesignTokens.cocoaSoft)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button {
-                    local.toggleExportPreview()
-                } label: {
-                    Label(
-                        local.showsExportPreview ? "Hide archive preview" : "Preview archive contents",
-                        systemImage: AppIcon.download.rawValue
-                    )
-                }
+    private var exportControls: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+            Text("Export your care vault").font(TypeScale.sectionCompact)
+            Text("Creates a temporary folder with Markdown entries, originals, and a JSON index.")
+                .font(TypeScale.label).foregroundStyle(DesignTokens.cocoaSoft)
+            Button(exportButtonTitle) { Task { await state.makeExport() } }
                 .buttonStyle(SecondaryButtonStyle())
-                .accessibilityValue(local.showsExportPreview ? "Expanded" : "Collapsed")
-                if local.showsExportPreview {
-                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-                        previewLine("Original journals and organized copies")
-                        previewLine("Session audio, transcripts, and summaries you retained")
-                        previewLine("Goals, mood check-ins, and appointment briefs")
-                        previewLine("A plain provenance record for generated items")
+                .disabled(state.exportState == .exporting)
+            if case let .failed(message) = state.exportState {
+                StatusNotice(title: "Export failed", detail: message, kind: .warning)
+            }
+        }
+        .padding(.vertical, DesignTokens.Spacing.base)
+        .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
+    }
+
+    private var deleteControls: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+            Text("Delete everything").font(TypeScale.sectionCompact)
+            Text("This removes the care vault and every attachment from this device.")
+                .font(TypeScale.label).foregroundStyle(DesignTokens.cocoaSoft)
+            if showingDeleteConfirmation {
+                TextField("Type DELETE", text: $deleteText)
+                    .textInputAutocapitalization(.characters)
+                    .font(TypeScale.body)
+                    .padding(DesignTokens.Spacing.compact)
+                    .overlay(RoundedRectangle(cornerRadius: DesignTokens.controlRadius).stroke(DesignTokens.hairline))
+                Button(isDeleting ? "Deleting" : "Delete everything", role: .destructive) {
+                    guard !isDeleting else { return }
+                    isDeleting = true
+                    Task {
+                        _ = await state.deleteEverything(typedText: deleteText)
+                        isDeleting = false
                     }
-                    .padding(.top, DesignTokens.Spacing.small)
-                    .accessibilityElement(children: .combine)
                 }
+                .buttonStyle(DangerButtonStyle())
+                .disabled(isDeleting || DeleteConfirmation(typedText: deleteText) == nil)
+            } else {
+                Button("Delete everything") { showingDeleteConfirmation = true }
+                    .buttonStyle(SecondaryButtonStyle())
+            }
+            if state.exportState == .deleted {
+                StatusNotice(title: "Care vault deleted", detail: "The app is ready for a new entry. Sample content stays off.", kind: .saved)
             }
         }
-        .padding(.vertical, DesignTokens.Spacing.medium)
-        .overlay(alignment: .top) { Divider().overlay(DesignTokens.hairline) }
-        .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
+        .padding(.vertical, DesignTokens.Spacing.base)
     }
 
-    private var resetDemo: some View {
-        HStack(alignment: .top, spacing: DesignTokens.Spacing.compact) {
-            KernelGlyph(voice: .provider, height: 18, decorative: true)
-                .padding(.top, 3)
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-                Text("Reset demo")
-                    .font(TypeScale.sectionCompact)
-                    .foregroundStyle(DesignTokens.cocoa)
-                Text("Restore the fictional Jamie Rivera thread and clear changes made during this visit.")
-                    .font(TypeScale.label)
-                    .foregroundStyle(DesignTokens.cocoaSoft)
-                    .fixedSize(horizontal: false, vertical: true)
-                resetControls
-                if local.resetComplete {
-                    StatusNotice(title: "Seeded demo restored.", kind: .saved)
-                        .accessibilityLabel("Seeded demo restored")
-                }
-            }
-        }
-        .padding(.vertical, DesignTokens.Spacing.medium)
-        .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
+    private var exportButtonTitle: String {
+        state.exportState == .exporting ? "Creating export" : "Create export"
     }
 
-    @ViewBuilder
-    private var resetControls: some View {
-        if local.isConfirmingReset {
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-                Text("This clears only temporary changes. Reset now?")
-                    .font(TypeScale.label)
-                    .foregroundStyle(DesignTokens.cocoa)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: DesignTokens.Spacing.small) {
-                    Button("Cancel") { local.cancelReset() }
-                        .buttonStyle(SecondaryButtonStyle())
-                    Button("Reset now") { _ = local.confirmReset(in: state) }
-                        .buttonStyle(DangerButtonStyle())
-                }
-            }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Confirm reset demo")
-        } else {
-            Button(action: { local.beginReset() }) {
-                Label("Reset demo", systemImage: AppIcon.trash.rawValue)
-            }
-            .buttonStyle(SecondaryButtonStyle())
-        }
-    }
-
-    private func previewLine(_ text: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: DesignTokens.Spacing.small) {
-            Circle()
-                .fill(DesignTokens.yellowDeep)
-                .frame(width: 5, height: 5)
-            Text(text)
-                .font(TypeScale.provenance)
-                .foregroundStyle(DesignTokens.cocoaSoft)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+    private func cleanupExport() {
+        Task { await state.cleanupExport() }
     }
 }

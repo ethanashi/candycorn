@@ -1,165 +1,169 @@
 import SwiftUI
+import UIKit
 
-struct PhotoJournalState: Equatable, Sendable {
-    static let originalPageText = "I keep thinking about senior year. I wanted the chance to prove I could have played. That part still feels unfinished."
-    static let defaultExtraction = "I keep thinking about senior year. I wanted the chance to prove I could have played. Exercise helped me get unstuck today, but then feeling better brought up guilt."
-
-    private(set) var captured = false
-    var extractedText = Self.defaultExtraction
-
-    mutating func capture() {
-        guard !captured else { return }
-        captured = true
-    }
-
-    mutating func retake() {
-        guard captured else { return }
-        captured = false
-        extractedText = Self.defaultExtraction
-    }
+enum PhotoJournalPhase: Equatable, Sendable {
+    case ready
+    case camera
+    case saving
+    case saved
+    case denied
+    case unavailable
+    case failed
 }
 
 struct PhotoJournalView: View {
     @Bindable var navigation: NavigationModel
-    @State private var photo = PhotoJournalState()
-    @FocusState private var extractionFocused: Bool
+    @Bindable var state: DemoState
+    @State private var phase: PhotoJournalPhase = .ready
+    @State private var preview: UIImage?
+    @State private var savedEntry: JournalEntry?
 
     var body: some View {
-        if photo.captured {
-            comparisonView
+        ScreenLayout(
+            title: phase == .saved ? "Photo saved" : "Photograph a journal page",
+            subtitle: "The original image stays on this device.",
+            backAction: navigation.backAction(for: .journalPhoto),
+            bottomInset: DesignTokens.Spacing.section
+        ) {
+            content
+        }
+        .fullScreenCover(isPresented: cameraPresented) {
+            CameraPicker(onImage: save, onCancel: { phase = .ready })
+                .ignoresSafeArea()
+        }
+    }
+
+    @ViewBuilder private var content: some View {
+        if let preview {
+            Image(uiImage: preview)
+                .resizable()
+                .scaledToFit()
+                .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius))
+                .accessibilityLabel("Original journal photo")
         } else {
-            cameraView
-        }
-    }
-
-    private var cameraView: some View {
-        ScreenLayout(
-            title: "Photograph a page",
-            subtitle: "Frame the full page. This screen does not use your camera.",
-            backAction: dismiss,
-            bottomInset: DesignTokens.Spacing.section
-        ) {
             ZStack {
-                RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous)
-                    .fill(DesignTokens.cocoa)
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(.white.opacity(0.7), lineWidth: 2)
-                    .padding(DesignTokens.Spacing.base)
-                VStack(spacing: DesignTokens.Spacing.large) {
-                    JournalPageFixture()
-                        .frame(width: 190, height: 270)
-                        .rotationEffect(.degrees(-1.5))
-                    Text("Line up the whole page")
-                        .font(TypeScale.label)
-                        .foregroundStyle(.white)
+                RoundedRectangle(cornerRadius: DesignTokens.cardRadius)
+                    .fill(DesignTokens.surfaceWarm)
+                VStack(spacing: DesignTokens.Spacing.small) {
+                    Image(systemName: "doc.text.viewfinder").font(.system(size: 52))
+                    Text("Keep the full page inside the frame").font(TypeScale.bodyMedium)
                 }
+                .foregroundStyle(DesignTokens.cocoa)
             }
-            .frame(minHeight: 474)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("Journal page positioned inside the camera frame")
+            .frame(height: 360)
+            .accessibilityLabel("Camera frame for a journal page")
+        }
 
-            Button {
-                photo.capture()
-            } label: {
-                Label("Use photo", systemImage: AppIcon.camera.rawValue)
+        switch phase {
+        case .ready:
+            Button("Take photo", action: beginCapture).buttonStyle(PrimaryButtonStyle())
+        case .saving:
+            Button("Saving") {}.buttonStyle(PrimaryButtonStyle()).disabled(true)
+        case .saved:
+            StatusNotice(title: "Saved on this device", detail: "No text was extracted. The photo is the original source.", kind: .saved)
+            if savedEntry != nil {
+                Button("View journal") {
+                    navigation.goBack(from: .journalPhoto)
+                    navigation.navigate(to: .journalDetail)
+                }
+                .buttonStyle(PrimaryButtonStyle())
             }
-            .buttonStyle(PrimaryButtonStyle())
+        case .denied:
+            StatusNotice(title: "Camera access is off", detail: "Enable camera access in Settings, then try again. Your existing journals are unchanged.", kind: .warning)
+            Button("Try again", action: beginCapture).buttonStyle(SecondaryButtonStyle())
+        case .unavailable:
+            StatusNotice(title: "Camera unavailable", detail: "Use an iPhone with a camera to photograph a journal page.", kind: .warning)
+        case .failed:
+            StatusNotice(title: "Photo could not be saved", detail: "Your existing journals are unchanged. Try again.", kind: .warning)
+            Button("Try again", action: beginCapture).buttonStyle(SecondaryButtonStyle())
+        case .camera:
+            EmptyView()
         }
     }
 
-    private var comparisonView: some View {
-        ScreenLayout(
-            title: "Keep the original",
-            subtitle: "Edit the extracted words if needed. The page image stays unchanged.",
-            backAction: dismiss,
-            bottomInset: DesignTokens.Spacing.section
-        ) {
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-                JournalPageFixture()
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 220)
-                    .padding(DesignTokens.Spacing.base)
-                    .background(DesignTokens.cocoa)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .accessibilityLabel("Immutable original journal page")
-                Text("Original page")
-                    .font(TypeScale.provenance)
-                    .foregroundStyle(DesignTokens.cocoaSoft)
-                    .frame(maxWidth: .infinity)
-            }
+    private var cameraPresented: Binding<Bool> {
+        Binding(get: { phase == .camera }, set: { if !$0 && phase == .camera { phase = .ready } })
+    }
 
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-                Text("Extracted text")
-                    .font(TypeScale.label)
-                TextEditor(text: $photo.extractedText)
-                    .font(TypeScale.body)
-                    .scrollContentBackground(.hidden)
-                    .padding(DesignTokens.Spacing.compact)
-                    .frame(minHeight: 220)
-                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(DesignTokens.hairline, lineWidth: 1))
-                    .focused($extractionFocused)
+    private func beginCapture() {
+        guard phase != .saving else { return }
+        Task {
+            let status = await state.dependencies.photos.authorizationStatus()
+            let permitted: Bool
+            if status == .authorized {
+                permitted = true
+            } else if status == .notDetermined {
+                permitted = await state.dependencies.photos.requestPermission()
+            } else {
+                permitted = false
             }
-
-            HStack(spacing: DesignTokens.Spacing.compact) {
-                Button("Retake") {
-                    extractionFocused = false
-                    photo.retake()
-                }
-                .buttonStyle(SecondaryButtonStyle())
-                Button("Keep this page") { openDetail() }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .disabled(photo.extractedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            guard permitted else {
+                phase = .denied
+                return
             }
+            guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+                phase = .unavailable
+                return
+            }
+            phase = .camera
         }
     }
 
-    private func dismiss() {
-        navigation.dismissPresentedFlow()
-    }
-
-    private func openDetail() {
-        navigation.dismissPresentedFlow()
-        navigation.navigate(to: .journalDetail)
+    private func save(_ image: UIImage) {
+        phase = .saving
+        preview = image
+        Task {
+            guard let data = image.jpegData(compressionQuality: 0.92), !data.isEmpty else {
+                phase = .failed
+                return
+            }
+            let width = image.cgImage?.width ?? Int(image.size.width * image.scale)
+            let height = image.cgImage?.height ?? Int(image.size.height * image.scale)
+            guard let attachment = await state.savePhotoJPEG(data, pixelWidth: width, pixelHeight: height) else {
+                phase = .failed
+                return
+            }
+            savedEntry = await state.createJournal(rawText: "", inputType: .photo, attachmentID: attachment.id)
+            phase = savedEntry == nil ? .failed : .saved
+        }
     }
 }
 
-private struct JournalPageFixture: View {
-    private let lines = [
-        "September 5",
-        "I keep thinking about senior year.",
-        "I wanted the chance to prove I could",
-        "have played. That part still feels",
-        "unfinished.",
-        "The gym helped me get unstuck today.",
-        "Then I felt guilty because I had felt",
-        "better for a while.",
-        "Why does moving forward feel like",
-        "I am dismissing what happened?",
-    ]
+private struct CameraPicker: UIViewControllerRepresentable {
+    let onImage: (UIImage) -> Void
+    let onCancel: () -> Void
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                Text(line)
-                    .font(Font.custom("AvenirNext-Regular", size: index == 0 ? 8 : 9, relativeTo: .caption2))
-                    .italic(index > 0)
-                    .foregroundStyle(DesignTokens.cocoa)
-                    .frame(maxWidth: .infinity, minHeight: 22, alignment: .leading)
-                    .padding(.leading, 28)
-                    .overlay(alignment: .bottom) {
-                        Rectangle().fill(DesignTokens.hairline).frame(height: 1)
-                    }
+    func makeCoordinator() -> Coordinator { Coordinator(onImage: onImage, onCancel: onCancel) }
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.cameraCaptureMode = .photo
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let onImage: (UIImage) -> Void
+        let onCancel: () -> Void
+
+        init(onImage: @escaping (UIImage) -> Void, onCancel: @escaping () -> Void) {
+            self.onImage = onImage
+            self.onCancel = onCancel
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            picker.dismiss(animated: true, completion: onCancel)
+        }
+
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            guard let image = info[.originalImage] as? UIImage else {
+                picker.dismiss(animated: true, completion: onCancel)
+                return
             }
-            Spacer(minLength: 0)
+            picker.dismiss(animated: true) { self.onImage(image) }
         }
-        .padding(.vertical, DesignTokens.Spacing.compact)
-        .background(Color.white)
-        .overlay(alignment: .leading) {
-            Rectangle()
-                .fill(DesignTokens.rose.opacity(0.55))
-                .frame(width: 1)
-                .padding(.leading, 24)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
     }
 }

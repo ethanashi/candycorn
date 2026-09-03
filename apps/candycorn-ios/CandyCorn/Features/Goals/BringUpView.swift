@@ -90,13 +90,14 @@ struct BringUpView: View {
     @Bindable var navigation: NavigationModel
     @Bindable var state: DemoState
     @State private var draft = ManualTalkingPointDraft()
+    @State private var isSaving = false
 
     private var openItems: [TalkingPoint] {
         state.talkingPoints.filter { $0.status == .open }
     }
 
-    private var hasManualItem: Bool {
-        state.talkingPoints.contains { $0.id == ContinuityFixtures.manualTalkingPointID }
+    private var closedItems: [TalkingPoint] {
+        state.talkingPoints.filter { $0.status != .open }
     }
 
     var body: some View {
@@ -112,15 +113,17 @@ struct BringUpView: View {
                     Divider().overlay(DesignTokens.hairline)
                     ForEach(openItems) { point in
                         TalkingPointRow(point: point) { status in
-                            state.updateTalkingPoint(id: point.id, status: status)
+                            Task { _ = await state.transitionTalkingPoint(id: point.id, to: status) }
                         }
                     }
                 }
             }
             manualSection
                 .padding(.top, DesignTokens.Spacing.base)
+            if !closedItems.isEmpty {
+                closedSection
+            }
         }
-        .onAppear { BringUpLogic.ensureTMSPoint(in: state) }
     }
 
     private var emptyState: some View {
@@ -145,44 +148,58 @@ struct BringUpView: View {
                 .padding(.bottom, DesignTokens.Spacing.base)
             Text("Add your own")
                 .font(TypeScale.sectionCompact)
-            if hasManualItem {
-                Text("Your manual item is in the inbox. You can discuss or dismiss it above.")
+            Text("What do you want to remember?")
+                .font(TypeScale.label)
+            TextEditor(text: Binding(get: { draft.text }, set: { draft.updateText($0) }))
+                .font(TypeScale.body)
+                .foregroundStyle(DesignTokens.cocoa)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 92)
+                .padding(DesignTokens.Spacing.compact)
+                .background(DesignTokens.surface)
+                .overlay(RoundedRectangle(cornerRadius: DesignTokens.controlRadius).stroke(DesignTokens.hairline))
+                .accessibilityLabel("What do you want to remember?")
+            if let error = draft.error {
+                Text(error).font(TypeScale.provenance).foregroundStyle(DesignTokens.rose)
+            }
+            Button(isSaving ? "Adding" : "Add to next appointment", action: addManualItem)
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(isSaving)
+        }
+    }
+
+    private var closedSection: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+            Text("Closed items").font(TypeScale.sectionCompact)
+            ForEach(closedItems) { point in
+                HStack {
+                    Text(point.text).font(TypeScale.label).foregroundStyle(DesignTokens.cocoaSoft)
+                    Spacer()
+                    Button("Reopen") {
+                        Task { _ = await state.transitionTalkingPoint(id: point.id, to: .open) }
+                    }
                     .font(TypeScale.label)
-                    .foregroundStyle(DesignTokens.cocoaSoft)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("What do you want to remember?")
-                    .font(TypeScale.label)
-                TextEditor(text: Binding(get: { draft.text }, set: { draft.updateText($0) }))
-                    .font(TypeScale.body)
-                    .foregroundStyle(DesignTokens.cocoa)
-                    .scrollContentBackground(.hidden)
-                    .frame(minHeight: 92)
-                    .padding(DesignTokens.Spacing.compact)
-                    .background(DesignTokens.surface)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignTokens.controlRadius, style: .continuous)
-                            .stroke(DesignTokens.hairline, lineWidth: 1)
-                    )
-                    .accessibilityLabel("What do you want to remember?")
-                if let error = draft.error {
-                    Text(error)
-                        .font(TypeScale.provenance)
-                        .foregroundStyle(DesignTokens.rose)
-                        .accessibilityLabel("Error. \(error)")
+                    .frame(minHeight: DesignTokens.controlMinimum)
                 }
-                Button("Add to inbox", action: addManualItem)
-                    .buttonStyle(PrimaryButtonStyle())
+                .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
             }
         }
     }
 
     private func addManualItem() {
-        guard let point = draft.makeTalkingPoint() else { return }
-        if state.addTalkingPoint(point) {
-            draft = ManualTalkingPointDraft()
-        } else {
-            draft.error = "This item is already in your inbox."
+        let text = draft.text
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !isSaving else {
+            draft.error = "Write what you want to bring up first."
+            return
+        }
+        isSaving = true
+        Task {
+            if await state.createTalkingPoint(text: text) != nil {
+                draft = ManualTalkingPointDraft()
+            } else {
+                draft.error = "This item could not be saved. Try again."
+            }
+            isSaving = false
         }
     }
 }

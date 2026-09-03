@@ -2,11 +2,12 @@ import SwiftUI
 
 struct AppointmentsView: View {
     @Bindable var navigation: NavigationModel
+    @Bindable var state: DemoState
 
     var body: some View {
         ScreenLayout(
             title: "Appointments",
-            subtitle: "Upcoming care and the source record from completed visits.",
+            subtitle: "Upcoming care and source recordings from completed visits.",
             backAction: navigation.backAction(for: .appointments)
         ) {
             Button {
@@ -16,125 +17,61 @@ struct AppointmentsView: View {
             }
             .buttonStyle(PrimaryButtonStyle())
 
-            VStack(spacing: 0) {
-                Divider().overlay(DesignTokens.hairline)
-                appointmentRow(
-                    month: "Sep",
-                    day: "9",
-                    kind: "Therapy",
-                    provider: SeededData.therapyProviderName,
-                    detail: "2:00 PM · Upcoming",
-                    actions: [
-                        AppointmentAction(title: "Prepare", route: .prepareTherapy),
-                        AppointmentAction(title: "Record appointment", route: .recordAppointment),
-                    ]
-                )
-                appointmentRow(
-                    month: "Sep",
-                    day: "5",
-                    kind: "TMS",
-                    provider: SeededData.tmsProviderName,
-                    detail: "22 min · Completed",
-                    actions: [AppointmentAction(title: "Review check-in", route: .tmsPost)]
-                )
-                appointmentRow(
-                    month: "Sep",
-                    day: "2",
-                    kind: "Therapy",
-                    provider: SeededData.therapyProviderName,
-                    detail: "50 min · Completed",
-                    actions: [AppointmentAction(title: "Open session", route: .therapySession)]
-                )
-            }
-        }
-    }
-
-    private func appointmentRow(
-        month: String,
-        day: String,
-        kind: String,
-        provider: String,
-        detail: String,
-        actions: [AppointmentAction]
-    ) -> some View {
-        HStack(alignment: .top, spacing: DesignTokens.Spacing.base) {
-            dateBlock(month: month, day: day)
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.xSmall) {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .firstTextBaseline) {
-                        appointmentTitle(kind)
-                        Spacer(minLength: DesignTokens.Spacing.small)
-                        providerLabel(provider)
-                    }
-                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.xSmall) {
-                        appointmentTitle(kind)
-                        providerLabel(provider)
+            if state.appointments.isEmpty {
+                StatusNotice(title: "No appointments yet", detail: "You can record a care appointment when one begins.", kind: .information)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(state.appointments.sorted(by: appointmentOrder)) { appointment in
+                        Button { open(appointment) } label: {
+                            HStack(alignment: .top, spacing: DesignTokens.Spacing.compact) {
+                                VStack(spacing: 0) {
+                                    Text(appointmentDate(appointment).formatted(.dateTime.month(.abbreviated)))
+                                    Text(appointmentDate(appointment).formatted(.dateTime.day()))
+                                        .font(TypeScale.section)
+                                }
+                                .font(TypeScale.provenance).monospacedDigit()
+                                .frame(width: 48)
+                                VStack(alignment: .leading, spacing: DesignTokens.Spacing.xSmall) {
+                                    Text(appointment.kind.displayName).font(TypeScale.bodyMedium)
+                                    Text(appointment.providerName).font(TypeScale.label).foregroundStyle(DesignTokens.cocoaSoft)
+                                    Text(statusText(appointment)).font(TypeScale.provenance).foregroundStyle(DesignTokens.cocoaSoft)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right").foregroundStyle(DesignTokens.cocoaSoft)
+                            }
+                            .foregroundStyle(DesignTokens.cocoa)
+                            .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
                     }
                 }
-                Text(detail)
-                    .font(TypeScale.provenance)
-                    .foregroundStyle(DesignTokens.cocoaSoft)
-                    .monospacedDigit()
-                FlowActions(actions: actions, navigation: navigation)
-                    .padding(.top, DesignTokens.Spacing.xSmall)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.vertical, DesignTokens.Spacing.medium)
-        .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
-        .accessibilityElement(children: .contain)
-    }
-
-    private func dateBlock(month: String, day: String) -> some View {
-        VStack(spacing: 1) {
-            Text(month).font(TypeScale.provenance)
-            Text(day).font(TypeScale.sectionCompact).monospacedDigit()
-        }
-        .foregroundStyle(DesignTokens.cocoa)
-        .frame(width: 48, height: 56)
-        .background(DesignTokens.surfaceWarm)
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(DesignTokens.hairline))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .accessibilityElement(children: .combine)
-    }
-
-    private func appointmentTitle(_ title: String) -> some View {
-        Text(title).font(TypeScale.bodyMedium).foregroundStyle(DesignTokens.cocoa)
-    }
-
-    private func providerLabel(_ provider: String) -> some View {
-        Text(provider)
-            .font(TypeScale.provenance)
-            .foregroundStyle(DesignTokens.cocoaSoft)
-            .multilineTextAlignment(.trailing)
-    }
-}
-
-private struct AppointmentAction: Identifiable {
-    let title: String
-    let route: Route
-    var id: Route { route }
-}
-
-private struct FlowActions: View {
-    let actions: [AppointmentAction]
-    @Bindable var navigation: NavigationModel
-
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: DesignTokens.Spacing.base) { buttons }
-            VStack(alignment: .leading, spacing: 0) { buttons }
         }
     }
 
-    @ViewBuilder private var buttons: some View {
-        ForEach(actions) { action in
-            Button(action.title) { navigation.navigate(to: action.route) }
-                .font(TypeScale.label)
-                .fontWeight(.semibold)
-                .foregroundStyle(DesignTokens.cocoa)
-                .underline()
-                .frame(minHeight: DesignTokens.controlMinimum)
+    private func appointmentOrder(_ lhs: Appointment, _ rhs: Appointment) -> Bool {
+        appointmentDate(lhs) > appointmentDate(rhs)
+    }
+
+    private func appointmentDate(_ appointment: Appointment) -> Date {
+        appointment.scheduledAt ?? appointment.startedAt ?? .distantPast
+    }
+
+    private func statusText(_ appointment: Appointment) -> String {
+        switch appointment.status {
+        case .planned: "Upcoming"
+        case .recording: "Recording"
+        case .processing: "Saving"
+        case .completed: appointment.recordingAttachmentID == nil ? "Notes saved" : "Recording saved"
+        }
+    }
+
+    private func open(_ appointment: Appointment) {
+        if appointment.status == .completed {
+            state.selectAppointment(id: appointment.id)
+            navigation.navigate(to: appointment.kind == .tms ? .tmsPost : .therapySession)
         }
     }
 }

@@ -60,10 +60,33 @@ struct ShellAndSurfaceRegressionTests {
         let testsURL = URL(fileURLWithPath: #filePath)
         let iconURL = testsURL.deletingLastPathComponent().deletingLastPathComponent()
             .appending(path: "CandyCorn/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png")
-        let source = CGImageSourceCreateWithURL(iconURL as CFURL, nil)
-        let properties = try #require(CGImageSourceCopyPropertiesAtIndex(try #require(source), 0, nil) as? [CFString: Any])
+        let source = try #require(CGImageSourceCreateWithURL(iconURL as CFURL, nil))
+        let properties = try #require(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
         #expect(properties[kCGImagePropertyPixelWidth] as? Int == 1024)
         #expect(properties[kCGImagePropertyPixelHeight] as? Int == 1024)
         #expect(properties[kCGImagePropertyHasAlpha] as? Bool == false)
+    }
+
+    @Test("Logging calls contain event names and scalar metrics only")
+    func privacySafeLogging() throws {
+        let testsURL = URL(fileURLWithPath: #filePath)
+        let sourceRoot = testsURL.deletingLastPathComponent().deletingLastPathComponent().appending(path: "CandyCorn")
+        let enumerator = FileManager.default.enumerator(at: sourceRoot, includingPropertiesForKeys: nil)
+        let urls = (enumerator?.allObjects as? [URL] ?? []).prefix(1_000)
+        let contentFields = [
+            "rawText", "cleanedText", "transcript", "manualNotes", "talkingPoint",
+            "title", "payload", "relativePath", "fileURL",
+        ]
+        var offenders: [String] = []
+        for url in urls where url.pathExtension == "swift" {
+            let lines = try String(contentsOf: url, encoding: .utf8).split(separator: "\n", omittingEmptySubsequences: false)
+            for (index, line) in lines.enumerated() where line.contains("logger.record(") {
+                let value = String(line)
+                if value.contains("\\(") || contentFields.contains(where: { value.contains($0) }) {
+                    offenders.append("\(url.lastPathComponent):\(index + 1)")
+                }
+            }
+        }
+        #expect(offenders.isEmpty, "Content-bearing logging calls: \(offenders)")
     }
 }

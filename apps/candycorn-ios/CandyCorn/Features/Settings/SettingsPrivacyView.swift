@@ -78,7 +78,7 @@ struct SettingsPrivacyView: View {
                     Spacer(minLength: DesignTokens.Spacing.small)
                     AppIcon.chevronRight.image
                 }
-                .foregroundStyle(DesignTokens.orangePressed)
+                .foregroundStyle(DesignTokens.cocoa)
                 .frame(maxWidth: .infinity, minHeight: 52)
                 .contentShape(Rectangle())
             }

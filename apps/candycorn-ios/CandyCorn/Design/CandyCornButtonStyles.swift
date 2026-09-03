@@ -4,7 +4,7 @@ struct PrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(TypeScale.button)
-            .foregroundStyle(.white)
+            .foregroundStyle(DesignTokens.cocoa)
             .frame(maxWidth: .infinity, minHeight: DesignTokens.primaryButtonHeight)
             .padding(.horizontal, DesignTokens.Spacing.base)
             .background(configuration.isPressed ? DesignTokens.orangePressed : DesignTokens.orange)

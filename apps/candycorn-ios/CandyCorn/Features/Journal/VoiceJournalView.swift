@@ -1,173 +1,175 @@
 import SwiftUI
 
-struct JournalRecordingState: Equatable, Sendable {
-    static let initialSeconds = 137
-
-    private(set) var elapsedSeconds: Int
-    private(set) var isRecording: Bool
-
-    init(elapsedSeconds: Int = Self.initialSeconds, isRecording: Bool = true) {
-        self.elapsedSeconds = max(0, elapsedSeconds)
-        self.isRecording = isRecording
-    }
-
-    mutating func tick() {
-        guard isRecording, elapsedSeconds < 86_400 else { return }
-        elapsedSeconds += 1
-    }
-
-    @discardableResult
-    mutating func stop() -> Bool {
-        guard isRecording else { return false }
-        isRecording = false
-        return true
-    }
-
-    static func format(seconds: Int) -> String {
-        guard seconds >= 0 else { return "00:00" }
-        return String(format: "%02d:%02d", seconds / 60, seconds % 60)
-    }
+enum VoiceJournalPhase: Equatable, Sendable {
+    case ready
+    case recording
+    case stopping
+    case saved
+    case denied
+    case failed
 }
 
 struct VoiceJournalView: View {
     @Bindable var navigation: NavigationModel
-    @State private var recording = JournalRecordingState()
+    @Bindable var state: DemoState
+    @State private var phase: VoiceJournalPhase = .ready
+    @State private var savedEntry: JournalEntry?
 
     var body: some View {
         Group {
-            if recording.isRecording {
-                recordingView
-            } else {
-                savedView
+            switch phase {
+            case .ready: permissionView
+            case .recording, .stopping: recordingView
+            case .saved: savedView
+            case .denied: deniedView
+            case .failed: failureView
             }
         }
         .background(DesignTokens.canvas.ignoresSafeArea())
-        .task(id: recording.isRecording) {
-            guard recording.isRecording else { return }
-            for _ in 0..<86_400 {
-                do {
-                    try await Task.sleep(for: .seconds(1))
-                } catch {
-                    return
-                }
-                guard recording.isRecording, !Task.isCancelled else { return }
-                recording.tick()
+        .onChange(of: state.journals) { _, journals in
+            guard phase == .recording,
+                  let recording = state.latestRecording,
+                  let entry = journals.first(where: { $0.audioAttachmentID == recording.attachment.id }) else { return }
+            savedEntry = entry
+            phase = .saved
+        }
+        .onChange(of: state.operationError) { _, message in
+            if phase == .recording, message != nil, state.recordingSnapshot.isRecording == false {
+                phase = .failed
             }
         }
     }
 
+    private var permissionView: some View {
+        ScreenLayout(
+            title: "Talk it out",
+            subtitle: "Your original audio is saved on this device before anything else happens.",
+            backAction: navigation.backAction(for: .journalVoice),
+            bottomInset: DesignTokens.Spacing.section
+        ) {
+            StatusNotice(
+                title: "Microphone access",
+                detail: "Candy Corn asks only when you tap Talk. Nothing is sent anywhere.",
+                kind: .information
+            )
+            Button("Talk", action: start)
+                .buttonStyle(PrimaryButtonStyle())
+        }
+    }
+
     private var recordingView: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: DesignTokens.Spacing.large) {
             HStack {
-                cancelButton
+                Button(action: leaveRecording) {
+                    Image(systemName: AppIcon.close.rawValue)
+                        .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum)
+                }
+                .foregroundStyle(DesignTokens.cocoa)
+                .accessibilityLabel("Dismiss voice journal")
                 Spacer()
             }
-
-            VStack(spacing: DesignTokens.Spacing.small) {
-                Text("What’s going on?")
-                    .font(TypeScale.question)
-                Text("Private journal recording")
-                    .font(TypeScale.label)
-                    .foregroundStyle(DesignTokens.cocoaSoft)
-            }
-            .multilineTextAlignment(.center)
-            .padding(.top, DesignTokens.Spacing.small)
-
-            Spacer(minLength: DesignTokens.Spacing.generous)
-
-            VStack(spacing: DesignTokens.Spacing.compact) {
-                Text("Recording")
-                    .font(TypeScale.bodyMedium)
-                Text(JournalRecordingState.format(seconds: recording.elapsedSeconds))
-                    .font(TypeScale.timer)
-                    .monospacedDigit()
-                    .accessibilityLabel("Recording duration")
-                    .accessibilityValue(JournalRecordingState.format(seconds: recording.elapsedSeconds))
-            }
-
-            JournalWaveform(phase: recording.elapsedSeconds)
-                .padding(.vertical, DesignTokens.Spacing.section)
-
-            Button {
-                _ = recording.stop()
-            } label: {
-                Label("Stop", systemImage: AppIcon.stop.rawValue)
-                    .font(TypeScale.button)
-                    .foregroundStyle(.white)
-                    .frame(minWidth: 112, minHeight: DesignTokens.primaryButtonHeight)
-                    .padding(.horizontal, DesignTokens.Spacing.base)
-                    .background(DesignTokens.orange)
-                    .clipShape(RoundedRectangle(cornerRadius: DesignTokens.controlRadius, style: .continuous))
-            }
-            .buttonStyle(.plain)
-
-            Spacer(minLength: DesignTokens.Spacing.generous)
-
-            Text("Your recording is saved on this device before anything else happens.")
-                .font(TypeScale.provenance)
-                .foregroundStyle(DesignTokens.cocoaSoft)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: 310)
+            Text("What’s going on?").font(TypeScale.question)
+            Spacer(minLength: DesignTokens.Spacing.large)
+            Text("Recording").font(TypeScale.bodyMedium)
+            Text(Self.format(milliseconds: state.recordingSnapshot.elapsedMilliseconds))
+                .font(TypeScale.timer).monospacedDigit()
+            JournalWaveform(level: state.recordingSnapshot.normalizedLevel)
+                .frame(height: 120)
+            Button(phase == .stopping ? "Saving" : "Stop") { stop(reason: .user) }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(phase == .stopping)
+            Spacer(minLength: DesignTokens.Spacing.large)
+            Text("Saved on this device").font(TypeScale.provenance).foregroundStyle(DesignTokens.cocoaSoft)
         }
-        .foregroundStyle(DesignTokens.cocoa)
         .padding(.horizontal, DesignTokens.screenInset)
-        .padding(.top, DesignTokens.Spacing.xSmall)
         .padding(.bottom, DesignTokens.Spacing.section)
     }
 
     private var savedView: some View {
         ScreenLayout(
-            title: "Saved on this device",
-            subtitle: "Your original audio stays on this device.",
-            backAction: cancel,
-            bottomInset: DesignTokens.Spacing.section
+            title: state.latestRecording?.stopReason == .interruption ? "Recording stopped" : "Saved on this device",
+            subtitle: "Your original audio is available for playback.",
+            backAction: navigation.backAction(for: .journalVoice)
         ) {
-            HStack(spacing: DesignTokens.Spacing.compact) {
-                KernelGlyph(voice: .user, height: 20)
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.xSmall) {
-                    Text(JournalRecordingState.format(seconds: recording.elapsedSeconds))
-                        .font(TypeScale.section)
-                        .monospacedDigit()
-                    Text("Voice journal, Sep 5")
-                        .font(TypeScale.provenance)
-                        .foregroundStyle(DesignTokens.cocoaSoft)
+            if let attachment = state.latestRecording?.attachment {
+                Button {
+                    Task { try? await state.dependencies.playback.play(attachment: attachment) }
+                } label: {
+                    Label("Play original audio", systemImage: AppIcon.play.rawValue)
                 }
-                Spacer()
-                Image(systemName: AppIcon.play.rawValue)
-                    .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum)
-                    .overlay(Circle().stroke(DesignTokens.hairline, lineWidth: 1))
-                    .accessibilityLabel("Play audio")
+                .buttonStyle(SecondaryButtonStyle())
             }
-            .padding(DesignTokens.Spacing.base)
-            .overlay(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous).stroke(DesignTokens.hairline, lineWidth: 1))
-
-            Button("View in history") { open(.history) }
-                .buttonStyle(PrimaryButtonStyle())
-
-            Text("Nothing was sent anywhere.")
-                .font(TypeScale.provenance)
-                .foregroundStyle(DesignTokens.cocoaSoft)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
+            if let savedEntry {
+                ProvenanceLine(provenance: savedEntry.provenance)
+            }
+            Button("View in history") {
+                navigation.goBack(from: .journalVoice)
+                navigation.navigate(to: .history)
+            }
+            .buttonStyle(PrimaryButtonStyle())
         }
     }
 
-    private var cancelButton: some View {
-        Button(action: cancel) {
-            Image(systemName: AppIcon.close.rawValue)
-                .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum)
+    private var deniedView: some View {
+        ScreenLayout(title: "Microphone access is off", backAction: navigation.backAction(for: .journalVoice)) {
+            StatusNotice(title: "Recording did not start", detail: "Enable microphone access in Settings, then try again. Your existing journals are unchanged.", kind: .warning)
+            Button("Try again", action: start).buttonStyle(SecondaryButtonStyle())
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Cancel recording")
     }
 
-    private func cancel() {
-        navigation.dismissPresentedFlow()
+    private var failureView: some View {
+        ScreenLayout(title: "Recording could not start", backAction: navigation.backAction(for: .journalVoice)) {
+            if state.latestRecording == nil {
+                StatusNotice(title: "Nothing was saved", detail: "No valid audio file was created. Your existing journals are unchanged.", kind: .warning)
+            } else {
+                StatusNotice(title: "Recording saved", detail: state.operationError ?? "The original audio was finalized, but the journal details could not be saved.", kind: .warning)
+            }
+            Button("Try again", action: start).buttonStyle(SecondaryButtonStyle())
+        }
     }
 
-    private func open(_ route: Route) {
-        navigation.dismissPresentedFlow()
-        navigation.navigate(to: route)
+    private func start() {
+        guard phase != .recording else { return }
+        Task {
+            let status = await state.dependencies.recording.authorizationStatus()
+            let started = await state.startRecording(kind: .journal)
+            if started {
+                phase = .recording
+            } else {
+                phase = status == .denied || status == .restricted ? .denied : .failed
+            }
+        }
+    }
+
+    private func stop(reason: RecordingStopReason) {
+        guard phase == .recording else { return }
+        phase = .stopping
+        Task {
+            guard let recording = await state.stopRecording(reason: reason) else {
+                phase = .failed
+                return
+            }
+            savedEntry = await state.createJournal(rawText: "", inputType: .voice, attachmentID: recording.attachment.id)
+            phase = savedEntry == nil ? .failed : .saved
+        }
+    }
+
+    private func leaveRecording() {
+        guard phase == .recording else {
+            navigation.goBack(from: .journalVoice)
+            return
+        }
+        phase = .stopping
+        Task {
+            if let recording = await state.stopRecording(reason: .user) {
+                _ = await state.createJournal(rawText: "", inputType: .voice, attachmentID: recording.attachment.id)
+            }
+            navigation.goBack(from: .journalVoice)
+        }
+    }
+
+    static func format(milliseconds: Int) -> String {
+        let seconds = max(0, milliseconds / 1_000)
+        return String(format: "%02d:%02d", seconds / 60, seconds % 60)
     }
 }

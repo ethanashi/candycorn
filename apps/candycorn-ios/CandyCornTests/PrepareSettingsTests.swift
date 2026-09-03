@@ -4,6 +4,23 @@ import Testing
 @Suite("Prepare and Settings")
 @MainActor
 struct PrepareSettingsTests {
+    @Test("Export and delete actions are gated and leave an empty usable vault")
+    func exportAndDelete() async {
+        let state = DemoState()
+        await state.makeExport()
+        guard case .ready = state.exportState else {
+            Issue.record("Expected a ready export")
+            return
+        }
+        await state.cleanupExport()
+        #expect(state.exportState == .idle)
+        #expect(await state.deleteEverything(typedText: "delete") == false)
+        #expect(!state.journals.isEmpty)
+        #expect(await state.deleteEverything(typedText: "DELETE"))
+        #expect(state.journals.isEmpty)
+        #expect(state.attachments.isEmpty)
+        #expect(state.settings.useSampleContent == false)
+    }
     @Test("Therapy brief has five sourced sections and preserves source records")
     func briefSectionsAndSourcePreservation() {
         let journalsBefore = SeededData.journalEntries
@@ -54,8 +71,8 @@ struct PrepareSettingsTests {
     @Test("AI Off forces provider Off and re-enabling stays Off")
     func aiModeTransitions() {
         let state = DemoState(arguments: ["CandyCorn"])
-        #expect(state.aiMode == .organizer)
-        #expect(state.aiProvider == .router)
+        #expect(state.aiMode == .off)
+        #expect(state.aiProvider == .off)
 
         AISettingsLogic.selectMode(.off, in: state)
         #expect(state.aiMode == .off)
@@ -121,8 +138,8 @@ struct PrepareSettingsTests {
         let repeatedReset = local.confirmReset(in: state)
         #expect(firstReset)
         #expect(!repeatedReset)
-        #expect(state.aiMode == .organizer)
-        #expect(state.aiProvider == .router)
+        #expect(state.aiMode == .off)
+        #expect(state.aiProvider == .off)
         #expect(local.retention == .ask)
         #expect(!local.showsExportPreview)
         #expect(local.resetComplete)

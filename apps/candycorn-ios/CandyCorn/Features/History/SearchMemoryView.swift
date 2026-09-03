@@ -100,10 +100,16 @@ struct SearchMemoryView: View {
     }
 
     private var results: [MemorySearchRecord] {
-        MemorySearchModel.results(
-            for: query,
-            in: MemorySearchModel.records(goals: state.goals, talkingPoints: state.talkingPoints)
-        )
+        state.searchResults.map { hit in
+            MemorySearchRecord(
+                id: hit.id,
+                title: hit.title,
+                excerpt: hit.excerpt,
+                searchableText: hit.excerpt,
+                destination: destination(for: hit.kind),
+                provenance: Provenance(voice: .user, label: "Saved on this device", detail: hit.occurredAt.formatted(date: .abbreviated, time: .shortened), occurredAt: hit.occurredAt, sourceRoute: destination(for: hit.kind))
+            )
+        }
     }
 
     var body: some View {
@@ -115,7 +121,33 @@ struct SearchMemoryView: View {
             searchField
             if trimmedQuery.isEmpty {
                 prompt
-            } else if results.isEmpty {
+            } else {
+                searchResponse
+            }
+        }
+        .task(id: query) {
+            do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+            guard !Task.isCancelled else { return }
+            await state.search(query)
+        }
+    }
+
+    @ViewBuilder private var searchResponse: some View {
+        switch state.searchState {
+        case .loading:
+            HStack(spacing: DesignTokens.Spacing.small) {
+                ProgressView()
+                Text("Searching your care vault")
+                    .font(TypeScale.label)
+                    .foregroundStyle(DesignTokens.cocoaSoft)
+            }
+            .frame(minHeight: DesignTokens.controlMinimum)
+        case let .failed(message):
+            StatusNotice(title: "Search unavailable", detail: message, kind: .warning)
+        case .empty:
+            noResults
+        case .loaded:
+            if results.isEmpty {
                 noResults
             } else {
                 resultList
@@ -190,7 +222,7 @@ struct SearchMemoryView: View {
                 .monospacedDigit()
             Divider().overlay(DesignTokens.hairline)
             ForEach(results) { record in
-                SearchResultRow(record: record) { navigation.navigate(to: record.destination) }
+                SearchResultRow(record: record) { open(record) }
             }
         }
     }
@@ -198,7 +230,7 @@ struct SearchMemoryView: View {
     private var noResults: some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
             KernelGlyph(voice: .candyCorn, height: 20, decorative: true)
-            Text("No seeded memories match “\(trimmedQuery)”")
+            Text("No memories match “\(trimmedQuery)”")
                 .font(TypeScale.sectionCompact)
                 .foregroundStyle(DesignTokens.cocoa)
                 .fixedSize(horizontal: false, vertical: true)
@@ -208,7 +240,7 @@ struct SearchMemoryView: View {
                 .fixedSize(horizontal: false, vertical: true)
             Button("Clear search", action: clearSearch)
                 .font(TypeScale.bodyMedium)
-                .foregroundStyle(DesignTokens.orangePressed)
+                .foregroundStyle(DesignTokens.cocoa)
                 .frame(minHeight: DesignTokens.controlMinimum)
         }
         .padding(.vertical, DesignTokens.Spacing.large)
@@ -219,6 +251,25 @@ struct SearchMemoryView: View {
 
     private func clearSearch() {
         query = ""
+    }
+
+    private func destination(for kind: SearchEntityKind) -> Route {
+        switch kind {
+        case .journal: .journalDetail
+        case .mood: .checkIn
+        case .appointment: .therapySession
+        case .goal: .goals
+        case .talkingPoint: .bringUp
+        case .summary: .therapySession
+        }
+    }
+
+    private func open(_ record: MemorySearchRecord) {
+        if let hit = state.searchResults.first(where: { $0.id == record.id }) {
+            if hit.kind == .journal { state.selectJournal(id: hit.entityID) }
+            if hit.kind == .appointment { state.selectAppointment(id: hit.entityID) }
+        }
+        navigation.navigate(to: record.destination)
     }
 }
 

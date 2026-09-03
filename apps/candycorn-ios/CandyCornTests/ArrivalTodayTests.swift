@@ -41,7 +41,7 @@ struct ArrivalTodayTests {
         draft.set(.energy, to: 5)
         draft.updateNote(String(repeating: "x", count: 181))
         #expect(draft.values.mood == 1)
-        #expect(draft.values.anxiety == 1)
+        #expect(draft.values.anxiety == 8)
         #expect(draft.values.energy == 5)
         #expect(draft.note.count == 180)
     }

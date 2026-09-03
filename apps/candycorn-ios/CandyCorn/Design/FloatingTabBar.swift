@@ -18,7 +18,7 @@ struct FloatingTabBar: View {
                             .font(TypeScale.provenance)
                             .lineLimit(1)
                     }
-                    .foregroundStyle(selectedTab == tab ? DesignTokens.orangePressed : DesignTokens.cocoaSoft)
+                    .foregroundStyle(selectedTab == tab ? DesignTokens.cocoa : DesignTokens.cocoaSoft)
                     .frame(maxWidth: .infinity, minHeight: DesignTokens.controlMinimum)
                     .contentShape(Rectangle())
                 }

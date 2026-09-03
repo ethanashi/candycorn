@@ -5,6 +5,7 @@ enum TherapySessionTab: String, CaseIterable, Sendable {
     case transcript = "Transcript"
     case homework = "Homework"
     case talkingPoints = "Talking points"
+    case notes = "Notes"
 }
 
 struct TherapySummaryEvidence: Identifiable, Equatable, Sendable {
@@ -38,26 +39,41 @@ struct TherapySessionView: View {
     @Bindable var state: DemoState
     @State private var selection = TherapySessionTab.transcript
     @State private var pendingEvidenceID: UUID?
+    @State private var notes = ""
     @AccessibilityFocusState private var focusedSegmentID: UUID?
 
+    @ViewBuilder
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.large) {
-                    header
-                    UnderlinePicker(options: TherapySessionTab.allCases, selection: $selection) { $0.rawValue }
-                    panel
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, DesignTokens.screenInset)
-                .padding(.top, DesignTokens.Spacing.compact)
-                .padding(.bottom, 260)
+        if sessionAppointment == nil {
+            ScreenLayout(
+                title: "Therapy session",
+                subtitle: "Saved sessions appear here.",
+                backAction: navigation.backAction(for: .therapySession)
+            ) {
+                StatusNotice(title: "No saved therapy session", detail: "Record an appointment or add manual notes first.", kind: .information)
             }
-            .background(DesignTokens.canvas.ignoresSafeArea())
+        } else {
+            sessionContent
+        }
+    }
+
+    private var sessionContent: some View {
+        ScrollViewReader { proxy in
+            ScreenLayout(
+                title: "Therapy with \(sessionAppointment?.providerName ?? "your provider")",
+                subtitle: sessionMetadata,
+                backAction: navigation.backAction(for: .therapySession),
+                bottomInset: 260
+            ) {
+                UnderlinePicker(options: TherapySessionTab.allCases, selection: $selection) { $0.rawValue }
+                panel
+            }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                PlaybackScrubber()
-                    .padding(.horizontal, DesignTokens.screenInset)
-                    .padding(.bottom, 82)
+                if sessionAppointment?.recordingAttachmentID != nil {
+                    PlaybackScrubber(onPlay: playRecording)
+                        .padding(.horizontal, DesignTokens.screenInset)
+                        .padding(.bottom, 82)
+                }
             }
             .onChange(of: selection) { _, tab in
                 guard tab == .transcript, let id = pendingEvidenceID else { return }
@@ -69,27 +85,7 @@ struct TherapySessionView: View {
                 }
             }
         }
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Button {
-                navigation.navigate(to: .appointments)
-            } label: {
-                Image(systemName: AppIcon.back.rawValue)
-                    .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum, alignment: .leading)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Back to appointments")
-            Text("Therapy with Dr. Elena Park")
-                .font(TypeScale.pageTitle)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("Sep 2 · 52 min · Saved on this device")
-                .font(TypeScale.body)
-                .foregroundStyle(DesignTokens.cocoaSoft)
-                .monospacedDigit()
-        }
-        .foregroundStyle(DesignTokens.cocoa)
+        .onAppear { notes = sessionAppointment?.manualNotes ?? "" }
     }
 
     @ViewBuilder private var panel: some View {
@@ -98,12 +94,16 @@ struct TherapySessionView: View {
         case .transcript: transcriptPanel
         case .homework: homeworkPanel
         case .talkingPoints: talkingPointsPanel
+        case .notes: notesPanel
         }
     }
 
     private var summaryPanel: some View {
         VStack(spacing: 0) {
-            ForEach(TherapySummaryEvidence.items) { item in
+            if summaryEvidence.isEmpty {
+                StatusNotice(title: "No summary", detail: "The original recording and your manual notes remain available.", kind: .information)
+            }
+            ForEach(summaryEvidence) { item in
                 HStack(alignment: .top, spacing: DesignTokens.Spacing.compact) {
                     KernelGlyph(voice: item.voice, height: 18, decorative: true).padding(.top, 3)
                     VStack(alignment: .leading, spacing: DesignTokens.Spacing.xSmall) {
@@ -122,8 +122,12 @@ struct TherapySessionView: View {
     }
 
     private var transcriptPanel: some View {
-        LazyVStack(spacing: 0) {
-            ForEach(state.transcript) { segment in
+        Group {
+            if sessionTranscript.isEmpty {
+                StatusNotice(title: "No transcript", detail: "The original recording and your manual notes are available. Transcription is not part of this version.", kind: .information)
+            } else {
+                LazyVStack(spacing: 0) {
+            ForEach(sessionTranscript) { segment in
                 TranscriptRow(
                     segment: segment,
                     speaker: state.speakerCorrections[segment.id] ?? segment.speaker,
@@ -132,38 +136,82 @@ struct TherapySessionView: View {
                 .id(segment.id)
                 .accessibilityFocused($focusedSegmentID, equals: segment.id)
             }
+                }
+        }
         }
         .accessibilityLabel("Source-preserving transcript")
     }
 
     private var homeworkPanel: some View {
-        CareLedger(items: [
-            CareLedgerItem(
-                text: "Finish the senior-year football timeline.",
-                provenance: providerProvenance
-            ),
-            CareLedgerItem(
-                text: "Notice when feeling better is followed by guilt about moving forward.",
-                provenance: providerProvenance
-            ),
-        ])
+        CareLedger(items: state.goals.filter { $0.sourceEntityID == sessionAppointment?.id }.map {
+            CareLedgerItem(text: $0.title, provenance: $0.provenance)
+        })
     }
 
     private var talkingPointsPanel: some View {
-        CareLedger(items: [
-            CareLedgerItem(
-                text: "The senior-year meeting with the coaches.",
-                provenance: Provenance(voice: .user, label: "You brought this up", detail: "Therapy, Sep 2 at 38:44", occurredAt: nil, sourceRoute: .therapySession)
-            ),
-            CareLedgerItem(
-                text: "Ask whether needing proof is the part that keeps the memory stuck.",
-                provenance: Provenance(voice: .candyCorn, label: "Candy Corn suggested this", detail: "Based on the saved transcript. You chose to keep it.", occurredAt: nil, sourceRoute: .therapySession)
-            ),
-        ])
+        CareLedger(items: state.talkingPoints.filter { $0.sourceID == sessionAppointment?.id }.map {
+            CareLedgerItem(text: $0.text, provenance: $0.provenance)
+        })
     }
 
-    private var providerProvenance: Provenance {
-        Provenance(voice: .provider, label: "Therapist assigned this", detail: "Therapy, Sep 2 at 42:18", occurredAt: nil, sourceRoute: .therapySession)
+    private var notesPanel: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.base) {
+            Text("Manual notes").font(TypeScale.sectionCompact)
+            TextEditor(text: $notes)
+                .font(TypeScale.body)
+                .frame(minHeight: 220)
+                .overlay(RoundedRectangle(cornerRadius: DesignTokens.controlRadius).stroke(DesignTokens.hairline))
+            Button("Save notes") {
+                guard var appointment = sessionAppointment else { return }
+                appointment.manualNotes = String(notes.prefix(4_000))
+                Task { _ = await state.saveAppointment(appointment) }
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            Button("Add to next appointment") {
+                Task { _ = await state.createTalkingPoint(text: notes, source: .session, sourceID: sessionAppointment?.id) }
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .disabled(notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+    }
+
+    private var sessionAppointment: Appointment? {
+        if let id = state.selectedAppointmentID,
+           let selected = state.appointments.first(where: { $0.id == id && $0.kind == .therapy && $0.status == .completed }) {
+            return selected
+        }
+        return state.appointments.filter { $0.kind == .therapy && $0.status == .completed }.max {
+            ($0.startedAt ?? .distantPast) < ($1.startedAt ?? .distantPast)
+        }
+    }
+
+    private var sessionTranscript: [TranscriptSegment] {
+        guard let id = sessionAppointment?.id else { return [] }
+        return state.transcript.filter { $0.appointmentID == id }
+    }
+
+    private var summaryEvidence: [TherapySummaryEvidence] {
+        guard let id = sessionAppointment?.id,
+              state.artifacts.contains(where: { $0.kind == .sessionSummary && $0.sourceIDs.contains(id) }) else { return [] }
+        return TherapySummaryEvidence.items.filter { TherapySummaryEvidence.segment(for: $0.id, in: sessionTranscript) != nil }
+    }
+
+    private var sessionMetadata: String {
+        guard let appointment = sessionAppointment else { return "Saved on this device" }
+        let date = (appointment.startedAt ?? appointment.scheduledAt)?.formatted(.dateTime.month(.abbreviated).day()) ?? "Date not recorded"
+        let duration: String
+        if let start = appointment.startedAt, let end = appointment.endedAt {
+            duration = "\(max(0, Int(end.timeIntervalSince(start) / 60))) min"
+        } else {
+            duration = "Duration not recorded"
+        }
+        return "\(date) · \(duration) · Saved on this device"
+    }
+
+    private func playRecording() {
+        guard let id = sessionAppointment?.recordingAttachmentID,
+              let attachment = state.attachments.first(where: { $0.id == id }) else { return }
+        Task { try? await state.dependencies.playback.play(attachment: attachment) }
     }
 
     private func openEvidence(_ id: UUID) {
@@ -239,7 +287,7 @@ private struct TranscriptRow: View {
 
     private var speakerColor: Color {
         switch speaker {
-        case .patient: DesignTokens.orangePressed
+        case .patient: DesignTokens.cocoa
         case .provider: DesignTokens.cocoa
         case .unknown: DesignTokens.cocoaSoft
         }
@@ -257,6 +305,12 @@ private struct CareLedger: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if items.isEmpty {
+                Text("Nothing saved here yet.")
+                    .font(TypeScale.label)
+                    .foregroundStyle(DesignTokens.cocoaSoft)
+                    .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
+            }
             ForEach(items) { item in
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
                     Text(item.text).font(TypeScale.body).fixedSize(horizontal: false, vertical: true)
@@ -271,6 +325,7 @@ private struct CareLedger: View {
 }
 
 private struct PlaybackScrubber: View {
+    let onPlay: () -> Void
     @State private var position = 768.0
 
     var body: some View {
@@ -287,8 +342,10 @@ private struct PlaybackScrubber: View {
                 .tint(DesignTokens.orange)
                 .frame(minHeight: DesignTokens.controlMinimum)
                 .accessibilityLabel("Playback position")
-            Text("Playing from the saved transcript")
+            Text("Saved session audio")
                 .font(TypeScale.bodyMedium)
+            Button("Play recording", action: onPlay)
+                .buttonStyle(SecondaryButtonStyle())
         }
         .padding(DesignTokens.Spacing.base)
         .background(DesignTokens.surface)

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum JournalDetailTab: String, CaseIterable, Sendable {
     case original = "Original"
@@ -10,116 +11,194 @@ struct JournalDetailView: View {
     @Bindable var navigation: NavigationModel
     @Bindable var state: DemoState
     @State private var selection = JournalDetailTab.original
+    @State private var isEditing = false
+    @State private var editText = ""
+    @State private var confirmingDelete = false
+    @State private var sourceImage: UIImage?
+    @State private var isSaving = false
+    @State private var isDeleting = false
+    @State private var isAddingPoint = false
 
     private var entry: JournalEntry? {
-        SeededData.journalEntries.first { $0.id == SeededData.footballJournalID }
+        if let id = state.selectedJournalID,
+           let selected = state.journals.first(where: { $0.id == id }) {
+            return selected
+        }
+        return state.journals.max { $0.updatedAt < $1.updatedAt }
     }
 
     var body: some View {
         ScreenLayout(
-            title: "Football and guilt",
+            title: entry?.title ?? "Journal entry",
             backAction: navigation.backAction(for: .journalDetail),
-            trailing: AnyView(
-                Button("More") { navigation.navigate(to: .journalSuggestions) }
-                    .font(TypeScale.bodyMedium)
-                    .foregroundStyle(DesignTokens.cocoa)
-                    .frame(minWidth: DesignTokens.controlMinimum, minHeight: DesignTokens.controlMinimum)
-            )
+            trailing: entry == nil ? nil : AnyView(editButton)
         ) {
-            UnderlinePicker(options: JournalDetailTab.allCases, selection: $selection) { $0.rawValue }
+            if let entry {
+                sourceAttachment(for: entry)
+                if isEditing {
+                    editor(for: entry)
+                } else {
+                    detail(for: entry)
+                }
+            } else {
+                StatusNotice(title: "No journal entries yet", detail: "Talk, write, or take a photo when you want to remember something.", kind: .information)
+            }
+        }
+        .task(id: entry?.originalAttachmentID) { await loadSourceImage() }
+    }
 
+    private var editButton: some View {
+        Button(isEditing ? "Cancel" : "Edit") {
+            guard let entry else { return }
+            editText = entry.rawText
+            isEditing.toggle()
+            confirmingDelete = false
+        }
+        .font(TypeScale.bodyMedium)
+        .foregroundStyle(DesignTokens.cocoa)
+        .frame(minWidth: DesignTokens.controlMinimum, minHeight: DesignTokens.controlMinimum)
+    }
+
+    @ViewBuilder
+    private func sourceAttachment(for entry: JournalEntry) -> some View {
+        if let attachment = attachment(for: entry) {
+            if attachment.kind == .image {
+                if let sourceImage {
+                    Image(uiImage: sourceImage)
+                        .resizable()
+                        .scaledToFit()
+                        .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
+                        .accessibilityLabel("Original journal photo")
+                } else {
+                    StatusNotice(title: "Original photo unavailable", detail: "The journal entry is still here.", kind: .warning)
+                }
+            } else if attachment.kind == .audio {
+                Button {
+                    Task { try? await state.dependencies.playback.play(attachment: attachment) }
+                } label: {
+                    Label("Play original audio", systemImage: AppIcon.play.rawValue)
+                }
+                .buttonStyle(SecondaryButtonStyle())
+            }
+        }
+    }
+
+    private func detail(for entry: JournalEntry) -> some View {
+        Group {
+            UnderlinePicker(options: availableTabs(for: entry), selection: $selection) { $0.rawValue }
             VStack(alignment: .leading, spacing: DesignTokens.Spacing.medium) {
-                tabContent
-                ProvenanceLine(provenance: provenance)
+                tabContent(entry)
+                ProvenanceLine(provenance: provenance(for: entry))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-
-            considerationCard
+            Button {
+                guard !isAddingPoint else { return }
+                isAddingPoint = true
+                Task {
+                    _ = await state.createTalkingPoint(text: entry.title, source: .journal, sourceID: entry.id)
+                    isAddingPoint = false
+                }
+            } label: {
+                Label(isAddingPoint ? "Adding" : "Add to next appointment", systemImage: AppIcon.listPlus.rawValue)
+            }
+            .buttonStyle(SecondaryButtonStyle())
+            .disabled(isAddingPoint)
         }
     }
 
     @ViewBuilder
-    private var tabContent: some View {
+    private func tabContent(_ entry: JournalEntry) -> some View {
         switch selection {
         case .original:
-            Text(entry?.rawText ?? "This journal entry is unavailable.")
-                .font(TypeScale.body)
-                .fixedSize(horizontal: false, vertical: true)
-        case .cleaned:
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.base) {
-                Text(entry?.cleanedText ?? "No cleaned version is available.")
-                    .font(TypeScale.body)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("This version organizes your wording. The Original tab remains unchanged.")
-                    .font(TypeScale.label)
-                    .foregroundStyle(DesignTokens.cocoaSoft)
-            }
-        case .summary:
-            let items = entry?.summaryItems ?? []
-            if items.isEmpty {
-                Text("No summary is available. Your original is unchanged.")
+            if entry.rawText.isEmpty && entry.inputType != .text {
+                Text(entry.inputType == .voice ? "Voice journal" : "Photo journal")
                     .font(TypeScale.body)
             } else {
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.base) {
-                    ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                        HStack(alignment: .top, spacing: DesignTokens.Spacing.small) {
-                            KernelGlyph(voice: .candyCorn, height: 16)
-                                .padding(.top, 3)
-                            Text(item)
-                                .font(TypeScale.body)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+                Text(entry.rawText).font(TypeScale.body).fixedSize(horizontal: false, vertical: true)
+            }
+        case .cleaned:
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.base) {
+                Text(entry.cleanedText ?? "No cleaned version is available.").font(TypeScale.body)
+                Text("Your original remains unchanged.").font(TypeScale.provenance).foregroundStyle(DesignTokens.cocoaSoft)
+            }
+        case .summary:
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.base) {
+                ForEach(Array(entry.summaryItems.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .top, spacing: DesignTokens.Spacing.small) {
+                        KernelGlyph(voice: .candyCorn, height: 16)
+                        Text(item).font(TypeScale.body)
                     }
                 }
             }
         }
     }
 
-    private var provenance: Provenance {
-        if selection == .summary {
-            return Provenance(
-                voice: .candyCorn,
-                label: "Candy Corn organized this",
-                detail: "Organized from your Sep 5 voice journal.",
-                occurredAt: nil,
-                sourceRoute: .journalDetail
-            )
+    private func editor(for entry: JournalEntry) -> some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.base) {
+            TextEditor(text: $editText)
+                .font(TypeScale.body)
+                .frame(minHeight: 240)
+                .overlay(RoundedRectangle(cornerRadius: DesignTokens.controlRadius).stroke(DesignTokens.hairline))
+            Button(isSaving ? "Saving" : "Save changes") {
+                guard !isSaving else { return }
+                isSaving = true
+                Task {
+                    if await state.editJournal(id: entry.id, rawText: editText) { isEditing = false }
+                    isSaving = false
+                }
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(isSaving || editText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            if confirmingDelete {
+                Text("Delete this journal entry? The original attachment is kept until the vault removes it.")
+                    .font(TypeScale.label)
+                    .foregroundStyle(DesignTokens.cocoaSoft)
+                Button(isDeleting ? "Deleting" : "Delete journal", role: .destructive) {
+                    guard !isDeleting else { return }
+                    isDeleting = true
+                    Task {
+                        if await state.deleteJournal(id: entry.id) { navigation.goBack(from: .journalDetail) }
+                        isDeleting = false
+                    }
+                }
+                .buttonStyle(DangerButtonStyle())
+                .disabled(isDeleting)
+            } else {
+                Button("Delete journal") { confirmingDelete = true }
+                    .buttonStyle(SecondaryButtonStyle())
+            }
         }
-        return Provenance(
-            voice: .user,
-            label: selection == .original ? "You said this" : "Your words, organized",
-            detail: "Voice journal, Sep 5 at 3:18 PM",
-            occurredAt: nil,
-            sourceRoute: .journalDetail
-        )
     }
 
-    private var considerationCard: some View {
-        let point = JournalSuggestionFixtures.guiltPoint
-        let added = state.talkingPoints.contains { $0.id == point.id }
-        return VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
-            Text("Something to consider")
-                .font(TypeScale.sectionCompact)
-            Divider().overlay(DesignTokens.hairline)
-            Text("Would you like to bring up why feeling better can create guilt?")
-                .font(TypeScale.body)
-                .fixedSize(horizontal: false, vertical: true)
-            ProvenanceLine(provenance: point.provenance, compact: true)
-            Button {
-                _ = state.addTalkingPoint(point)
-            } label: {
-                Label(added ? "Added" : "Add", systemImage: added ? AppIcon.check.rawValue : AppIcon.listPlus.rawValue)
-                    .font(TypeScale.bodyMedium)
-                    .frame(minHeight: DesignTokens.controlMinimum)
-                    .padding(.horizontal, DesignTokens.Spacing.base)
-                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(added ? DesignTokens.sage : DesignTokens.cocoa, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(added ? DesignTokens.sage : DesignTokens.cocoa)
-            .disabled(added)
+    private func availableTabs(for entry: JournalEntry) -> [JournalDetailTab] {
+        var tabs: [JournalDetailTab] = [.original]
+        if entry.cleanedText != nil { tabs.append(.cleaned) }
+        if !entry.summaryItems.isEmpty { tabs.append(.summary) }
+        return tabs
+    }
+
+    private func provenance(for entry: JournalEntry) -> Provenance {
+        if selection == .summary {
+            return Provenance(voice: .candyCorn, label: "Candy Corn organized this", detail: "Derived from your original", occurredAt: entry.updatedAt, sourceRoute: .journalDetail)
         }
-        .padding(DesignTokens.Spacing.base)
-        .background(DesignTokens.surfaceWarm)
-        .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
+        return entry.provenance
+    }
+
+    private func attachment(for entry: JournalEntry) -> Attachment? {
+        let id = entry.originalAttachmentID ?? entry.audioAttachmentID
+        return state.attachments.first { $0.id == id }
+    }
+
+    private func loadSourceImage() async {
+        guard let entry, let attachment = attachment(for: entry), attachment.kind == .image else {
+            sourceImage = nil
+            return
+        }
+        do {
+            let url = try await state.dependencies.attachments.url(for: attachment)
+            sourceImage = UIImage(contentsOfFile: url.path)
+        } catch {
+            sourceImage = nil
+        }
     }
 }

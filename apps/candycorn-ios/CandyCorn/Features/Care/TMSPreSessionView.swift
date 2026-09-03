@@ -49,6 +49,7 @@ struct TMSPreSessionView: View {
     @State private var snapshot = TMSCheckInSnapshot(mood: 6, anxiety: 7, energy: 4, distress: 6)
     @State private var bothering = "The guilt that shows up after I start feeling better."
     @State private var providerFocus = "Mention any sleep changes before today’s session."
+    @State private var isAdding = false
 
     var body: some View {
         ScreenLayout(
@@ -61,7 +62,7 @@ struct TMSPreSessionView: View {
             noteField(title: "What has been bothering you most today?", text: $bothering)
             Button(isAdded ? "Added for the provider" : "Add this to tell the provider", action: addForProvider)
                 .buttonStyle(SecondaryButtonStyle())
-                .disabled(trimmedBothering.isEmpty || isAdded)
+                .disabled(trimmedBothering.isEmpty || isAdded || isAdding)
                 .accessibilityHint(trimmedBothering.isEmpty ? "Enter a note before adding it" : "Adds this note once")
             noteField(title: "Provider-supplied focus item", text: $providerFocus)
             ProvenanceLine(provenance: providerProvenance)
@@ -118,10 +119,14 @@ struct TMSPreSessionView: View {
             targetAppointmentKind: .tms,
             isImportant: false,
             status: .open,
-            createdAt: Date(timeIntervalSince1970: 1_788_654_600),
+            createdAt: state.dependencies.now(),
             provenance: Provenance(voice: .user, label: "You chose to tell the provider", detail: "TMS pre-session check-in", occurredAt: nil, sourceRoute: .tmsPre)
         )
-        _ = state.addTalkingPoint(point)
+        isAdding = true
+        Task {
+            _ = await state.saveTalkingPoint(point)
+            isAdding = false
+        }
     }
 }
 

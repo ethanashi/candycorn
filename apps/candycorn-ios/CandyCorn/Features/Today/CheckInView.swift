@@ -45,6 +45,8 @@ struct CheckInDraft: Equatable, Sendable {
             note: cleanedNote.isEmpty ? nil : cleanedNote
         )
     }
+
+    mutating func retrySave() { saveStarted = false }
 }
 
 struct CheckInView: View {
@@ -144,7 +146,12 @@ struct CheckInView: View {
 
     private func save() {
         guard let mood = draft.beginSave() else { return }
-        state.saveMood(mood)
-        navigation.dismissPresentedFlow()
+        Task {
+            if await state.persistMood(mood) {
+                navigation.goBack(from: .checkIn)
+            } else {
+                draft.retrySave()
+            }
+        }
     }
 }

@@ -105,25 +105,38 @@ struct NavigationIntegrationTests {
         #expect(NavigationModel(arguments: ["CandyCorn", "-screen", Route.settingsData.rawValue]).selectedSettingsSection == .data)
     }
 
-    @Test("Back behavior covers roots, pushes, and full-screen flows")
+    @Test("Back behavior covers every root, pushed route, and full-screen flow")
     func backBehavior() {
-        for root in AppTab.allCases.map(\.rootRoute) {
+        for root in Route.allCases where root.presentation == .root {
             let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", root.rawValue])
+            let selectedTab = navigation.selectedTab
             navigation.goBack(from: root)
             #expect(!navigation.canGoBack(from: root))
+            #expect(navigation.selectedTab == selectedTab)
+            #expect(navigation.presentedFlow == nil)
         }
 
-        let pushed = NavigationModel(arguments: ["CandyCorn", "-screen", Route.today.rawValue])
-        pushed.navigate(to: .goals)
-        #expect(pushed.canGoBack(from: .goals))
-        pushed.goBack(from: .goals)
-        #expect(pushed.todayPath.isEmpty)
+        for route in Route.allCases where route.presentation == .pushed {
+            let tab = route.tab!
+            let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", tab.rootRoute.rawValue])
+            navigation.navigate(to: route)
+            #expect(navigation.canGoBack(from: route))
+            #expect(navigation.backAction(for: route) != nil)
+            navigation.goBack(from: route)
+            #expect(!navigation.canGoBack(from: route))
+            #expect(navigation.presentedFlow == nil)
+        }
 
-        let flow = NavigationModel(arguments: ["CandyCorn", "-screen", Route.today.rawValue])
-        flow.navigate(to: .checkIn)
-        #expect(flow.canGoBack(from: .checkIn))
-        flow.goBack(from: .checkIn)
-        #expect(flow.presentedFlow == nil)
+        for route in Route.allCases where route.presentation == .fullScreen {
+            let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", Route.today.rawValue])
+            navigation.navigate(to: route)
+            #expect(navigation.presentedFlow == route)
+            #expect(navigation.canGoBack(from: route))
+            #expect(navigation.backAction(for: route) != nil)
+            navigation.goBack(from: route)
+            #expect(navigation.presentedFlow == nil)
+            #expect(!navigation.canGoBack(from: route))
+        }
     }
 
     @Test("Completing onboarding opens Today")

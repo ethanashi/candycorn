@@ -5,6 +5,63 @@ import Testing
 @Suite("Continuity features")
 @MainActor
 struct ContinuityFeatureTests {
+    @Test("Goal lifecycle persists provenance and completion once")
+    func persistentGoalLifecycle() async throws {
+        let state = DemoState()
+        let original = try #require(state.goals.first { $0.status == .active })
+        let provenance = original.provenance
+        #expect(await state.transitionGoal(id: original.id, to: .completed))
+        #expect(await state.transitionGoal(id: original.id, to: .completed) == false)
+        #expect(state.goalProgress.filter { $0.goalID == original.id && $0.source == .userConfirmed }.count == 1)
+        #expect(state.goals.first { $0.id == original.id }?.provenance == provenance)
+        #expect(await state.transitionGoal(id: original.id, to: .paused))
+        #expect(await state.transitionGoal(id: original.id, to: .active))
+        #expect(await state.transitionGoal(id: original.id, to: .dismissed))
+    }
+
+    @Test("Talking point lifecycle supports add, discuss, reopen, and dismiss")
+    func persistentTalkingPointLifecycle() async throws {
+        let state = DemoState()
+        let point = try #require(await state.createTalkingPoint(text: "  Ask about the exercise plan  "))
+        #expect(point.text == "Ask about the exercise plan")
+        #expect(await state.transitionTalkingPoint(id: point.id, to: .discussed))
+        #expect(await state.transitionTalkingPoint(id: point.id, to: .open))
+        #expect(await state.transitionTalkingPoint(id: point.id, to: .dismissed))
+    }
+
+    @Test("Turning off samples keeps user entries")
+    func sampleToggle() async throws {
+        let state = DemoState()
+        let entry = try #require(await state.createJournal(rawText: "My own entry"))
+        #expect(await state.setSampleContentEnabled(false))
+        #expect(state.journals == [entry])
+        #expect(state.goals.isEmpty)
+        #expect(await state.setSampleContentEnabled(true))
+        #expect(state.journals.contains { $0.id == entry.id })
+        #expect(state.journals.count == SeededData.journalEntries.count + 1)
+    }
+
+    @Test("Latest search query wins over a slower response")
+    func latestQueryWins() async {
+        let store = InMemoryCareStore(
+            snapshot: SeededData.careSnapshot,
+            searchDelays: ["football": .milliseconds(200), "senior": .milliseconds(1)]
+        )
+        let attachments = InMemoryAttachmentStore()
+        let dependencies = AppDependencies(
+            careStore: store, maintenance: store, attachments: attachments,
+            recording: FakeRecordingService(attachments: attachments), playback: FakeAudioPlaybackService(),
+            photos: FakePhotoAttachmentService(), exporter: FakeVaultExporter(store: store, attachments: attachments),
+            logger: NoOpEventLogger(), screenshotMode: false, now: { Date() }
+        )
+        let state = DemoState(dependencies: dependencies)
+        let slow = Task { await state.search("football") }
+        await Task.yield()
+        await state.search("senior")
+        await slow.value
+        #expect(!state.searchResults.isEmpty)
+        #expect(state.searchResults.allSatisfy { $0.title.localizedCaseInsensitiveContains("senior") || $0.excerpt.localizedCaseInsensitiveContains("senior") })
+    }
     @Test("Goal cadence order and live counts match the continuity ledger")
     func goalCadences() {
         let sections = GoalLedgerModel.sections(for: SeededData.goals)
