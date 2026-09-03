@@ -22,6 +22,8 @@ The required commands run from `apps/candycorn-ios` were:
 xcodebuild -project CandyCorn.xcodeproj -scheme CandyCorn -scmProvider system -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/cc-dd CODE_SIGNING_ALLOWED=NO build test
 ```
 
+A final worker recheck reproduced exit 74 with the documented pre-resolved `dd5` directory, `-disableAutomaticPackageResolution`, and `-scmProvider system`. A generic simulator build with writable package caches also stopped before compilation because the managed process could not apply Xcode's package sandbox. `xcrun simctl list devices available` returned connection refused, so no replacement capture could be produced. As limited build-independent checks, all 113 Swift source and test files passed `swiftc -frontend -parse`, and the repository workspace passed typecheck, all 82 web tests, and the production Vite build. These checks do not replace the required native build and 185 declared native tests.
+
 Project generation succeeded. The required build and test command exited 74 with:
 
 ```text
