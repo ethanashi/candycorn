@@ -790,7 +790,7 @@ final class DemoState {
             return .session(appointment, SourceTextDocument(
                 id: appointment.id,
                 kind: .sessionNotes,
-                title: "Manual notes from (appointment.kind.displayName.lowercased())",
+                title: "Manual notes from \(appointment.kind.displayName.lowercased())",
                 text: notes,
                 occurredAt: appointment.endedAt ?? appointment.startedAt ?? appointment.scheduledAt
             ))
@@ -898,7 +898,7 @@ final class DemoState {
         SourceTextDocument(
             id: appointment.id,
             kind: .sessionNotes,
-            title: "Last (appointment.kind.displayName.lowercased()) session notes",
+            title: "Last \(appointment.kind.displayName.lowercased()) session notes",
             text: appointment.manualNotes,
             occurredAt: appointmentDate(appointment)
         )
