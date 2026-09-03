@@ -42,13 +42,8 @@ struct CareFeatureTests {
         #expect(state.appointmentRecording == .idle)
     }
 
-    @Test("Summary evidence finds only existing transcript sources")
-    func evidenceLookup() {
-        let evidence = TherapySummaryEvidence.items[0]
-        let segment = TherapySummaryEvidence.segment(for: evidence.id, in: SeededData.transcript)
-        #expect(segment?.startMilliseconds == 744_000)
-        #expect(TherapySummaryEvidence.segment(for: UUID(), in: SeededData.transcript) == nil)
-    }
+    // The Phase 1 TherapySummaryEvidence helper was replaced by evidence-backed
+    // statements in Phase 3 (see OrganizerCareFeatureTests for their coverage).
 
     @Test("Unknown speaker correction preserves source text")
     func speakerCorrection() throws {
