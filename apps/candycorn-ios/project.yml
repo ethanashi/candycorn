@@ -14,6 +14,9 @@ packages:
   GRDB:
     url: https://github.com/sqlcipher/GRDB.swift.git
     from: 7.11.1
+  FluidAudio:
+    url: https://github.com/FluidInference/FluidAudio.git
+    from: 0.15.5
 targets:
   CandyCorn:
     type: application
@@ -33,6 +36,8 @@ targets:
     dependencies:
       - package: GRDB
         product: GRDB
+      - package: FluidAudio
+        product: FluidAudio
   CandyCornTests:
     type: bundle.unit-test
     platform: iOS
