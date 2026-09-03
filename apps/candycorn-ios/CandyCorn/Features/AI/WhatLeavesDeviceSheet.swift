@@ -138,7 +138,7 @@ struct WhatLeavesDeviceSheet: View {
                 .font(TypeScale.provenance.monospacedDigit())
                 .foregroundStyle(DesignTokens.cocoaSoft)
         }
-        .frame(maxWidth: .infinity, minHeight: DesignTokens.hero, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: DesignTokens.Spacing.hero, alignment: .leading)
         .padding(.vertical, DesignTokens.Spacing.compact)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(AISendDisclosureText.sourceAccessibilityLabel(source))

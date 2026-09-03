@@ -80,7 +80,7 @@ struct AIProcessingStatusView: View {
                 .foregroundStyle(DesignTokens.cocoaSoft)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity, minHeight: DesignTokens.hero, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: DesignTokens.Spacing.hero, alignment: .leading)
         .padding(.vertical, DesignTokens.Spacing.small)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.accessibilityLabel)
