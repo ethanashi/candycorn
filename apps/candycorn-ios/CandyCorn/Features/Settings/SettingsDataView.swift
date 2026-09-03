@@ -63,8 +63,11 @@ struct SettingsDataView: View {
             if embedded {
                 content
             } else {
-                ScreenLayout(title: "Data and export", subtitle: "Choose what stays on this phone and export a readable copy.") {
-                    SettingsSectionPicker(navigation: navigation)
+                ScreenLayout(
+                    title: "Data and export",
+                    subtitle: "Choose what stays on this phone and export a readable copy.",
+                    backAction: navigation.backAction(for: .settingsData)
+                ) {
                     content
                 }
             }

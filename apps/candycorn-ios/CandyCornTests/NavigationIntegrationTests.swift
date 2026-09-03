@@ -6,23 +6,24 @@ import Testing
 struct NavigationIntegrationTests {
     @Test("Tabs have the expected roots")
     func tabRoots() {
+        #expect(AppTab.allCases == [.goals, .journal, .today, .history, .settings])
+        #expect(AppTab.goals.rootRoute == .goals)
+        #expect(AppTab.journal.rootRoute == .journal)
         #expect(AppTab.today.rootRoute == .today)
-        #expect(AppTab.journal.rootRoute == .capture)
-        #expect(AppTab.prepare.rootRoute == .prepareTherapy)
         #expect(AppTab.history.rootRoute == .history)
-        #expect(AppTab.settings.rootRoute == .settingsPrivacy)
+        #expect(AppTab.settings.rootRoute == .settings)
     }
 
     @Test("Every route has the expected tab ownership")
     func routeOwnership() {
         let expected: [Route: AppTab] = [
-            .today: .today, .checkIn: .today, .goals: .today,
-            .bringUp: .today, .appointments: .today,
-            .capture: .journal, .journalVoice: .journal, .journalWrite: .journal,
+            .today: .today, .checkIn: .today, .appointments: .today,
+            .tmsPre: .today, .prepareTherapy: .today, .prepareTMS: .today,
+            .goals: .goals, .bringUp: .goals,
+            .journal: .journal, .capture: .journal, .journalVoice: .journal, .journalWrite: .journal,
             .journalPhoto: .journal, .journalDetail: .journal, .journalSuggestions: .journal,
             .therapySession: .history, .tmsPost: .history, .history: .history, .search: .history,
-            .tmsPre: .prepare, .prepareTherapy: .prepare, .prepareTMS: .prepare,
-            .settingsPrivacy: .settings, .settingsAI: .settings, .settingsData: .settings,
+            .settings: .settings, .settingsPrivacy: .settings, .settingsAI: .settings, .settingsData: .settings,
         ]
         let unowned: Set<Route> = [.welcome, .recordAppointment, .activeAppointment]
 
@@ -40,12 +41,13 @@ struct NavigationIntegrationTests {
     @Test("Floating navigation visibility is explicit")
     func floatingNavigationVisibility() {
         let visible: Set<Route> = [
-            .today, .journalDetail, .journalSuggestions, .goals, .bringUp,
+            .today, .goals, .journal, .history, .settings,
+            .journalDetail, .journalSuggestions, .bringUp,
             .appointments, .therapySession, .prepareTherapy, .prepareTMS,
-            .history, .search, .settingsPrivacy, .settingsAI, .settingsData,
+            .search, .settingsPrivacy, .settingsAI, .settingsData,
         ]
 
-        #expect(visible.count == 14)
+        #expect(visible.count == 16)
         for route in Route.allCases {
             #expect(route.showsFloatingTabBar == visible.contains(route))
         }
@@ -78,31 +80,34 @@ struct NavigationIntegrationTests {
     @Test("Switching tabs retains each navigation path")
     func tabPathRetention() {
         let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", Route.today.rawValue])
-        navigation.navigate(to: .goals)
+        navigation.navigate(to: .appointments)
         navigation.navigate(to: .journalDetail)
         navigation.openSettings(.ai)
 
-        #expect(navigation.todayPath == [.goals])
+        #expect(navigation.todayPath == [.appointments])
         #expect(navigation.journalPath == [.journalDetail])
-        #expect(navigation.settingsPath.isEmpty)
+        #expect(navigation.settingsPath == [.settingsAI])
         #expect(navigation.selectedSettingsSection == .ai)
         navigation.select(.today)
-        #expect(navigation.todayPath == [.goals])
+        #expect(navigation.todayPath == [.appointments])
         #expect(navigation.journalPath == [.journalDetail])
-        #expect(navigation.settingsPath.isEmpty)
+        #expect(navigation.settingsPath == [.settingsAI])
     }
 
-    @Test("Settings sections switch in place and deep links select their section")
+    @Test("Settings sections open as one pushed detail each and never stack")
     func settingsSections() {
-        let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", Route.settingsPrivacy.rawValue])
+        let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", Route.settings.rawValue])
         for section in SettingsSection.allCases {
             navigation.openSettings(section)
-            #expect(navigation.settingsPath.isEmpty)
+            #expect(navigation.settingsPath == [section.route])
             #expect(navigation.presentedFlow == nil)
+            #expect(navigation.selectedTab == .settings)
             #expect(navigation.selectedSettingsSection == section)
+            #expect(navigation.canGoBack(from: section.route))
         }
-        #expect(NavigationModel(arguments: ["CandyCorn", "-screen", Route.settingsAI.rawValue]).selectedSettingsSection == .ai)
-        #expect(NavigationModel(arguments: ["CandyCorn", "-screen", Route.settingsData.rawValue]).selectedSettingsSection == .data)
+        navigation.goBack(from: .settingsData)
+        #expect(navigation.settingsPath.isEmpty)
+        #expect(NavigationModel(arguments: ["CandyCorn", "-screen", Route.settingsAI.rawValue]).selectedTab == .settings)
     }
 
     @Test("Back behavior covers every root, pushed route, and full-screen flow")
@@ -146,7 +151,7 @@ struct NavigationIntegrationTests {
     @Test("Root navigation clears only the destination stack")
     func rootNavigation() {
         let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", Route.today.rawValue])
-        navigation.navigate(to: .goals)
+        navigation.navigate(to: .appointments)
         navigation.navigate(to: .journalDetail)
         navigation.navigate(to: .search)
 
@@ -154,7 +159,7 @@ struct NavigationIntegrationTests {
 
         #expect(navigation.selectedTab == .history)
         #expect(navigation.historyPath.isEmpty)
-        #expect(navigation.todayPath == [.goals])
+        #expect(navigation.todayPath == [.appointments])
         #expect(navigation.journalPath == [.journalDetail])
         #expect(!navigation.canGoBack(from: .history))
         #expect(navigation.backAction(for: .history) == nil)
@@ -163,17 +168,17 @@ struct NavigationIntegrationTests {
     @Test("Back ignores a pushed route that is not on top")
     func nonTopBack() {
         let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", Route.today.rawValue])
-        navigation.navigate(to: .goals)
         navigation.navigate(to: .appointments)
+        navigation.navigate(to: .prepareTherapy)
 
-        #expect(navigation.todayPath == [.goals, .appointments])
-        #expect(!navigation.canGoBack(from: .goals))
-        navigation.goBack(from: .goals)
-        #expect(navigation.todayPath == [.goals, .appointments])
-
+        #expect(navigation.todayPath == [.appointments, .prepareTherapy])
+        #expect(!navigation.canGoBack(from: .appointments))
         navigation.goBack(from: .appointments)
-        #expect(navigation.todayPath == [.goals])
-        #expect(navigation.canGoBack(from: .goals))
+        #expect(navigation.todayPath == [.appointments, .prepareTherapy])
+
+        navigation.goBack(from: .prepareTherapy)
+        #expect(navigation.todayPath == [.appointments])
+        #expect(navigation.canGoBack(from: .appointments))
     }
 
     @Test("Completing onboarding opens Today")
@@ -191,18 +196,18 @@ struct NavigationIntegrationTests {
 
     @Test("Dismissing a flow returns to its retained source")
     func flowDismissal() {
-        let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", Route.goals.rawValue])
+        let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", Route.bringUp.rawValue])
         navigation.navigate(to: .checkIn)
         #expect(navigation.presentedFlow == .checkIn)
         #expect(navigation.launchRoute == nil)
-        #expect(navigation.todayPath == [.goals])
+        #expect(navigation.goalsPath == [.bringUp])
 
         navigation.dismissPresentedFlow()
         navigation.dismissPresentedFlow()
 
         #expect(navigation.presentedFlow == nil)
-        #expect(navigation.selectedTab == .today)
-        #expect(navigation.todayPath == [.goals])
+        #expect(navigation.selectedTab == .goals)
+        #expect(navigation.goalsPath == [.bringUp])
     }
 
     @Test("Every pushed deep link is retained under a presented flow")
@@ -227,7 +232,7 @@ struct NavigationIntegrationTests {
     @Test("Presenting and switching tabs retain every tab path")
     func flowAndTabRetention() {
         let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", Route.today.rawValue])
-        navigation.navigate(to: .goals)
+        navigation.navigate(to: .bringUp)
         navigation.navigate(to: .journalDetail)
         navigation.navigate(to: .prepareTMS)
         navigation.navigate(to: .search)
@@ -274,9 +279,9 @@ struct NavigationIntegrationTests {
 
     private func path(in navigation: NavigationModel, for tab: AppTab) -> [Route] {
         switch tab {
-        case .today: navigation.todayPath
+        case .goals: navigation.goalsPath
         case .journal: navigation.journalPath
-        case .prepare: navigation.preparePath
+        case .today: navigation.todayPath
         case .history: navigation.historyPath
         case .settings: navigation.settingsPath
         }

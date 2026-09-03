@@ -1,168 +1,298 @@
 import SwiftUI
 
-enum TodaySectionKind: Equatable, Sendable {
-    case appointment
-    case talkingPoint(UUID)
-    case currentGoal(UUID)
-}
-
-enum TodayOrderingModel {
-    static func sections(talkingPoints: [TalkingPoint], currentGoal: Goal?) -> [TodaySectionKind] {
-        var result: [TodaySectionKind] = [.appointment]
-        result.append(contentsOf: talkingPoints.filter { $0.status == .open }.prefix(3).map { .talkingPoint($0.id) })
-        if let currentGoal { result.append(.currentGoal(currentGoal.id)) }
-        return result
-    }
-}
-
+/// Today, on the Flo skeleton approved September 2, 2026 (docs/design/v2/today.html).
+/// One dominant object (Talk), then how you are, the next appointment, and one goal.
+/// The composition fills the space above the tab bar; the hero absorbs the slack.
 struct TodayView: View {
     @Bindable var navigation: NavigationModel
     @Bindable var state: DemoState
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
+    /// Fixed heights of every block except the hero, plus the gaps and paddings around them.
+    private static let headerHeight: CGFloat = 36
+    private static let weekHeight: CGFloat = 60
+    private static let moodHeight: CGFloat = 80
+    private static let appointmentHeight: CGFloat = 82
+    private static let upNextHeight: CGFloat = 96
+    private static var fixedTotal: CGFloat {
+        headerHeight + weekHeight + moodHeight + appointmentHeight + upNextHeight
+            + DesignTokens.blockGap * 5 + DesignTokens.Spacing.small + DesignTokens.blockGap
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                context
-                Text("Today")
-                    .font(TypeScale.pageTitle)
-                    .foregroundStyle(DesignTokens.cocoa)
-                    .padding(.top, DesignTokens.Spacing.compact)
-                moodSection
-                    .padding(.top, DesignTokens.Spacing.medium)
-                captureActions
-                    .padding(.top, DesignTokens.Spacing.medium)
-                appointment
-                    .padding(.top, DesignTokens.Spacing.large)
-                ledger
-                    .padding(.top, DesignTokens.Spacing.large)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                ScrollView {
+                    blocks(heroHeight: 240)
+                        .padding(.bottom, DesignTokens.Spacing.large)
+                }
+            } else {
+                GeometryReader { geometry in
+                    blocks(heroHeight: max(200, geometry.size.height - Self.fixedTotal))
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, DesignTokens.screenInset)
-            .padding(.top, DesignTokens.Spacing.compact)
-            .padding(.bottom, 128)
         }
         .background(DesignTokens.canvas.ignoresSafeArea())
     }
 
-    private var context: some View {
+    private func blocks(heroHeight: CGFloat) -> some View {
+        VStack(spacing: DesignTokens.blockGap) {
+            header
+                .frame(height: Self.headerHeight)
+            WeekStrip(today: now, markedDays: markedDays)
+                .frame(height: Self.weekHeight)
+            hero
+                .frame(height: heroHeight)
+            moodCard
+                .frame(height: Self.moodHeight)
+            appointmentBand
+                .frame(height: Self.appointmentHeight)
+            upNextCard
+                .frame(height: Self.upNextHeight)
+        }
+        .padding(.horizontal, DesignTokens.screenInset)
+        .padding(.top, DesignTokens.Spacing.small)
+        .padding(.bottom, DesignTokens.blockGap)
+    }
+
+    // MARK: Header
+
+    private var header: some View {
         HStack {
-            Text(state.dependencies.now().formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
+            Text(now.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
+                .font(TypeScale.label)
+                .foregroundStyle(DesignTokens.cocoaSoft)
                 .monospacedDigit()
             Spacer()
-            Text("Jamie")
-                .font(TypeScale.label)
+            Text(String(SeededData.patientName.prefix(1)))
+                .font(TypeScale.rowTitleCompact)
                 .foregroundStyle(DesignTokens.cocoa)
+                .frame(width: 34, height: 34)
+                .background(DesignTokens.surfaceWarm)
+                .clipShape(Circle())
+                .accessibilityLabel(SeededData.patientName)
         }
-        .font(TypeScale.label)
-        .foregroundStyle(DesignTokens.cocoaSoft)
-        .accessibilityElement(children: .combine)
+        .frame(height: 36)
     }
 
-    private var moodSection: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Text("How are you doing?")
-                .font(TypeScale.question)
-                .foregroundStyle(DesignTokens.cocoa)
-            if state.mood == nil {
-                Text("No check-in yet")
-                    .font(TypeScale.label)
+    // MARK: Hero
+
+    private var hero: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: DesignTokens.heroRadius, style: .continuous)
+                .fill(DesignTokens.surfaceWarm)
+            GeometryReader { geometry in
+                ZStack {
+                    Circle().fill(Color.white.opacity(0.5))
+                        .frame(width: 180, height: 180)
+                        .position(x: 20, y: 20)
+                    Circle().fill(Color.white.opacity(0.5))
+                        .frame(width: 220, height: 220)
+                        .position(x: geometry.size.width - 20, y: geometry.size.height)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: DesignTokens.heroRadius, style: .continuous))
+            .accessibilityHidden(true)
+
+            HStack(alignment: .center, spacing: 0) {
+                heroSide(title: "Write", icon: .pencil) { navigation.navigate(to: .journalWrite) }
+                    .frame(width: 60)
+                Spacer(minLength: DesignTokens.Spacing.small)
+                talkButton
+                Spacer(minLength: DesignTokens.Spacing.small)
+                heroSide(title: "Photo", icon: .camera) { navigation.navigate(to: .journalPhoto) }
+                    .frame(width: 60)
+            }
+            .padding(.horizontal, 22)
+            .offset(y: -10)
+
+            VStack {
+                Spacer()
+                Text("Say it messy. It stays on this phone.")
+                    .font(TypeScale.provenance)
                     .foregroundStyle(DesignTokens.cocoaSoft)
+                    .padding(.bottom, DesignTokens.Spacing.compact)
             }
-            Button { navigation.navigate(to: .checkIn) } label: {
-                MoodBands(values: moodValues)
-                    .contentShape(Rectangle())
+        }
+    }
+
+    private var talkButton: some View {
+        Button { navigation.navigate(to: .journalVoice) } label: {
+            VStack(spacing: 4) {
+                AppIcon.microphone.image
+                    .font(.system(size: 36, weight: .regular))
+                Text("Talk")
+                    .font(TypeScale.heroTitle)
+                Text("Hold or tap")
+                    .font(TypeScale.meta)
+                    .opacity(0.92)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Open quick mood check-in")
-            .accessibilityValue(moodAccessibilityValue)
+            .foregroundStyle(.white)
+            .frame(width: 140, height: 140)
+            .background(
+                Circle()
+                    .fill(DesignTokens.orange)
+                    .shadow(color: DesignTokens.orangePressed, radius: 0, x: 0, y: 6)
+            )
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Talk")
+        .accessibilityHint("Starts a voice journal")
     }
 
-    @ViewBuilder private var captureActions: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            VStack(spacing: DesignTokens.Spacing.small) { actionButtons }
-        } else {
-            HStack(spacing: DesignTokens.Spacing.small) { actionButtons }
+    private func heroSide(title: String, icon: AppIcon, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                icon.image
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(DesignTokens.cocoa)
+                    .frame(width: 56, height: 56)
+                    .background(Color.white)
+                    .clipShape(Circle())
+                    .shadow(color: DesignTokens.cocoa.opacity(0.06), radius: 8, x: 0, y: 2)
+                Text(title)
+                    .font(TypeScale.metaStrong)
+                    .foregroundStyle(DesignTokens.cocoa)
+            }
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 
-    @ViewBuilder private var actionButtons: some View {
-        TodayActionButton(title: "Talk", icon: .microphone, prominent: true) {
-            navigation.navigate(to: .journalVoice)
+    // MARK: Mood
+
+    private var moodCard: some View {
+        Button { navigation.navigate(to: .checkIn) } label: {
+            HStack(spacing: DesignTokens.blockGap) {
+                MoodMiniBars(values: moodValues)
+                Spacer(minLength: DesignTokens.Spacing.small)
+                HStack(spacing: 2) {
+                    Text("Check in")
+                        .font(TypeScale.label)
+                    AppIcon.chevronRight.image
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .foregroundStyle(DesignTokens.cocoa)
+            }
+            .padding(.horizontal, DesignTokens.Spacing.base)
+            .frame(maxWidth: .infinity, minHeight: 80, alignment: .leading)
+            .background(DesignTokens.surface)
+            .overlay(RoundedRectangle(cornerRadius: DesignTokens.v2CardRadius, style: .continuous).stroke(DesignTokens.hairline, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: DesignTokens.v2CardRadius, style: .continuous))
+            .contentShape(Rectangle())
         }
-        TodayActionButton(title: "Write", icon: .pencil) {
-            navigation.navigate(to: .journalWrite)
-        }
-        TodayActionButton(title: "Record appointment", icon: .calendar) {
-            navigation.navigate(to: .recordAppointment)
-        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Check in")
+        .accessibilityValue(moodAccessibilityValue)
     }
 
-    private var appointment: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            sectionHeading("Next appointment", actionTitle: appointmentDateLabel, action: nil)
+    // MARK: Appointment
+
+    private var appointmentBand: some View {
+        HStack(spacing: DesignTokens.blockGap) {
+            IconTile(icon: .calendar, size: 42)
+                .colorScheme(.dark)
+                .background(Color.white.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             Button {
                 if let id = nextAppointment?.id { state.selectAppointment(id: id) }
                 navigation.navigate(to: .appointments)
             } label: {
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.xSmall) {
-                    Text(appointmentTitle)
-                        .font(TypeScale.bodyMedium)
-                        .foregroundStyle(DesignTokens.cocoa)
-                    Text(appointmentTimeLabel)
-                        .font(TypeScale.label)
-                        .foregroundStyle(DesignTokens.cocoaSoft)
-                    if let appointment = nextAppointment {
-                        ProvenanceLine(
-                            provenance: Provenance(
-                                voice: .provider,
-                                label: "Provider appointment scheduled",
-                                detail: appointment.scheduledAt?.formatted(date: .abbreviated, time: .shortened) ?? "Time not set",
-                                occurredAt: appointment.scheduledAt,
-                                sourceRoute: .appointments
-                            ),
-                            compact: true
-                        )
-                        .padding(.top, DesignTokens.Spacing.small)
-                    }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(appointmentHeadline)
+                        .font(TypeScale.cardTitle)
+                        .foregroundStyle(.white)
+                    Text(appointmentDetail)
+                        .font(TypeScale.provenance)
+                        .foregroundStyle(.white.opacity(0.82))
+                        .lineLimit(1)
                 }
-                .frame(maxWidth: .infinity, minHeight: 108, alignment: .leading)
-                .padding(.horizontal, DesignTokens.Spacing.base)
-                .background(DesignTokens.surface)
-                .overlay(cardBorder)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("\(appointmentTitle), \(appointmentTimeLabel)")
+            .accessibilityLabel("\(appointmentHeadline). \(appointmentDetail)")
             .accessibilityHint("Opens appointments")
+            Button { navigation.navigate(to: nextAppointment?.kind == .tms ? .prepareTMS : .prepareTherapy) } label: {
+                Text("Prep")
+                    .font(TypeScale.label)
+                    .foregroundStyle(DesignTokens.cocoa)
+                    .padding(.horizontal, DesignTokens.blockGap)
+                    .frame(minHeight: 40)
+                    .background(DesignTokens.yellow)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Prepare for the appointment")
+        }
+        .padding(.horizontal, DesignTokens.Spacing.base)
+        .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
+        .background(DesignTokens.cocoa)
+        .clipShape(RoundedRectangle(cornerRadius: DesignTokens.v2CardRadius, style: .continuous))
+    }
+
+    // MARK: Up next
+
+    private var upNextCard: some View {
+        V2Card(padding: DesignTokens.Spacing.compact) {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.xSmall) {
+                HStack(alignment: .center) {
+                    Text("Up next")
+                        .font(TypeScale.metaStrong)
+                        .foregroundStyle(DesignTokens.cocoaSoft)
+                    Spacer()
+                    Button { navigation.navigate(to: .goals) } label: {
+                        HStack(spacing: 2) {
+                            Text("\(openGoals.count) \(openGoals.count == 1 ? "goal" : "goals")")
+                            AppIcon.chevronRight.image.font(.system(size: 12, weight: .semibold))
+                        }
+                        .font(TypeScale.metaStrong)
+                        .foregroundStyle(DesignTokens.cocoa)
+                        .frame(minHeight: 28)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("See all goals")
+                }
+                if let goal = upNextGoal {
+                    HStack(spacing: DesignTokens.Spacing.compact) {
+                        Button { Task { _ = await state.transitionGoal(id: goal.id, to: goal.status == .completed ? .active : .completed) } } label: {
+                            CompletionCircle(done: goal.status == .completed)
+                                .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(goal.status == .completed ? "Mark not done" : "Mark done")
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(goal.title)
+                                .font(TypeScale.rowTitle)
+                                .foregroundStyle(DesignTokens.cocoa)
+                                .lineLimit(1)
+                            ProvenanceInline(voice: goal.provenance.voice, text: "\(goal.provenance.label) · today")
+                        }
+                    }
+                } else {
+                    Text("Nothing due today. Add a goal when something matters.")
+                        .font(TypeScale.label)
+                        .foregroundStyle(DesignTokens.cocoaSoft)
+                }
+            }
         }
     }
 
-    private var ledger: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.section) {
-            let openPoints = Array(state.talkingPoints.filter { $0.status == .open }.prefix(3))
-            if !openPoints.isEmpty {
-                TalkingPointLedgerSection(points: openPoints) {
-                    navigation.navigate(to: .bringUp)
-                }
-            }
-            if let goal = currentGoal {
-                LedgerSection(title: "Current goal", actionTitle: "See goals", itemTitle: goal.title, provenance: goal.provenance) {
-                    navigation.navigate(to: .goals)
-                }
-            }
-            if let journal = state.journals.max(by: { $0.updatedAt < $1.updatedAt }) {
-                LedgerSection(
-                    title: "Recent memory",
-                    actionTitle: nil,
-                    itemTitle: journal.title,
-                    provenance: journal.provenance
-                ) {
-                    state.selectJournal(id: journal.id)
-                    navigation.navigate(to: .journalDetail)
-                }
+    // MARK: Data
+
+    private var now: Date { state.dependencies.now() }
+
+    private var markedDays: Set<DateComponents> {
+        let calendar = Calendar.current
+        var days = Set<DateComponents>()
+        for entry in state.journals { days.insert(calendar.dateComponents([.year, .month, .day], from: entry.createdAt)) }
+        for mood in state.moods { days.insert(calendar.dateComponents([.year, .month, .day], from: mood.createdAt)) }
+        for appointment in state.appointments where appointment.status == .completed {
+            if let date = appointment.startedAt ?? appointment.scheduledAt {
+                days.insert(calendar.dateComponents([.year, .month, .day], from: date))
             }
         }
+        return days
     }
 
     private var moodValues: MoodValues {
@@ -170,13 +300,17 @@ struct TodayView: View {
     }
 
     private var moodAccessibilityValue: String {
-        guard let mood = state.mood else { return "No check-in yet. Anxiety, mood, and energy not logged" }
+        guard let mood = state.mood else { return "No check-in yet" }
         return "Anxiety \(mood.anxiety.map(String.init) ?? "not logged"), mood \(mood.mood.map(String.init) ?? "not logged"), energy \(mood.energy.map(String.init) ?? "not logged")"
     }
 
-    private var currentGoal: Goal? {
-        let active = state.goals.filter { $0.status == .active || $0.status == .proposed }
-        return active.first { $0.cadence == .daily } ?? active.first
+    private var openGoals: [Goal] {
+        state.goals.filter { $0.status == .active || $0.status == .proposed }
+    }
+
+    private var upNextGoal: Goal? {
+        let active = state.goals.filter { $0.status == .active }
+        return active.first { $0.cadence == .daily || $0.cadence == .oneOff } ?? active.first
     }
 
     private var nextAppointment: Appointment? {
@@ -185,147 +319,27 @@ struct TodayView: View {
         }
     }
 
-    private var appointmentTitle: String {
-        guard let appointment = nextAppointment else { return "No appointment scheduled" }
-        return "\(appointment.kind.displayName) with \(appointment.providerName)"
-    }
-
-    private var appointmentDateLabel: String? {
-        nextAppointment?.scheduledAt?.formatted(.dateTime.month(.abbreviated).day())
-    }
-
-    private var appointmentTimeLabel: String {
-        nextAppointment?.scheduledAt?.formatted(.dateTime.weekday(.wide).hour().minute()) ?? "Add a visit when you are ready"
-    }
-
-    private var cardBorder: some View {
-        RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous)
-            .stroke(DesignTokens.hairline, lineWidth: 1)
-    }
-
-    private func sectionHeading(_ title: String, actionTitle: String?, action: (() -> Void)?) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(title).font(TypeScale.sectionCompact)
-            Spacer()
-            if let actionTitle, let action {
-                Button(actionTitle, action: action)
-                    .font(TypeScale.provenance)
-                    .frame(minHeight: DesignTokens.controlMinimum)
-            } else if let actionTitle {
-                Text(actionTitle).font(TypeScale.provenance).monospacedDigit()
-            }
-        }
-        .foregroundStyle(DesignTokens.cocoa)
-    }
-}
-
-private struct TodayActionButton: View {
-    let title: String
-    let icon: AppIcon
-    var prominent = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: DesignTokens.Spacing.xSmall) {
-                icon.image.font(.system(size: 21, weight: .medium))
-                Text(title)
-                    .font(TypeScale.label)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .foregroundStyle(DesignTokens.cocoa)
-            .frame(maxWidth: .infinity, minHeight: 64)
-            .padding(.horizontal, DesignTokens.Spacing.xSmall)
-            .background(prominent ? DesignTokens.orange : DesignTokens.surface)
-            .overlay(
-                RoundedRectangle(cornerRadius: DesignTokens.controlRadius, style: .continuous)
-                    .stroke(prominent ? DesignTokens.orange : DesignTokens.hairline, lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: DesignTokens.controlRadius, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-    }
-}
-
-private struct LedgerSection: View {
-    let title: String
-    let actionTitle: String?
-    let itemTitle: String
-    let provenance: Provenance
-    let action: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(title).font(TypeScale.sectionCompact)
-                Spacer()
-                if let actionTitle {
-                    Button(action: action) {
-                        HStack(spacing: DesignTokens.Spacing.xSmall) {
-                            Text(actionTitle)
-                            Image(systemName: "chevron.right")
-                        }
-                        .font(TypeScale.provenance)
-                        .foregroundStyle(DesignTokens.cocoa)
-                        .frame(minHeight: DesignTokens.controlMinimum)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            Button(action: action) {
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-                    Text(itemTitle)
-                        .font(TypeScale.bodyMedium)
-                        .foregroundStyle(DesignTokens.cocoa)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    ProvenanceLine(provenance: provenance, compact: true)
-                }
-                .padding(.vertical, DesignTokens.Spacing.base)
-                .overlay(alignment: .top) { Divider().overlay(DesignTokens.hairline) }
-                .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("\(itemTitle). \(provenance.label). \(provenance.detail)")
+    private var appointmentHeadline: String {
+        guard let appointment = nextAppointment else { return "No appointment yet" }
+        guard let date = appointment.scheduledAt else { return "\(appointment.kind.displayName) scheduled" }
+        let days = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: now), to: Calendar.current.startOfDay(for: date)).day ?? 0
+        switch days {
+        case ..<0: return "\(appointment.kind.displayName) was \(-days) \(days == -1 ? "day" : "days") ago"
+        case 0: return "\(appointment.kind.displayName) today"
+        case 1: return "\(appointment.kind.displayName) tomorrow"
+        default: return "\(appointment.kind.displayName) in \(days) days"
         }
     }
-}
 
-private struct TalkingPointLedgerSection: View {
-    let points: [TalkingPoint]
-    let action: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Bring up next time").font(TypeScale.sectionCompact)
-                Spacer()
-                Button(action: action) {
-                    HStack(spacing: DesignTokens.Spacing.xSmall) {
-                        Text("Open inbox")
-                        Image(systemName: "chevron.right")
-                    }
-                    .font(TypeScale.provenance)
-                    .foregroundStyle(DesignTokens.cocoa)
-                    .frame(minHeight: DesignTokens.controlMinimum)
-                }
-                .buttonStyle(.plain)
-            }
-            ForEach(points) { point in
-                Button(action: action) {
-                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-                        Text(point.text)
-                            .font(TypeScale.bodyMedium)
-                            .foregroundStyle(DesignTokens.cocoa)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        ProvenanceLine(provenance: point.provenance, compact: true)
-                    }
-                    .padding(.vertical, DesignTokens.Spacing.compact)
-                    .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
-                }
-                .buttonStyle(.plain)
-            }
+    private var appointmentDetail: String {
+        guard let appointment = nextAppointment else { return "Add a visit when you are ready" }
+        var parts: [String] = []
+        if let date = appointment.scheduledAt {
+            parts.append(date.formatted(.dateTime.weekday(.abbreviated).hour().minute()))
         }
+        parts.append(appointment.providerName)
+        let pinned = state.talkingPoints.filter { $0.status == .open }.count
+        parts.append("\(pinned) pinned")
+        return parts.joined(separator: " · ")
     }
 }

@@ -1,7 +1,9 @@
 import SwiftUI
 
+/// SF Symbol vocabulary. Names mirror the Material Symbols used in docs/design/v2.
 enum AppIcon: String, Sendable {
     case back = "chevron.left"
+    case bolt = "bolt.fill"
     case calendar = "calendar"
     case camera = "camera"
     case capture = "plus.circle.fill"
@@ -11,23 +13,35 @@ enum AppIcon: String, Sendable {
     case chevronRight = "chevron.right"
     case clock = "clock"
     case close = "xmark"
+    case cloudUpload = "icloud.and.arrow.up"
+    case cpu = "cpu"
     case download = "square.and.arrow.down"
+    case ellipsis = "ellipsis"
+    case flag = "flag"
+    case heart = "heart"
     case history = "clock.arrow.circlepath"
     case home = "house"
     case journal = "square.and.pencil"
+    case key = "key"
     case listPlus = "text.badge.plus"
     case microphone = "mic"
     case pause = "pause.fill"
     case pencil = "pencil"
+    case phone = "iphone"
     case play = "play.fill"
+    case plus = "plus"
     case prepare = "calendar.badge.clock"
     case search = "magnifyingglass"
     case settings = "gearshape"
+    case share = "square.and.arrow.up"
     case shield = "lock.shield"
+    case sliders = "slider.horizontal.3"
     case sparkles = "sparkles"
     case stop = "stop.fill"
+    case toggle = "switch.2"
     case trash = "trash"
     case volume = "speaker.wave.2"
+    case waveform = "waveform"
 
     var image: Image { Image(systemName: rawValue) }
 }

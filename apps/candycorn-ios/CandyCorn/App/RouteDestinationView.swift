@@ -16,6 +16,8 @@ struct RouteDestinationView: View {
             CheckInView(navigation: navigation, state: state)
         case .capture:
             CaptureChoiceView(navigation: navigation)
+        case .journal:
+            JournalListView(navigation: navigation, state: state)
         case .journalVoice:
             VoiceJournalView(navigation: navigation, state: state)
         case .journalWrite:
@@ -50,12 +52,14 @@ struct RouteDestinationView: View {
             HistoryView(navigation: navigation, state: state)
         case .search:
             SearchMemoryView(navigation: navigation, state: state)
+        case .settings:
+            SettingsHomeView(navigation: navigation, state: state)
         case .settingsPrivacy:
             SettingsPrivacyView(navigation: navigation, state: state)
         case .settingsAI:
-            SettingsPrivacyView(navigation: navigation, state: state)
+            SettingsAIView(navigation: navigation, state: state)
         case .settingsData:
-            SettingsPrivacyView(navigation: navigation, state: state)
+            SettingsDataView(navigation: navigation, state: state)
         }
     }
 }

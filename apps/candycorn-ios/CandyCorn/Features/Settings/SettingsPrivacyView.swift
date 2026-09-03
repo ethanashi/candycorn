@@ -6,38 +6,11 @@ struct SettingsPrivacyView: View {
 
     var body: some View {
         ScreenLayout(
-            title: title,
-            subtitle: subtitle
+            title: "Privacy",
+            subtitle: "Your private record stays understandable and under your control.",
+            backAction: navigation.backAction(for: .settingsPrivacy)
         ) {
-            SettingsSectionPicker(navigation: navigation)
-            sectionContent
-        }
-    }
-
-    @ViewBuilder private var sectionContent: some View {
-        switch navigation.selectedSettingsSection {
-        case .privacy:
             privacyContent
-        case .ai:
-            SettingsAIView(navigation: navigation, state: state, embedded: true)
-        case .data:
-            SettingsDataView(navigation: navigation, state: state, embedded: true)
-        }
-    }
-
-    private var title: String {
-        switch navigation.selectedSettingsSection {
-        case .privacy: "Privacy"
-        case .ai: "AI and processing"
-        case .data: "Data and export"
-        }
-    }
-
-    private var subtitle: String {
-        switch navigation.selectedSettingsSection {
-        case .privacy: "Your private record stays understandable and under your control."
-        case .ai: "AI is off by default. Your local journal works without it."
-        case .data: "Choose what stays on this phone and export a readable copy."
         }
     }
 

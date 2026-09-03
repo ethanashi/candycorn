@@ -4,31 +4,34 @@ import Observation
 @MainActor @Observable
 final class NavigationModel {
     var selectedTab: AppTab
-    var todayPath: [Route]
+    var goalsPath: [Route]
     var journalPath: [Route]
-    var preparePath: [Route]
+    var todayPath: [Route]
     var historyPath: [Route]
     var settingsPath: [Route]
     var presentedFlow: Route?
     var launchRoute: Route?
     var onboardingComplete: Bool
-    var selectedSettingsSection: SettingsSection
 
     init(arguments: [String] = ProcessInfo.processInfo.arguments) {
         let route = Route.parseLaunchArguments(arguments)
         launchRoute = route
         selectedTab = route?.tab ?? .today
-        todayPath = []
+        goalsPath = []
         journalPath = []
-        preparePath = []
+        todayPath = []
         historyPath = []
         settingsPath = []
         presentedFlow = nil
-        selectedSettingsSection = route?.settingsSection ?? .privacy
         onboardingComplete = route != nil && route != .welcome
         if let route {
             prepareForLaunch(route)
         }
+    }
+
+    /// The settings section a settings route represents, if any.
+    var selectedSettingsSection: SettingsSection {
+        SettingsSection.allCases.first { settingsPath.last == $0.route } ?? .privacy
     }
 
     func select(_ tab: AppTab) {
@@ -38,10 +41,6 @@ final class NavigationModel {
     }
 
     func navigate(to route: Route) {
-        if let section = route.settingsSection {
-            openSettings(section)
-            return
-        }
         switch route.presentation {
         case .fullScreen:
             materializeLaunchSource()
@@ -60,11 +59,11 @@ final class NavigationModel {
         presentedFlow = nil
     }
 
+    /// Opens one settings section as a pushed detail screen inside the Settings tab.
     func openSettings(_ section: SettingsSection) {
         materializeLaunchSource()
         selectedTab = .settings
-        selectedSettingsSection = section
-        settingsPath = []
+        settingsPath = [section.route]
     }
 
     func canGoBack(from route: Route) -> Bool {
@@ -98,11 +97,6 @@ final class NavigationModel {
 
     private func prepareForLaunch(_ route: Route) {
         guard route != .welcome else { return }
-        if let section = route.settingsSection {
-            selectedTab = .settings
-            selectedSettingsSection = section
-            return
-        }
         if route.isPresentedFlow {
             presentedFlow = route
         } else if let destinationTab = route.tab {
@@ -127,6 +121,7 @@ final class NavigationModel {
         clearPath(for: destinationTab)
     }
 
+    /// A pushed launch route is shown as the tab's root until the user navigates; then it becomes a real path entry.
     private func materializeLaunchSource() {
         guard let source = launchRoute else { return }
         launchRoute = nil
@@ -136,9 +131,9 @@ final class NavigationModel {
 
     private func appendIfNeeded(_ route: Route, to tab: AppTab) {
         switch tab {
-        case .today where todayPath.last != route: todayPath.append(route)
+        case .goals where goalsPath.last != route: goalsPath.append(route)
         case .journal where journalPath.last != route: journalPath.append(route)
-        case .prepare where preparePath.last != route: preparePath.append(route)
+        case .today where todayPath.last != route: todayPath.append(route)
         case .history where historyPath.last != route: historyPath.append(route)
         case .settings where settingsPath.last != route: settingsPath.append(route)
         default: break
@@ -147,19 +142,19 @@ final class NavigationModel {
 
     private func clearPath(for tab: AppTab) {
         switch tab {
-        case .today: todayPath = []
+        case .goals: goalsPath = []
         case .journal: journalPath = []
-        case .prepare: preparePath = []
+        case .today: todayPath = []
         case .history: historyPath = []
         case .settings: settingsPath = []
         }
     }
 
-    private func path(for tab: AppTab) -> [Route] {
+    func path(for tab: AppTab) -> [Route] {
         switch tab {
-        case .today: todayPath
+        case .goals: goalsPath
         case .journal: journalPath
-        case .prepare: preparePath
+        case .today: todayPath
         case .history: historyPath
         case .settings: settingsPath
         }
@@ -167,23 +162,12 @@ final class NavigationModel {
 
     private func popLast(from tab: AppTab, matching route: Route) {
         switch tab {
-        case .today where todayPath.last == route: todayPath.removeLast()
+        case .goals where goalsPath.last == route: goalsPath.removeLast()
         case .journal where journalPath.last == route: journalPath.removeLast()
-        case .prepare where preparePath.last == route: preparePath.removeLast()
+        case .today where todayPath.last == route: todayPath.removeLast()
         case .history where historyPath.last == route: historyPath.removeLast()
         case .settings where settingsPath.last == route: settingsPath.removeLast()
         default: break
-        }
-    }
-}
-
-private extension Route {
-    var settingsSection: SettingsSection? {
-        switch self {
-        case .settingsPrivacy: .privacy
-        case .settingsAI: .ai
-        case .settingsData: .data
-        default: nil
         }
     }
 }

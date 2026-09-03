@@ -50,9 +50,9 @@ struct AppRootView: View {
 
     private var applicationShell: some View {
         ZStack {
-            tabStack(.today, path: $navigation.todayPath)
+            tabStack(.goals, path: $navigation.goalsPath)
             tabStack(.journal, path: $navigation.journalPath)
-            tabStack(.prepare, path: $navigation.preparePath)
+            tabStack(.today, path: $navigation.todayPath)
             tabStack(.history, path: $navigation.historyPath)
             tabStack(.settings, path: $navigation.settingsPath)
         }
@@ -80,7 +80,7 @@ struct AppRootView: View {
     }
 
     private var visibleRoute: Route {
-        let path = path(for: navigation.selectedTab)
+        let path = navigation.path(for: navigation.selectedTab)
         return path.last ?? rootRoute(for: navigation.selectedTab)
     }
 
@@ -89,16 +89,6 @@ struct AppRootView: View {
             return tab.rootRoute
         }
         return launchRoute
-    }
-
-    private func path(for tab: AppTab) -> [Route] {
-        switch tab {
-        case .today: navigation.todayPath
-        case .journal: navigation.journalPath
-        case .prepare: navigation.preparePath
-        case .history: navigation.historyPath
-        case .settings: navigation.settingsPath
-        }
     }
 
     private var presentedFlow: Binding<Route?> {
@@ -116,10 +106,8 @@ struct AppRootView: View {
         Binding(
             get: { navigation.selectedTab },
             set: { tab in
-                if tab == .journal,
-                   navigation.selectedTab != .journal,
-                   navigation.journalPath.isEmpty {
-                    navigation.navigate(to: .capture)
+                if navigation.selectedTab == tab {
+                    navigation.navigate(to: tab.rootRoute)
                 } else {
                     navigation.select(tab)
                 }

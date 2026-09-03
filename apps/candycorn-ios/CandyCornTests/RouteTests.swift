@@ -6,21 +6,21 @@ struct RouteTests {
     @Test("All route metadata is complete and unique")
     func metadata() {
         let routes = Route.allCases
-        #expect(routes.count == 24)
-        #expect(Set(routes.map(\.rawValue)).count == 24)
-        #expect(Set(routes.map(\.screenshotFilename)).count == 24)
-        #expect(routes.map(\.order) == Array(1...24))
+        #expect(routes.count == 26)
+        #expect(Set(routes.map(\.rawValue)).count == 26)
+        #expect(Set(routes.map(\.screenshotFilename)).count == 26)
+        #expect(routes.map(\.order) == Array(1...26))
     }
 
     @Test("Every route has one truthful presentation family")
     func presentationFamilies() {
         let roots: Set<Route> = [
-            .welcome, .today, .prepareTherapy, .history,
-            .settingsPrivacy, .settingsAI, .settingsData,
+            .welcome, .today, .goals, .journal, .history, .settings,
         ]
         let pushed: Set<Route> = [
-            .journalDetail, .journalSuggestions, .goals, .bringUp, .appointments,
-            .therapySession, .tmsPre, .tmsPost, .prepareTMS, .search,
+            .journalDetail, .journalSuggestions, .bringUp, .appointments,
+            .therapySession, .tmsPre, .tmsPost, .prepareTherapy, .prepareTMS, .search,
+            .settingsPrivacy, .settingsAI, .settingsData,
         ]
         let fullScreen: Set<Route> = [
             .checkIn, .capture, .journalVoice, .journalWrite, .journalPhoto,
@@ -70,6 +70,8 @@ struct RouteTests {
             (.settingsPrivacy, "/settings/privacy", "22-settings-privacy.png"),
             (.settingsAI, "/settings/ai", "23-settings-ai.png"),
             (.settingsData, "/settings/data", "24-settings-data.png"),
+            (.journal, "/journal", "25-journal.png"),
+            (.settings, "/settings", "26-settings.png"),
         ]
         for item in expected {
             #expect(item.0.rawValue == item.1)
@@ -93,12 +95,14 @@ struct RouteTests {
         #expect(!model.onboardingComplete)
         model.completeOnboarding()
         model.navigate(to: .goals)
-        #expect(model.selectedTab == .today)
-        #expect(model.todayPath == [.goals])
+        #expect(model.selectedTab == .goals)
+        #expect(model.goalsPath.isEmpty)
+        model.navigate(to: .bringUp)
+        #expect(model.goalsPath == [.bringUp])
         model.navigate(to: .journalDetail)
         #expect(model.selectedTab == .journal)
         #expect(model.journalPath == [.journalDetail])
-        #expect(model.todayPath == [.goals])
+        #expect(model.goalsPath == [.bringUp])
         model.navigate(to: .capture)
         #expect(model.presentedFlow == .capture)
         model.dismissPresentedFlow()

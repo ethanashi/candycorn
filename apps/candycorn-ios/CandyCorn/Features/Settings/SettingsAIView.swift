@@ -146,9 +146,9 @@ struct SettingsAIView: View {
             } else {
                 ScreenLayout(
                     title: "AI and processing",
-                    subtitle: "AI is off by default. Your local journal works without it."
+                    subtitle: "AI is off by default. Your local journal works without it.",
+                    backAction: navigation.backAction(for: .settingsAI)
                 ) {
-                    SettingsSectionPicker(navigation: navigation)
                     content
                 }
             }

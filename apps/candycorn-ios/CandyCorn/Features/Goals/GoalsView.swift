@@ -24,10 +24,15 @@ struct GoalLedgerSectionModel: Equatable, Sendable {
 }
 
 enum GoalLedgerModel {
+    /// Active, paused, and completed goals by cadence. Proposed goals are shown separately as suggestions.
     static func sections(for goals: [Goal]) -> [GoalLedgerSectionModel] {
         GoalLedgerCadence.allCases.map { cadence in
-            GoalLedgerSectionModel(cadence: cadence, goals: goals.filter { cadence.includes($0) && $0.status != .dismissed })
+            GoalLedgerSectionModel(cadence: cadence, goals: goals.filter { cadence.includes($0) && $0.status != .dismissed && $0.status != .proposed })
         }
+    }
+
+    static func suggestions(for goals: [Goal]) -> [Goal] {
+        goals.filter { $0.status == .proposed }
     }
 }
 
@@ -46,49 +51,99 @@ struct GoalEditorDraft: Identifiable, Equatable, Sendable {
     }
 }
 
+/// Goals tab (v2): grouped by when, every row says who set it, suggestions sit apart and need a tap.
 struct GoalsView: View {
     @Bindable var navigation: NavigationModel
     @Bindable var state: DemoState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var expanded = Set(GoalLedgerCadence.allCases)
     @State private var editor: GoalEditorDraft?
 
     var body: some View {
-        ScreenLayout(
-            title: "Goals",
-            subtitle: "What you chose, what was assigned, and what still needs your approval.",
-            backAction: navigation.backAction(for: .goals)
-        ) {
-            Button { editor = GoalEditorDraft() } label: {
-                Label("Add goal", systemImage: "plus")
-            }
-            .buttonStyle(SecondaryButtonStyle())
-            LazyVStack(alignment: .leading, spacing: 0) {
-                Divider().overlay(DesignTokens.hairline)
-                ForEach(GoalLedgerModel.sections(for: state.goals), id: \.cadence) { section in
-                    GoalLedgerSection(
-                        section: section,
-                        isExpanded: expanded.contains(section.cadence),
-                        onToggleSection: { toggle(section.cadence) },
-                        onEdit: { editor = GoalEditorDraft(goal: $0) },
-                        onStatus: updateStatus
-                    )
+        ScrollView {
+            VStack(alignment: .leading, spacing: DesignTokens.blockGap) {
+                V2TitleRow(
+                    title: "Goals",
+                    trailing: AnyView(RoundActionButton(icon: .plus, label: "Add goal", dark: true) {
+                        editor = GoalEditorDraft()
+                    })
+                )
+                ForEach(visibleSections, id: \.cadence) { section in
+                    SectionLine(title: section.cadence.rawValue, trailing: trailingText(for: section))
+                    V2Card(padding: 0) {
+                        VStack(spacing: 0) {
+                            ForEach(Array(section.goals.enumerated()), id: \.element.id) { index, goal in
+                                if index > 0 { Rectangle().fill(DesignTokens.hairline).frame(height: 1).padding(.horizontal, DesignTokens.Spacing.base) }
+                                GoalRow(goal: goal, onEdit: { editor = GoalEditorDraft(goal: goal) }, onStatus: { updateStatus(goal, $0) })
+                            }
+                        }
+                    }
                 }
+                if !suggestions.isEmpty {
+                    SectionLine(title: "Needs your yes", trailing: "\(suggestions.count) \(suggestions.count == 1 ? "suggestion" : "suggestions")")
+                    ForEach(suggestions) { goal in
+                        SuggestionCard(goal: goal, onAdd: { updateStatus(goal, .active) }, onDismiss: { updateStatus(goal, .dismissed) })
+                    }
+                }
+                if visibleSections.isEmpty && suggestions.isEmpty {
+                    V2Card(background: DesignTokens.surfaceWarm, showsBorder: false) {
+                        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+                            Text("No goals yet").font(TypeScale.cardTitle).foregroundStyle(DesignTokens.cocoa)
+                            Text("Add one, or let a journal entry suggest one you can accept.")
+                                .font(TypeScale.label).foregroundStyle(DesignTokens.cocoaSoft)
+                        }
+                    }
+                }
+                Button {
+                    navigation.navigate(to: .bringUp)
+                } label: {
+                    HStack(spacing: DesignTokens.Spacing.compact) {
+                        IconTile(icon: .flag, size: 40)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Bring up next time")
+                                .font(TypeScale.rowTitle)
+                                .foregroundStyle(DesignTokens.cocoa)
+                            Text("\(openTalkingPoints) pinned for your next appointment")
+                                .font(TypeScale.meta)
+                                .foregroundStyle(DesignTokens.cocoaSoft)
+                        }
+                        Spacer()
+                        AppIcon.chevronRight.image
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(DesignTokens.cocoaSoft)
+                    }
+                    .padding(DesignTokens.Spacing.base)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(DesignTokens.surface)
+                    .overlay(RoundedRectangle(cornerRadius: DesignTokens.v2CardRadius, style: .continuous).stroke(DesignTokens.hairline, lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: DesignTokens.v2CardRadius, style: .continuous))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Bring up next time, \(openTalkingPoints) pinned")
             }
+            .padding(.horizontal, DesignTokens.screenInset)
+            .padding(.top, DesignTokens.Spacing.small)
+            .padding(.bottom, DesignTokens.Spacing.large)
         }
+        .background(DesignTokens.canvas.ignoresSafeArea())
         .sheet(item: $editor) { draft in
             GoalEditorSheet(draft: draft, onCancel: { editor = nil }, onSave: save)
         }
     }
 
-    private func toggle(_ cadence: GoalLedgerCadence) {
-        withAnimation(DesignTokens.Motion.animation(reduceMotion: reduceMotion, fast: true)) {
-            if expanded.contains(cadence) {
-                expanded.remove(cadence)
-            } else {
-                expanded.insert(cadence)
-            }
+    private var visibleSections: [GoalLedgerSectionModel] {
+        GoalLedgerModel.sections(for: state.goals).filter { !$0.goals.isEmpty }
+    }
+
+    private var suggestions: [Goal] { GoalLedgerModel.suggestions(for: state.goals) }
+
+    private var openTalkingPoints: Int { state.talkingPoints.filter { $0.status == .open }.count }
+
+    private func trailingText(for section: GoalLedgerSectionModel) -> String {
+        let done = section.goals.filter { $0.status == .completed }.count
+        if section.cadence == .homework, let goal = section.goals.first, let date = goal.targetDate {
+            return "Due \(date.formatted(.dateTime.weekday(.abbreviated)))"
         }
+        return done > 0 ? "\(done) of \(section.goals.count) done" : "\(section.goals.count)"
     }
 
     private func updateStatus(_ goal: Goal, _ status: Goal.Status) {
@@ -118,93 +173,31 @@ struct GoalsView: View {
     }
 }
 
-private struct GoalLedgerSection: View {
-    let section: GoalLedgerSectionModel
-    let isExpanded: Bool
-    let onToggleSection: () -> Void
-    let onEdit: (Goal) -> Void
-    let onStatus: (Goal, Goal.Status) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button(action: onToggleSection) {
-                HStack(spacing: DesignTokens.Spacing.small) {
-                    Text(section.cadence.rawValue)
-                        .font(TypeScale.bodyMedium)
-                    Spacer(minLength: DesignTokens.Spacing.small)
-                    Text(section.goals.count, format: .number)
-                        .font(TypeScale.label)
-                        .foregroundStyle(DesignTokens.cocoaSoft)
-                        .monospacedDigit()
-                    AppIcon.chevronDown.image
-                        .font(.system(size: 15, weight: .medium))
-                        .rotationEffect(.degrees(isExpanded ? 0 : -90))
-                }
-                .foregroundStyle(DesignTokens.cocoa)
-                .frame(maxWidth: .infinity, minHeight: DesignTokens.controlMinimum)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("\(section.cadence.rawValue), \(section.goals.count)")
-            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
-            .accessibilityHint(isExpanded ? "Collapses this goal group" : "Expands this goal group")
-
-            if isExpanded {
-                if section.goals.isEmpty {
-                    Text("No goals here yet")
-                        .font(TypeScale.label)
-                        .foregroundStyle(DesignTokens.cocoaSoft)
-                        .frame(maxWidth: .infinity, minHeight: DesignTokens.controlMinimum, alignment: .leading)
-                        .overlay(alignment: .top) { Divider().overlay(DesignTokens.hairline) }
-                } else {
-                    ForEach(section.goals) { goal in
-                        GoalLedgerRow(goal: goal, onEdit: { onEdit(goal) }, onStatus: { onStatus(goal, $0) })
-                    }
-                }
-            }
-            Divider().overlay(DesignTokens.hairline)
-        }
-    }
-}
-
-private struct GoalLedgerRow: View {
+private struct GoalRow: View {
     let goal: Goal
     let onEdit: () -> Void
     let onStatus: (Goal.Status) -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: DesignTokens.Spacing.small) {
+        HStack(alignment: .center, spacing: DesignTokens.Spacing.compact) {
             Button { onStatus(goal.status == .completed ? .active : .completed) } label: {
-                ZStack {
-                    Circle()
-                        .fill(goal.status == .completed ? DesignTokens.sage : DesignTokens.surface)
-                        .frame(width: 24, height: 24)
-                    Circle()
-                        .stroke(goal.status == .completed ? DesignTokens.sage : DesignTokens.cocoaSoft, lineWidth: 1)
-                        .frame(width: 24, height: 24)
-                    if goal.status == .completed {
-                        AppIcon.check.image
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
-                }
-                .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum)
-                .contentShape(Circle())
+                CompletionCircle(done: goal.status == .completed)
+                    .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum)
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("\(goal.status == .completed ? "Mark incomplete" : "Mark complete"): \(goal.title)")
-            .accessibilityValue(goal.status == .completed ? "Completed" : "Not completed")
+            .accessibilityLabel("\(goal.status == .completed ? "Mark not done" : "Mark done"): \(goal.title)")
 
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(goal.title)
-                    .font(TypeScale.bodyMedium)
-                    .foregroundStyle(goal.status == .completed ? DesignTokens.sage : DesignTokens.cocoa)
+                    .font(TypeScale.rowTitle)
+                    .foregroundStyle(DesignTokens.cocoa)
+                    .strikethrough(goal.status == .completed, color: DesignTokens.cocoaSoft)
                     .fixedSize(horizontal: false, vertical: true)
-                ProvenanceLine(provenance: goal.provenance, compact: true)
+                ProvenanceInline(voice: goal.provenance.voice, text: goal.provenance.inlineText + (goal.status == .paused ? " · paused" : ""))
             }
-            .padding(.top, DesignTokens.Spacing.small)
-            .padding(.bottom, DesignTokens.Spacing.compact)
             .frame(maxWidth: .infinity, alignment: .leading)
+
             Menu {
                 Button("Edit", action: onEdit)
                 if goal.status == .paused {
@@ -214,12 +207,71 @@ private struct GoalLedgerRow: View {
                 }
                 Button("Dismiss", role: .destructive) { onStatus(.dismissed) }
             } label: {
-                Image(systemName: "ellipsis")
+                AppIcon.ellipsis.image
+                    .foregroundStyle(DesignTokens.cocoaSoft)
                     .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum)
             }
-            .foregroundStyle(DesignTokens.cocoa)
+            .accessibilityLabel("More options for \(goal.title)")
         }
-        .overlay(alignment: .top) { Divider().overlay(DesignTokens.hairline) }
+        .padding(.horizontal, DesignTokens.Spacing.base)
+        .padding(.vertical, DesignTokens.Spacing.small)
+        .frame(minHeight: 60)
+    }
+}
+
+private struct SuggestionCard: View {
+    let goal: Goal
+    let onAdd: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        V2Card(background: DesignTokens.surfaceWarm, showsBorder: false) {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+                ProvenanceInline(voice: .candyCorn, text: goal.provenance.detail.isEmpty ? "Found in your journal" : goal.provenance.detail)
+                Text(goal.title)
+                    .font(TypeScale.rowTitle)
+                    .foregroundStyle(DesignTokens.cocoa)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let detail = goal.detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(TypeScale.provenance)
+                        .foregroundStyle(DesignTokens.cocoaSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HStack(spacing: DesignTokens.Spacing.small) {
+                    Button("Add as goal", action: onAdd)
+                        .buttonStyle(CompactDarkButtonStyle())
+                    Button("Not now", action: onDismiss)
+                        .buttonStyle(CompactGhostButtonStyle())
+                }
+                .padding(.top, DesignTokens.Spacing.xSmall)
+            }
+        }
+    }
+}
+
+struct CompactDarkButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(TypeScale.label)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 18)
+            .frame(minHeight: DesignTokens.controlMinimum)
+            .background(DesignTokens.cocoa.opacity(configuration.isPressed ? 0.85 : 1))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+struct CompactGhostButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(TypeScale.label)
+            .foregroundStyle(DesignTokens.cocoa)
+            .padding(.horizontal, 18)
+            .frame(minHeight: DesignTokens.controlMinimum)
+            .background(configuration.isPressed ? DesignTokens.surfaceWarm : Color.white)
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(DesignTokens.hairline, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 

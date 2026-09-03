@@ -31,6 +31,9 @@ enum Route: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     case settingsPrivacy = "/settings/privacy"
     case settingsAI = "/settings/ai"
     case settingsData = "/settings/data"
+    // Added with the v2 front end (September 3, 2026). Appended so existing screenshot numbers stay stable.
+    case journal = "/journal"
+    case settings = "/settings"
 
     var id: Self { self }
     var order: Int { Self.allCases.firstIndex(of: self).map { $0 + 1 } ?? 0 }
@@ -41,28 +44,28 @@ enum Route: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
             "journal-photo", "journal-detail", "ai-suggestions", "goals", "bring-up",
             "appointments", "record-appointment", "active-appointment", "therapy-session",
             "tms-pre", "tms-post", "prepare-therapy", "prepare-tms", "history", "search",
-            "settings-privacy", "settings-ai", "settings-data",
+            "settings-privacy", "settings-ai", "settings-data", "journal", "settings",
         ]
         guard order > 0, order <= names.count else { return "unknown.png" }
         return String(format: "%02d-%@.png", order, names[order - 1])
     }
 
+    /// The tab that owns a route. Full-screen flows and the welcome screen belong to no tab.
     var tab: AppTab? {
         switch self {
         case .welcome: nil
-        case .today, .checkIn, .goals, .bringUp, .appointments: .today
-        case .capture, .journalVoice, .journalWrite, .journalPhoto, .journalDetail, .journalSuggestions: .journal
+        case .today, .checkIn, .appointments, .tmsPre, .prepareTherapy, .prepareTMS: .today
+        case .goals, .bringUp: .goals
+        case .journal, .capture, .journalVoice, .journalWrite, .journalPhoto, .journalDetail, .journalSuggestions: .journal
         case .recordAppointment, .activeAppointment: nil
         case .therapySession, .tmsPost, .history, .search: .history
-        case .tmsPre, .prepareTherapy, .prepareTMS: .prepare
-        case .settingsPrivacy, .settingsAI, .settingsData: .settings
+        case .settings, .settingsPrivacy, .settingsAI, .settingsData: .settings
         }
     }
 
     var presentation: RoutePresentation {
         switch self {
-        case .welcome, .today, .prepareTherapy, .history,
-             .settingsPrivacy, .settingsAI, .settingsData:
+        case .welcome, .today, .goals, .journal, .history, .settings:
             .root
         case .checkIn, .capture, .journalVoice, .journalWrite, .journalPhoto,
              .recordAppointment, .activeAppointment:
@@ -76,8 +79,9 @@ enum Route: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
 
     var showsFloatingTabBar: Bool {
         switch self {
-        case .today, .journalDetail, .journalSuggestions, .goals, .bringUp, .appointments,
-             .therapySession, .prepareTherapy, .prepareTMS, .history, .search,
+        case .today, .goals, .journal, .history, .settings,
+             .journalDetail, .journalSuggestions, .bringUp, .appointments,
+             .therapySession, .prepareTherapy, .prepareTMS, .search,
              .settingsPrivacy, .settingsAI, .settingsData:
             true
         default:

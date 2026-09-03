@@ -1,9 +1,11 @@
 import Foundation
 
+/// Bottom tab order approved on September 2, 2026: Goals, Journal, Today (center), History, Settings.
+/// Prepare is no longer a tab; it opens from the appointment band on Today.
 enum AppTab: String, CaseIterable, Identifiable, Sendable {
-    case today
+    case goals
     case journal
-    case prepare
+    case today
     case history
     case settings
 
@@ -11,9 +13,9 @@ enum AppTab: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .today: "Today"
+        case .goals: "Goals"
         case .journal: "Journal"
-        case .prepare: "Prepare"
+        case .today: "Today"
         case .history: "History"
         case .settings: "Settings"
         }
@@ -21,9 +23,9 @@ enum AppTab: String, CaseIterable, Identifiable, Sendable {
 
     var symbol: AppIcon {
         switch self {
-        case .today: .home
+        case .goals: .flag
         case .journal: .journal
-        case .prepare: .prepare
+        case .today: .home
         case .history: .history
         case .settings: .settings
         }
@@ -31,11 +33,11 @@ enum AppTab: String, CaseIterable, Identifiable, Sendable {
 
     var rootRoute: Route {
         switch self {
+        case .goals: .goals
+        case .journal: .journal
         case .today: .today
-        case .journal: .capture
-        case .prepare: .prepareTherapy
         case .history: .history
-        case .settings: .settingsPrivacy
+        case .settings: .settings
         }
     }
 }

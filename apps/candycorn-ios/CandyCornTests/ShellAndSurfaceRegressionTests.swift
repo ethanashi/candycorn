@@ -18,23 +18,29 @@ struct ShellAndSurfaceRegressionTests {
         #expect(MoodBandSelection.adjusted(10, by: 1) == 10)
     }
 
-    @Test("Today orders appointment, three open points, then current goal")
-    func todayOrder() {
-        let open = SeededData.talkingPoints[0]
-        var points = Array(repeating: open, count: 4)
-        for index in points.indices {
-            points[index] = TalkingPoint(
-                id: UUID(), text: points[index].text, source: points[index].source,
-                sourceID: points[index].sourceID, targetAppointmentKind: .therapy,
-                isImportant: false, status: .open, createdAt: points[index].createdAt,
-                provenance: points[index].provenance
+    @Test("Journal groups entries by day, newest first, with that day's latest mood")
+    func journalGrouping() {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = Date(timeIntervalSince1970: 1_788_700_000)
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: now)!
+        let provenance = Provenance(voice: .user, label: "You said this", detail: "Test", occurredAt: now, sourceRoute: .journalDetail)
+        func entry(_ id: UUID, _ date: Date) -> JournalEntry {
+            JournalEntry(
+                id: id, createdAt: date, updatedAt: date, inputType: .text, title: "Entry", rawText: "Words",
+                cleanedText: nil, summaryItems: [], originalAttachmentID: nil, audioAttachmentID: nil, moodLogID: nil,
+                pinnedForNextAppointment: false, processingStatus: .unprocessed, provenance: provenance
             )
         }
-        let goal = SeededData.goals[0]
-        let sections = TodayOrderingModel.sections(talkingPoints: points, currentGoal: goal)
-        #expect(sections.count == 5)
-        #expect(sections.first == .appointment)
-        #expect(sections.last == .currentGoal(goal.id))
+        let older = entry(UUID(), yesterday)
+        let newer = entry(UUID(), now)
+        let mood = MoodLog(id: UUID(), createdAt: now, mood: 6, anxiety: 7, energy: 4, customValues: [:], note: nil)
+        let groups = JournalDayGroup.build(journals: [older, newer], moods: [mood], now: now, calendar: calendar)
+        #expect(groups.count == 2)
+        #expect(groups.first?.entries.first?.id == newer.id)
+        #expect(groups.first?.mood?.mood == 6)
+        #expect(groups.last?.mood == nil)
+        #expect(groups.first?.title.hasPrefix("Today") == true)
+        #expect(groups.last?.title.hasPrefix("Yesterday") == true)
     }
 
     @Test("Product-facing strings contain no implementation copy")

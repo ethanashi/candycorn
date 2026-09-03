@@ -26,6 +26,7 @@ struct HistoryRecord: Identifiable, Equatable, Sendable {
     let destination: Route
     let occurredAt: Date
     let entityID: UUID?
+    let inputType: JournalEntry.InputType?
 
     init(
         id: String,
@@ -36,7 +37,8 @@ struct HistoryRecord: Identifiable, Equatable, Sendable {
         excerpt: String,
         destination: Route,
         occurredAt: Date = .distantPast,
-        entityID: UUID? = nil
+        entityID: UUID? = nil,
+        inputType: JournalEntry.InputType? = nil
     ) {
         self.id = id
         self.day = day
@@ -47,6 +49,7 @@ struct HistoryRecord: Identifiable, Equatable, Sendable {
         self.destination = destination
         self.occurredAt = occurredAt
         self.entityID = entityID
+        self.inputType = inputType
     }
 }
 
@@ -57,26 +60,30 @@ enum HistoryModel {
             records.append(HistoryRecord(
                 id: "journal-\(entry.id)", day: day(for: entry.createdAt), type: .journal,
                 title: entry.title, time: entry.createdAt.formatted(date: .omitted, time: .shortened),
-                excerpt: entry.rawText.isEmpty ? "Original attachment saved on this device." : entry.rawText,
-                destination: .journalDetail, occurredAt: entry.createdAt, entityID: entry.id
+                excerpt: journalExcerpt(entry),
+                destination: .journalDetail, occurredAt: entry.createdAt, entityID: entry.id, inputType: entry.inputType
             ))
         }
         for mood in moods.prefix(200) {
             records.append(HistoryRecord(
                 id: "mood-\(mood.id)", day: day(for: mood.createdAt), type: .mood,
                 title: "Mood check-in", time: mood.createdAt.formatted(date: .omitted, time: .shortened),
-                excerpt: mood.note ?? "Mood, anxiety, and energy saved.", destination: .checkIn,
+                excerpt: moodExcerpt(mood), destination: .checkIn,
                 occurredAt: mood.createdAt, entityID: mood.id
             ))
         }
         for appointment in appointments.filter({ $0.status == .completed }).prefix(200) {
             let date = appointment.startedAt ?? appointment.scheduledAt ?? .distantPast
+            let minutes = appointment.endedAt.flatMap { end in appointment.startedAt.map { Int(end.timeIntervalSince($0) / 60) } }
+            var parts: [String] = []
+            if let minutes, minutes > 0 { parts.append("\(minutes) min") }
+            parts.append(appointment.transcriptID != nil ? "transcript ready" : (appointment.recordingAttachmentID != nil ? "recording saved" : "notes"))
             records.append(HistoryRecord(
                 id: "appointment-\(appointment.id)", day: day(for: date),
                 type: appointment.kind == .tms ? .tms : .therapy,
-                title: "\(appointment.kind == .tms ? "TMS" : "Therapy") with \(appointment.providerName)",
+                title: "\(appointment.kind.displayName) with \(appointment.providerName)",
                 time: date.formatted(date: .omitted, time: .shortened),
-                excerpt: appointment.recordingAttachmentID == nil ? "Session notes" : "Original recording and notes",
+                excerpt: parts.joined(separator: " · "),
                 destination: appointment.kind == .tms ? .tmsPost : .therapySession,
                 occurredAt: date, entityID: appointment.id
             ))
@@ -108,61 +115,46 @@ enum HistoryModel {
         return records.filter { $0.type == filter }
     }
 
+    private static func journalExcerpt(_ entry: JournalEntry) -> String {
+        switch entry.inputType {
+        case .voice: "Voice journal"
+        case .text: "Written"
+        case .photo: "Photographed page"
+        }
+    }
+
+    private static func moodExcerpt(_ mood: MoodLog) -> String {
+        var parts: [String] = []
+        if let value = mood.anxiety { parts.append("Anxiety \(value)") }
+        if let value = mood.mood { parts.append("Mood \(value)") }
+        if let value = mood.energy { parts.append("Energy \(value)") }
+        return parts.isEmpty ? (mood.note ?? "Saved") : parts.joined(separator: " · ")
+    }
+
     private static let fixedRecords = [
-        HistoryRecord(
-            id: "journal-football",
-            day: .sep5,
-            type: .journal,
-            title: "Football and feeling guilty",
-            time: "3:18 PM",
-            excerpt: "Exercise helped, then feeling better brought up guilt.",
-            destination: .journalDetail
-        ),
-        HistoryRecord(
-            id: "tms-post",
-            day: .sep5,
-            type: .tms,
-            title: "TMS post-session note",
-            time: "9:52 AM",
-            excerpt: "Saved observations without claiming what caused the change.",
-            destination: .tmsPost
-        ),
-        HistoryRecord(
-            id: "journal-timeline",
-            day: .sep3,
-            type: .journal,
-            title: "The senior-year timeline",
-            time: "4:06 PM",
-            excerpt: "The missed chance to prove I could have played still feels unresolved.",
-            destination: .journalDetail
-        ),
-        HistoryRecord(
-            id: "therapy-session",
-            day: .sep2,
-            type: .therapy,
-            title: "Therapy with Dr. Elena Park",
-            time: "2:00 PM",
-            excerpt: "Worked on the senior-year story and moving-forward guilt.",
-            destination: .therapySession
-        ),
+        HistoryRecord(id: "journal-football", day: .sep5, type: .journal, title: "Football and feeling guilty", time: "3:18 PM", excerpt: "Exercise helped, then feeling better brought up guilt.", destination: .journalDetail),
+        HistoryRecord(id: "tms-post", day: .sep5, type: .tms, title: "TMS post-session note", time: "9:52 AM", excerpt: "Saved observations without claiming what caused the change.", destination: .tmsPost),
+        HistoryRecord(id: "journal-timeline", day: .sep3, type: .journal, title: "The senior-year timeline", time: "4:06 PM", excerpt: "The missed chance to prove I could have played still feels unresolved.", destination: .journalDetail),
+        HistoryRecord(id: "therapy-session", day: .sep2, type: .therapy, title: "Therapy with Dr. Elena Park", time: "2:00 PM", excerpt: "Worked on the senior-year story and moving-forward guilt.", destination: .therapySession),
     ]
 
     private static func day(for date: Date) -> HistoryDay {
-        HistoryDay(rawValue: date.formatted(.dateTime.month(.abbreviated).day()))
+        HistoryDay(rawValue: date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
     }
 }
 
+/// History tab (v2): everything in the order it happened, filters by kind, day headers carry the day's mood.
 struct HistoryView: View {
     @Bindable var navigation: NavigationModel
     @Bindable var state: DemoState
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var filter: HistoryFilter = .all
 
+    private var allRecords: [HistoryRecord] {
+        HistoryModel.records(journals: state.journals, moods: state.moods, appointments: state.appointments)
+    }
+
     private var visibleRecords: [HistoryRecord] {
-        HistoryModel.filteredRecords(
-            HistoryModel.records(journals: state.journals, moods: state.moods, appointments: state.appointments),
-            by: filter
-        )
+        HistoryModel.filteredRecords(allRecords, by: filter)
     }
 
     private var visibleDays: [HistoryDay] {
@@ -172,27 +164,35 @@ struct HistoryView: View {
     }
 
     var body: some View {
-        ScreenLayout(title: "History", subtitle: "Your care thread, in the order it happened.") {
-            filterBar
-            if visibleRecords.isEmpty {
-                emptyState
-            } else {
-                LazyVStack(alignment: .leading, spacing: DesignTokens.Spacing.xLarge) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: DesignTokens.blockGap) {
+                V2TitleRow(
+                    title: "History",
+                    trailing: AnyView(RoundActionButton(icon: .search, label: "Search your history") {
+                        navigation.navigate(to: .search)
+                    })
+                )
+                filterBar
+                if visibleRecords.isEmpty {
+                    emptyState
+                } else {
                     ForEach(visibleDays, id: \.self) { day in
                         let records = visibleRecords.filter { $0.day == day }
-                        if !records.isEmpty {
-                            HistoryDaySection(
-                                day: day,
-                                records: records,
-                                mood: state.mood,
-                                usesVerticalHeader: dynamicTypeSize.isAccessibilitySize,
-                                onOpen: open
-                            )
+                        dayHeader(day, records: records)
+                        VStack(spacing: 0) {
+                            ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
+                                if index > 0 { Rectangle().fill(DesignTokens.hairline).frame(height: 1) }
+                                HistoryRow(record: record) { open(record) }
+                            }
                         }
                     }
                 }
             }
+            .padding(.horizontal, DesignTokens.screenInset)
+            .padding(.top, DesignTokens.Spacing.small)
+            .padding(.bottom, DesignTokens.Spacing.large)
         }
+        .background(DesignTokens.canvas.ignoresSafeArea())
     }
 
     private var filterBar: some View {
@@ -200,14 +200,12 @@ struct HistoryView: View {
             HStack(spacing: DesignTokens.Spacing.small) {
                 ForEach(HistoryFilter.allCases, id: \.self) { option in
                     Button(option.rawValue) { filter = option }
-                        .font(TypeScale.provenance)
-                        .foregroundStyle(filter == option ? DesignTokens.cocoa : DesignTokens.cocoaSoft)
+                        .font(TypeScale.label)
+                        .foregroundStyle(filter == option ? Color.white : DesignTokens.cocoa)
                         .padding(.horizontal, DesignTokens.Spacing.compact)
-                        .frame(minHeight: DesignTokens.controlMinimum)
-                        .background(filter == option ? DesignTokens.orange : DesignTokens.surface)
-                        .overlay(
-                            Capsule().stroke(filter == option ? DesignTokens.orange : DesignTokens.hairline, lineWidth: 1)
-                        )
+                        .frame(minHeight: 34)
+                        .background(filter == option ? DesignTokens.cocoa : DesignTokens.surface)
+                        .overlay(Capsule().stroke(filter == option ? DesignTokens.cocoa : DesignTokens.hairline, lineWidth: 1))
                         .clipShape(Capsule())
                         .accessibilityAddTraits(filter == option ? .isSelected : [])
                 }
@@ -217,73 +215,47 @@ struct HistoryView: View {
         .accessibilityLabel("Filter history")
     }
 
-    private var emptyState: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            KernelGlyph(voice: .candyCorn, height: 20, decorative: true)
-            Text("No \(filter.rawValue.lowercased()) entries yet")
-                .font(TypeScale.sectionCompact)
-                .foregroundStyle(DesignTokens.cocoa)
-            Text("Your other history is still here. Choose a different filter.")
-                .font(TypeScale.label)
+    private func dayHeader(_ day: HistoryDay, records: [HistoryRecord]) -> some View {
+        let mood = records.compactMap { record -> MoodLog? in
+            guard record.type == .mood, let id = record.entityID else { return nil }
+            return state.moods.first { $0.id == id }
+        }.first
+        return HStack {
+            Text(day.rawValue)
+                .font(TypeScale.metaStrong)
                 .foregroundStyle(DesignTokens.cocoaSoft)
-                .fixedSize(horizontal: false, vertical: true)
+                .monospacedDigit()
+            Spacer()
+            if let mood {
+                MoodMiniBars(values: MoodValues(mood: mood.mood, anxiety: mood.anxiety, energy: mood.energy), barWidth: 22, showsLabels: false)
+            }
         }
-        .padding(.vertical, DesignTokens.Spacing.large)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .top) { Divider().overlay(DesignTokens.hairline) }
-        .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
+        .frame(height: 22)
+        .padding(.top, DesignTokens.Spacing.xSmall)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var emptyState: some View {
+        V2Card(background: DesignTokens.surfaceWarm, showsBorder: false) {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+                Text("No \(filter.rawValue.lowercased()) entries yet")
+                    .font(TypeScale.cardTitle)
+                    .foregroundStyle(DesignTokens.cocoa)
+                Text("Your other history is still here. Choose a different filter.")
+                    .font(TypeScale.label)
+                    .foregroundStyle(DesignTokens.cocoaSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     private func open(_ record: HistoryRecord) {
         if record.type == .journal, let id = record.entityID {
             state.selectJournal(id: id)
-        } else if record.type == .therapy, let id = record.entityID {
+        } else if record.type == .therapy || record.type == .tms, let id = record.entityID {
             state.selectAppointment(id: id)
         }
         navigation.navigate(to: record.destination)
-    }
-}
-
-private struct HistoryDaySection: View {
-    let day: HistoryDay
-    let records: [HistoryRecord]
-    let mood: MoodLog?
-    let usesVerticalHeader: Bool
-    let onOpen: (HistoryRecord) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if usesVerticalHeader {
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-                    dayTitle
-                    moodBands.frame(maxWidth: 220)
-                }
-            } else {
-                HStack(spacing: DesignTokens.Spacing.base) {
-                    dayTitle
-                    Spacer(minLength: DesignTokens.Spacing.small)
-                    moodBands.frame(width: 136)
-                }
-            }
-            ForEach(records) { record in
-                HistoryRow(record: record) { onOpen(record) }
-            }
-        }
-    }
-
-    private var dayTitle: some View {
-        Text(day.rawValue)
-            .font(TypeScale.sectionCompact)
-            .foregroundStyle(DesignTokens.cocoa)
-            .monospacedDigit()
-    }
-
-    private var moodBands: some View {
-        MoodBands(
-            values: MoodValues(mood: mood?.mood, anxiety: mood?.anxiety, energy: mood?.energy),
-            compact: true
-        )
-        .dynamicTypeSize(.small ... .large)
     }
 }
 
@@ -293,39 +265,46 @@ private struct HistoryRow: View {
 
     var body: some View {
         Button(action: onOpen) {
-            HStack(spacing: DesignTokens.Spacing.small) {
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.xSmall) {
-                    HStack(alignment: .firstTextBaseline, spacing: DesignTokens.Spacing.small) {
-                        Text(record.title)
-                            .font(TypeScale.bodyMedium)
-                            .foregroundStyle(DesignTokens.cocoa)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Text(record.time)
-                            .font(TypeScale.provenance)
-                            .foregroundStyle(DesignTokens.cocoaSoft)
-                            .monospacedDigit()
-                    }
-                    Text(record.type.rawValue)
-                        .font(TypeScale.provenance)
-                        .foregroundStyle(DesignTokens.cocoaSoft)
+            HStack(spacing: DesignTokens.Spacing.compact) {
+                IconTile(icon: icon, size: 40, dark: record.type == .therapy || record.type == .tms)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(record.title)
+                        .font(TypeScale.rowTitleCompact)
+                        .foregroundStyle(DesignTokens.cocoa)
+                        .lineLimit(1)
                     Text(record.excerpt)
-                        .font(TypeScale.provenance)
+                        .font(TypeScale.meta)
                         .foregroundStyle(DesignTokens.cocoaSoft)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(1)
                 }
-                AppIcon.chevronRight.image
-                    .font(.system(size: 14, weight: .medium))
+                Spacer(minLength: DesignTokens.Spacing.small)
+                Text(record.time)
+                    .font(TypeScale.meta)
                     .foregroundStyle(DesignTokens.cocoaSoft)
+                    .monospacedDigit()
             }
-            .padding(.vertical, DesignTokens.Spacing.base)
-            .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
+            .padding(.vertical, DesignTokens.Spacing.small)
+            .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .overlay(alignment: .top) { Divider().overlay(DesignTokens.hairline) }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(record.title), \(record.type.rawValue), \(record.time). \(record.excerpt)")
-        .accessibilityHint("Opens this history entry")
+        .accessibilityLabel("\(record.title), \(record.excerpt), \(record.time)")
+        .accessibilityHint("Opens this entry")
+    }
+
+    private var icon: AppIcon {
+        switch record.type {
+        case .all: .clock
+        case .journal:
+            switch record.inputType {
+            case .voice: .microphone
+            case .photo: .camera
+            case .text, .none: .pencil
+            }
+        case .mood: .heart
+        case .therapy: .calendar
+        case .tms: .bolt
+        }
     }
 }
