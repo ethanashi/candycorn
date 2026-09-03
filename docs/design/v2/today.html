@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Candy Corn Today, Flo skeleton</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0" rel="stylesheet">
+<style>
+:root{--canvas:#fff;--warm:#fff4e8;--orange:#f28a3c;--orange2:#d9732f;--yellow:#f4c95d;--cocoa:#2d2825;--soft:#5e564f;--hair:#ebe2d8;--sage:#8fa58b}
+*{box-sizing:border-box;margin:0;padding:0}
+.ms{font-family:"Material Symbols Rounded";font-weight:500;font-style:normal;line-height:1;display:inline-block;font-variation-settings:"FILL" 0,"wght" 500,"GRAD" 0,"opsz" 24;font-size:24px;-webkit-font-smoothing:antialiased}
+.ms.f{font-variation-settings:"FILL" 1,"wght" 500,"GRAD" 0,"opsz" 24}
+body{background:#f3efea;color:var(--cocoa);font-family:"Avenir Next",Avenir,-apple-system,system-ui,sans-serif;font-feature-settings:"tnum";-webkit-font-smoothing:antialiased}
+.wrap{max-width:1100px;margin:0 auto;padding:36px 24px 64px;display:grid;grid-template-columns:390px 1fr;gap:40px;align-items:start}
+@media (max-width:860px){.wrap{grid-template-columns:1fr}}
+h1{font-size:24px;font-weight:700;margin-bottom:8px}
+.notes p{font-size:15px;line-height:1.5;color:var(--soft);margin-bottom:12px;max-width:560px}
+.notes h2{font-size:15px;font-weight:600;margin:18px 0 6px}
+.notes ol{padding-left:20px;color:var(--soft);font-size:14px;line-height:1.5}
+.notes li b{color:var(--cocoa);font-weight:600}
+
+.phone{width:390px;height:844px;background:var(--canvas);border-radius:44px;border:1px solid var(--hair);overflow:hidden;position:relative;isolation:isolate;box-shadow:0 2px 8px rgb(45 40 37 / 6%)}
+.status{height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 30px;font-size:15px;font-weight:600}
+.status .island{width:120px;height:34px;background:#000;border-radius:20px}
+.page{position:absolute;top:54px;left:0;right:0;bottom:98px;padding:6px 22px 0;display:flex;flex-direction:column;gap:14px}
+.k{display:inline-block;width:14px;height:18px;clip-path:polygon(50% 0,100% 100%,0 100%);border-radius:3px;background:var(--orange);flex:none}
+.k.c{background:var(--cocoa)}.k.w{background:#fff}
+
+.head{display:flex;justify-content:space-between;align-items:center;height:36px;flex:none}
+.head span{font-size:14px;font-weight:500;color:var(--soft)}
+.head .me{width:34px;height:34px;border-radius:17px;background:var(--warm);display:grid;place-items:center;font-size:14px;font-weight:600}
+
+.week{display:flex;justify-content:space-between;margin-top:-4px;height:62px;flex:none}
+.week div{width:40px;display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11px;font-weight:500;color:var(--soft)}
+.week b{width:30px;height:30px;border-radius:15px;display:grid;place-items:center;font-size:15px;font-weight:600;color:var(--cocoa)}
+.week .today b{background:var(--cocoa);color:#fff}
+.week i{width:6px;height:6px;border-radius:3px;background:var(--hair)} .week i.on{background:var(--orange)}
+
+.hero{margin-top:0;flex:1;min-height:220px;border-radius:30px;background:var(--warm);position:relative;overflow:hidden}
+.hero .ghost{position:absolute;border-radius:50%;background:#fff;opacity:.5}
+.hero .g1{width:180px;height:180px;left:-70px;top:-70px}.hero .g2{width:220px;height:220px;right:-90px;bottom:-110px}
+.hero .talk{position:absolute;left:50%;top:50%;transform:translate(-50%,-58%);width:140px;height:140px;border-radius:50%;background:var(--orange);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#fff;box-shadow:0 6px 0 var(--orange2)}
+.hero .talk .k{width:26px;height:34px}
+.hero .talk b{font-size:19px;font-weight:700}
+.hero .talk small{font-size:12px;font-weight:500;opacity:.92}
+.hero .side{position:absolute;top:50%;transform:translateY(-70%);width:60px;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--cocoa)}
+.hero .side.l{left:22px}.hero .side.r{right:22px}
+.hero .side span{width:56px;height:56px;border-radius:28px;background:#fff;display:grid;place-items:center;box-shadow:0 2px 8px rgb(45 40 37 / 6%);color:var(--cocoa)}
+.pen{width:18px;height:3px;background:var(--cocoa);border-radius:2px;transform:rotate(-45deg);position:relative}
+.pen::after{content:"";position:absolute;right:-6px;top:-2px;border-left:6px solid var(--cocoa);border-top:3.5px solid transparent;border-bottom:3.5px solid transparent}
+.cam{width:20px;height:15px;border:2.5px solid var(--cocoa);border-radius:4px;position:relative}
+.cam::after{content:"";position:absolute;left:5px;top:2px;width:6px;height:6px;border-radius:3px;border:2px solid var(--cocoa)}
+.hero p{position:absolute;left:0;right:0;bottom:12px;text-align:center;font-size:13px;font-weight:500;color:var(--soft)}
+
+.mood{margin-top:0;height:80px;flex:none;border:1px solid var(--hair);border-radius:22px;display:flex;align-items:center;padding:0 16px;gap:14px}
+.mood .bars{display:flex;gap:14px}
+.mood .bar{width:54px;display:flex;flex-direction:column;align-items:center;gap:4px}
+.mood .bar .t{width:34px;height:8px;border-radius:4px;background:var(--hair);position:relative;overflow:hidden}
+.mood .bar .t i{position:absolute;left:0;top:0;bottom:0;border-radius:4px}
+.mood .bar b{font-size:17px;font-weight:600;line-height:1}
+.mood .bar small{font-size:11px;color:var(--soft);font-weight:500}
+.mood .go{margin-left:auto;font-size:14px;font-weight:600;display:flex;align-items:center;gap:4px}
+.chev{width:8px;height:8px;border-right:2px solid var(--cocoa);border-bottom:2px solid var(--cocoa);transform:rotate(-45deg);display:inline-block}
+
+.appt{margin-top:0;height:82px;flex:none;border-radius:22px;background:var(--cocoa);color:#fff;display:flex;align-items:center;padding:0 16px;gap:14px}
+.appt .ico{width:42px;height:42px;border-radius:14px;background:rgba(255,255,255,.14);display:grid;place-items:center}
+.appt b{display:block;font-size:17px;font-weight:600;line-height:1.15}
+.appt small{display:block;font-size:13px;opacity:.82;margin-top:3px}
+.appt .prep{margin-left:auto;background:var(--yellow);color:var(--cocoa);font-size:14px;font-weight:600;padding:10px 14px;border-radius:14px}
+
+.goals{margin-top:0;flex:none;border:1px solid var(--hair);border-radius:22px;padding:12px 16px 12px}
+.goals .hd{display:flex;justify-content:space-between;align-items:center;padding:0 0 6px;font-size:13px;font-weight:600;color:var(--soft)}
+.goals .hd span{font-size:13px;font-weight:600;color:var(--cocoa);display:flex;align-items:center;gap:2px}
+.goal{height:48px;display:flex;align-items:center;gap:12px;padding:0}
+.goal .box{width:26px;height:26px;border-radius:13px;border:2px solid #d9d0c7;flex:none;display:grid;place-items:center;color:#fff}
+.goal .box.done{background:var(--sage);border-color:var(--sage)}
+.goal b{display:block;font-size:16px;font-weight:600;line-height:1.2}
+.goal small{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--soft);font-weight:500;margin-top:2px}
+.goal small .k{width:9px;height:12px}
+.goal .n{margin-left:auto;font-size:12px;color:var(--soft);font-weight:500;white-space:nowrap}
+
+.tabbar{position:absolute;left:14px;right:14px;bottom:14px;height:70px;background:#fff;border:1px solid var(--hair);border-radius:24px;display:flex;justify-content:space-around;align-items:center;font-size:11px;color:var(--soft);font-weight:500}
+.tabbar div{display:flex;flex-direction:column;align-items:center;gap:4px;position:relative}
+.tabbar div .ms{color:#8f867e;font-size:24px}
+.tabbar div.on{color:var(--orange)} .tabbar div.on .ms{color:var(--orange)}
+.tabbar div.on::before{content:"";position:absolute;top:-12px;width:22px;height:3px;border-radius:2px;background:var(--orange)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="phone">
+  <div class="status"><span>9:41</span><span class="island"></span><span>●●● ⌔ ▮</span></div>
+  <div class="page">
+    <div class="head"><span>Saturday, Sep 5</span><div class="me">J</div></div>
+    <div class="week">
+      <div><span>S</span><b>30</b><i class="on"></i></div>
+      <div><span>M</span><b>31</b><i></i></div>
+      <div><span>T</span><b>1</b><i class="on"></i></div>
+      <div><span>W</span><b>2</b><i class="on"></i></div>
+      <div><span>T</span><b>3</b><i class="on"></i></div>
+      <div><span>F</span><b>4</b><i></i></div>
+      <div class="today"><span>S</span><b>5</b><i class="on"></i></div>
+    </div>
+
+    <div class="hero">
+      <div class="ghost g1"></div><div class="ghost g2"></div>
+      <div class="side l"><span><i class="ms">edit</i></span>Write</div>
+      <div class="talk"><i class="ms f" style="font-size:38px">mic</i><b>Talk</b><small>Hold or tap</small></div>
+      <div class="side r"><span><i class="ms">photo_camera</i></span>Photo</div>
+      <p>Say it messy. It stays on this phone.</p>
+    </div>
+
+    <div class="mood">
+      <div class="bars">
+        <div class="bar"><div class="t"><i style="width:70%;background:var(--yellow)"></i></div><b>7</b><small>Anxiety</small></div>
+        <div class="bar"><div class="t"><i style="width:60%;background:var(--orange)"></i></div><b>6</b><small>Mood</small></div>
+        <div class="bar"><div class="t"><i style="width:40%;background:var(--cocoa)"></i></div><b>4</b><small>Energy</small></div>
+      </div>
+      <div class="go">Check in <i class="ms" style="font-size:20px">chevron_right</i></div>
+    </div>
+
+    <div class="appt">
+      <div class="ico"><i class="ms f" style="color:#fff">event</i></div>
+      <div><b>Therapy in 4 days</b><small>Wed 2:00 · Dr. Park · 3 pinned</small></div>
+      <div class="prep">Prep</div>
+    </div>
+
+    <div class="goals">
+      <div class="hd">Up next <span>3 goals <i class="ms" style="font-size:18px">chevron_right</i></span></div>
+      <div class="goal">
+        <div class="box"></div>
+        <div><b>Notice moving-forward guilt</b><small><span class="k"></span>You chose this · today</small></div>
+      </div>
+    </div>
+  </div>
+  <div class="tabbar"><div><i class="ms">flag</i>Goals</div><div><i class="ms">edit_note</i>Journal</div><div class="on"><i class="ms f">home</i>Today</div><div><i class="ms">history</i>History</div><div><i class="ms">settings</i>Settings</div></div>
+</div>
+
+<div class="notes">
+  <h1>Today, rebuilt on the Flo skeleton</h1>
+  <p>Flo's home puts one big circle in the middle that is the app's central act, small helpers beside it, and a short stack of context underneath. For Candy Corn the central act is talking, so the circle is Talk, with Write and Photo beside it. Everything under it is context you glance at, not read.</p>
+  <h2>What earns a place on the front page</h2>
+  <ol>
+    <li><b>Capture</b>: Talk, Write, Photo. The reason the app exists. Biggest thing on screen, one tap from anywhere.</li>
+    <li><b>How you are</b>: the three numbers, compact, one tap to change. Not a chart.</li>
+    <li><b>The next appointment</b>: how soon, with whom, how many things you have pinned, and the Prep action. This is the payoff of capturing.</li>
+    <li><b>Up next</b>: the one goal for today, with who set it, and a count of the rest. Todoist and Speak do this in their small widgets: one item, a number, no list.</li>
+    <li><b>The week strip</b>: which days you captured something, so continuity is visible without a streak.</li>
+  </ol>
+  <h2>What moved off the front page</h2>
+  <ol>
+    <li><b>Candy Corn noticed</b> (patterns) lives in History and in the Prep brief, where it has evidence next to it.</li>
+    <li><b>Bring up next time</b> is one tap away via the appointment card, and the full goal history via See all.</li>
+    <li><b>Recent entries</b> are the Journal tab.</li>
+  </ol>
+  <h2>Rules applied</h2>
+  <p>One dominant object and at most three supporting decisions in the first viewport. Full-width rows instead of clipped horizontal rails. No sentence longer than one line. Kernel glyph and the three voices kept. Tabular numerals. White canvas, warm wash only inside the hero.</p>
+</div>
+</div>
+</body>
+</html>

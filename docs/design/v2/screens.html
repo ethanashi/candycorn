@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Candy Corn screens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0" rel="stylesheet">
+<style>
+:root{--canvas:#fff;--warm:#fff4e8;--orange:#f28a3c;--orange2:#d9732f;--yellow:#f4c95d;--cocoa:#2d2825;--soft:#5e564f;--hair:#ebe2d8;--sage:#8fa58b;--rose:#c9877c;--mute:#8f867e}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#f3efea;color:var(--cocoa);font-family:"Avenir Next",Avenir,-apple-system,system-ui,sans-serif;font-feature-settings:"tnum";-webkit-font-smoothing:antialiased}
+.ms{font-family:"Material Symbols Rounded";font-weight:500;font-style:normal;line-height:1;display:inline-block;font-variation-settings:"FILL" 0,"wght" 500,"GRAD" 0,"opsz" 24;font-size:24px}
+.ms.f{font-variation-settings:"FILL" 1,"wght" 500,"GRAD" 0,"opsz" 24}
+header{max-width:1400px;margin:0 auto;padding:36px 24px 8px}
+h1{font-size:24px;font-weight:700;margin-bottom:6px}
+header p{color:var(--soft);font-size:15px;line-height:1.5;max-width:760px}
+.board{max-width:1400px;margin:0 auto;padding:16px 24px 64px;display:grid;grid-template-columns:repeat(auto-fill,390px);gap:34px 30px;justify-content:center}
+.cap > h2{font-size:15px;font-weight:600;margin-bottom:4px}
+.cap > p{font-size:13px;color:var(--soft);line-height:1.45;margin-bottom:12px;min-height:56px}
+
+.phone{width:390px;height:844px;background:var(--canvas);border-radius:44px;border:1px solid var(--hair);overflow:hidden;position:relative;isolation:isolate;box-shadow:0 2px 8px rgb(45 40 37 / 6%)}
+.status{height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 30px;font-size:15px;font-weight:600}
+.status .island{width:120px;height:34px;background:#000;border-radius:20px}
+.page{position:absolute;top:54px;left:0;right:0;bottom:98px;padding:6px 22px 0;display:flex;flex-direction:column;gap:14px}
+.k{display:inline-block;width:14px;height:18px;clip-path:polygon(50% 0,100% 100%,0 100%);border-radius:3px;background:var(--orange);flex:none}
+.k.c{background:var(--cocoa)}.k.w{background:#fff}.k.y{background:var(--yellow)}
+.k.s{width:9px;height:12px}
+
+.tabbar{position:absolute;left:14px;right:14px;bottom:14px;height:70px;background:#fff;border:1px solid var(--hair);border-radius:24px;display:flex;justify-content:space-around;align-items:center;font-size:11px;color:var(--soft);font-weight:500}
+.tabbar div{display:flex;flex-direction:column;align-items:center;gap:4px;position:relative}
+.tabbar div .ms{color:var(--mute)}
+.tabbar div.on{color:var(--orange)} .tabbar div.on .ms{color:var(--orange)}
+.tabbar div.on::before{content:"";position:absolute;top:-12px;width:22px;height:3px;border-radius:2px;background:var(--orange)}
+
+.title{display:flex;justify-content:space-between;align-items:center;height:44px;flex:none}
+.title h3{font-size:30px;font-weight:700;letter-spacing:-.2px}
+.title .act{width:40px;height:40px;border-radius:20px;background:var(--warm);display:grid;place-items:center;color:var(--cocoa)}
+.title .act.dark{background:var(--cocoa);color:#fff}
+.sub{font-size:14px;color:var(--soft);font-weight:500;margin-top:-8px;flex:none}
+.dayhd{display:flex;justify-content:space-between;align-items:center;height:22px;flex:none;font-size:13px;font-weight:600;color:var(--soft)}
+.dayhd .mini{display:flex;gap:5px}
+.dayhd .mini i{width:22px;height:6px;border-radius:3px;background:var(--hair);position:relative;overflow:hidden}
+.dayhd .mini i::after{content:"";position:absolute;left:0;top:0;bottom:0;width:var(--v);background:var(--c);border-radius:3px}
+
+/* ---- Today (approved) ---- */
+.head{display:flex;justify-content:space-between;align-items:center;height:36px;flex:none}
+.head span{font-size:14px;font-weight:500;color:var(--soft)}
+.head .me{width:34px;height:34px;border-radius:17px;background:var(--warm);display:grid;place-items:center;font-size:14px;font-weight:600}
+.week{display:flex;justify-content:space-between;margin-top:-4px;height:62px;flex:none}
+.week div{width:40px;display:flex;flex-direction:column;align-items:center;gap:5px;font-size:11px;font-weight:500;color:var(--soft)}
+.week b{width:32px;height:32px;border-radius:16px;display:grid;place-items:center;font-size:15px;font-weight:600;color:var(--cocoa)}
+.week .today b{background:var(--cocoa);color:#fff}
+.week i{width:6px;height:6px;border-radius:3px;background:var(--hair)} .week i.on{background:var(--orange)}
+.hero{flex:1;min-height:220px;border-radius:30px;background:var(--warm);position:relative;overflow:hidden}
+.hero .ghost{position:absolute;border-radius:50%;background:#fff;opacity:.5}
+.hero .g1{width:180px;height:180px;left:-70px;top:-70px}.hero .g2{width:220px;height:220px;right:-90px;bottom:-110px}
+.hero .talk{position:absolute;left:50%;top:50%;transform:translate(-50%,-58%);width:140px;height:140px;border-radius:50%;background:var(--orange);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#fff;box-shadow:0 6px 0 var(--orange2)}
+.hero .talk b{font-size:19px;font-weight:700}
+.hero .talk small{font-size:12px;font-weight:500;opacity:.92}
+.hero .side{position:absolute;top:50%;transform:translateY(-70%);width:60px;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--cocoa)}
+.hero .side.l{left:22px}.hero .side.r{right:22px}
+.hero .side span{width:56px;height:56px;border-radius:28px;background:#fff;display:grid;place-items:center;box-shadow:0 2px 8px rgb(45 40 37 / 6%);color:var(--cocoa)}
+.hero p{position:absolute;left:0;right:0;bottom:12px;text-align:center;font-size:13px;font-weight:500;color:var(--soft)}
+.mood{height:80px;flex:none;border:1px solid var(--hair);border-radius:22px;display:flex;align-items:center;padding:0 16px;gap:14px}
+.mood .bars{display:flex;gap:14px}
+.mood .bar{width:54px;display:flex;flex-direction:column;align-items:center;gap:4px}
+.mood .bar .t{width:34px;height:8px;border-radius:4px;background:var(--hair);position:relative;overflow:hidden}
+.mood .bar .t i{position:absolute;left:0;top:0;bottom:0;border-radius:4px}
+.mood .bar b{font-size:17px;font-weight:600;line-height:1}
+.mood .bar small{font-size:11px;color:var(--soft);font-weight:500}
+.mood .go{margin-left:auto;font-size:14px;font-weight:600;display:flex;align-items:center;gap:2px}
+.appt{height:82px;flex:none;border-radius:22px;background:var(--cocoa);color:#fff;display:flex;align-items:center;padding:0 16px;gap:14px}
+.appt .ico{width:42px;height:42px;border-radius:14px;background:rgba(255,255,255,.14);display:grid;place-items:center}
+.appt b{display:block;font-size:17px;font-weight:600;line-height:1.15}
+.appt small{display:block;font-size:13px;opacity:.82;margin-top:3px}
+.appt .prep{margin-left:auto;background:var(--yellow);color:var(--cocoa);font-size:14px;font-weight:600;padding:10px 14px;border-radius:14px}
+.card{border:1px solid var(--hair);border-radius:22px;padding:12px 16px;flex:none}
+.card .hd{display:flex;justify-content:space-between;align-items:center;padding-bottom:6px;font-size:13px;font-weight:600;color:var(--soft)}
+.card .hd span{display:flex;align-items:center;gap:2px;color:var(--cocoa)}
+.row{height:48px;display:flex;align-items:center;gap:12px}
+.box{width:26px;height:26px;border-radius:13px;border:2px solid #d9d0c7;flex:none;display:grid;place-items:center;color:#fff}
+.box.done{background:var(--sage);border-color:var(--sage)}
+.row b{display:block;font-size:16px;font-weight:600;line-height:1.2}
+.row small{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--soft);font-weight:500;margin-top:2px}
+.row .n{margin-left:auto;font-size:12px;color:var(--soft);font-weight:500;white-space:nowrap}
+
+/* ---- Journal ---- */
+.entry{border:1px solid var(--hair);border-radius:22px;padding:14px 16px;flex:none;display:flex;gap:12px}
+.entry .ico{width:40px;height:40px;border-radius:13px;background:var(--warm);display:grid;place-items:center;color:var(--cocoa);flex:none}
+.entry .body{flex:1;min-width:0}
+.entry .top{display:flex;justify-content:space-between;align-items:baseline}
+.entry .top b{font-size:16px;font-weight:600}
+.entry .top span{font-size:12px;color:var(--soft);font-weight:500}
+.entry p{font-size:14px;color:var(--soft);line-height:1.35;margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.entry .meta{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;font-weight:600;color:var(--cocoa)}
+.entry .meta .dot{width:4px;height:4px;border-radius:2px;background:#c9c0b8}
+.entry .thumb{width:64px;height:64px;border-radius:12px;background:#f7f1e8;border:1px solid var(--hair);flex:none;position:relative;overflow:hidden}
+.entry .thumb i{position:absolute;left:8px;right:8px;height:2px;background:#d9d0c7;border-radius:1px}
+.fab{position:absolute;right:22px;bottom:104px;width:60px;height:60px;border-radius:30px;background:var(--orange);color:#fff;display:grid;place-items:center;box-shadow:0 6px 0 var(--orange2)}
+
+/* ---- Goals ---- */
+.sec{display:flex;justify-content:space-between;align-items:baseline;height:22px;flex:none;font-size:15px;font-weight:600}
+.sec span{font-size:13px;color:var(--soft);font-weight:500}
+.glist{border:1px solid var(--hair);border-radius:22px;padding:4px 16px;flex:none}
+.glist .row{border-top:1px solid var(--hair);height:60px}
+.glist .row:first-child{border-top:0}
+.suggest{background:var(--warm);border-radius:22px;padding:14px 16px;flex:none}
+.suggest .who{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--soft)}
+.suggest b{display:block;font-size:16px;font-weight:600;margin:6px 0 2px;line-height:1.25}
+.suggest p{font-size:13px;color:var(--soft)}
+.suggest .btns{display:flex;gap:10px;margin-top:12px}
+.btn{height:44px;padding:0 18px;border-radius:14px;display:inline-flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;background:var(--cocoa);color:#fff}
+.btn.ghost{background:#fff;color:var(--cocoa);border:1px solid var(--hair)}
+
+/* ---- History ---- */
+.filters{display:flex;gap:8px;flex:none}
+.filters span{height:34px;padding:0 12px;border-radius:17px;border:1px solid var(--hair);display:inline-flex;align-items:center;font-size:13px;font-weight:600;color:var(--cocoa);white-space:nowrap}
+.filters span.on{background:var(--cocoa);color:#fff;border-color:var(--cocoa)}
+.tl{flex:none;display:flex;gap:12px;align-items:center;height:60px}
+.tl .ico{width:40px;height:40px;border-radius:13px;background:var(--warm);display:grid;place-items:center;color:var(--cocoa);flex:none}
+.tl .ico.dark{background:var(--cocoa);color:#fff}
+.tl b{display:block;font-size:15px;font-weight:600;line-height:1.2}
+.tl small{display:block;font-size:12px;color:var(--soft);font-weight:500;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px}
+.tl .t{margin-left:auto;font-size:12px;color:var(--soft);font-weight:500;white-space:nowrap}
+.hr{height:1px;background:var(--hair);flex:none;margin:-6px 0}
+
+/* ---- Settings ---- */
+.group{border:1px solid var(--hair);border-radius:22px;padding:4px 16px;flex:none}
+.group .lbl{font-size:13px;font-weight:600;color:var(--soft);padding:10px 0 2px}
+.srow{height:54px;display:flex;align-items:center;gap:12px;border-top:1px solid var(--hair)}
+.srow.first{border-top:0}
+.srow .ico{width:34px;height:34px;border-radius:11px;background:var(--warm);display:grid;place-items:center;color:var(--cocoa);flex:none}
+.srow .ico .ms{font-size:20px}
+.srow b{font-size:15px;font-weight:600;flex:1}
+.srow .val{font-size:13px;color:var(--soft);font-weight:500;display:flex;align-items:center;gap:2px}
+.srow .val.ok{color:var(--sage)}
+.srow.danger b,.srow.danger .ico{color:var(--rose)}
+
+/* ---- Talk (unchanged) ---- */
+.talkpage{position:absolute;top:54px;left:0;right:0;bottom:0;padding:0 22px}
+.talkpage .top{display:flex;justify-content:space-between;align-items:center;height:44px;font-size:15px;font-weight:600}
+.talkpage h3{text-align:center;font-size:24px;font-weight:700;margin-top:6px}
+.talkpage .subt{text-align:center;font-size:14px;color:var(--soft);font-weight:500;margin-top:4px}
+.talkpage .rec{text-align:center;font-size:15px;font-weight:600;margin-top:88px}
+.talkpage .timer{text-align:center;font-size:64px;font-weight:600;line-height:1;margin-top:8px;letter-spacing:-1px}
+.wave{display:flex;align-items:center;justify-content:center;gap:5px;height:90px;margin-top:40px}
+.wave i{width:4px;border-radius:2px;background:var(--orange);display:block}
+.stop{margin:60px auto 0;width:112px;height:56px;border-radius:16px;background:var(--orange);color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;font-size:17px;font-weight:600}
+.talkpage .foot{position:absolute;left:22px;right:22px;bottom:40px;text-align:center;font-size:13px;color:var(--soft);font-weight:500}
+</style>
+</head>
+<body>
+<header>
+<h1>Candy Corn, the five tabs plus Talk</h1>
+<p>Tab bar is now Today, Journal, Goals, History, Settings. Prepare lives behind the appointment card. Same palette, kernel provenance, Material Symbols, one job per screen, and every screen ends on the tab bar.</p>
+</header>
+<div class="board">
+
+<div class="cap">
+<h2>Today (approved)</h2>
+<p>Unchanged from the last round, tab bar updated.</p>
+<div class="phone">
+  <div class="status"><span>9:41</span><span class="island"></span><span>●●● ⌔ ▮</span></div>
+  <div class="page">
+    <div class="head"><span>Saturday, Sep 5</span><div class="me">J</div></div>
+    <div class="week">
+      <div><span>S</span><b>30</b><i class="on"></i></div><div><span>M</span><b>31</b><i></i></div><div><span>T</span><b>1</b><i class="on"></i></div><div><span>W</span><b>2</b><i class="on"></i></div><div><span>T</span><b>3</b><i class="on"></i></div><div><span>F</span><b>4</b><i></i></div><div class="today"><span>S</span><b>5</b><i class="on"></i></div>
+    </div>
+    <div class="hero">
+      <div class="ghost g1"></div><div class="ghost g2"></div>
+      <div class="side l"><span><i class="ms">edit</i></span>Write</div>
+      <div class="talk"><i class="ms f" style="font-size:38px">mic</i><b>Talk</b><small>Hold or tap</small></div>
+      <div class="side r"><span><i class="ms">photo_camera</i></span>Photo</div>
+      <p>Say it messy. It stays on this phone.</p>
+    </div>
+    <div class="mood">
+      <div class="bars">
+        <div class="bar"><div class="t"><i style="width:70%;background:var(--yellow)"></i></div><b>7</b><small>Anxiety</small></div>
+        <div class="bar"><div class="t"><i style="width:60%;background:var(--orange)"></i></div><b>6</b><small>Mood</small></div>
+        <div class="bar"><div class="t"><i style="width:40%;background:var(--cocoa)"></i></div><b>4</b><small>Energy</small></div>
+      </div>
+      <div class="go">Check in <i class="ms" style="font-size:20px">chevron_right</i></div>
+    </div>
+    <div class="appt"><div class="ico"><i class="ms f" style="color:#fff">event</i></div><div><b>Therapy in 4 days</b><small>Wed 2:00 · Dr. Park · 3 pinned</small></div><div class="prep">Prep</div></div>
+    <div class="card">
+      <div class="hd">Up next <span>3 goals <i class="ms" style="font-size:18px">chevron_right</i></span></div>
+      <div class="row"><div class="box"></div><div><b>Notice moving-forward guilt</b><small><span class="k s"></span>You chose this · today</small></div></div>
+    </div>
+  </div>
+  <div class="tabbar"><div><i class="ms">flag</i>Goals</div><div><i class="ms">edit_note</i>Journal</div><div class="on"><i class="ms f">home</i>Today</div><div><i class="ms">history</i>History</div><div><i class="ms">settings</i>Settings</div></div>
+</div>
+</div>
+
+<div class="cap">
+<h2>Journal</h2>
+<p>Your entries, newest first, grouped by day with the day's mood beside the date. Each card shows what kind of entry it is, two lines of your words, and what came out of it. The orange button records from anywhere.</p>
+<div class="phone">
+  <div class="status"><span>9:41</span><span class="island"></span><span>●●● ⌔ ▮</span></div>
+  <div class="page">
+    <div class="title"><h3>Journal</h3><div class="act"><i class="ms">search</i></div></div>
+    <div class="dayhd">Today, Sep 5 <div class="mini"><i style="--v:70%;--c:var(--yellow)"></i><i style="--v:60%;--c:var(--orange)"></i><i style="--v:40%;--c:var(--cocoa)"></i></div></div>
+    <div class="entry">
+      <div class="ico"><i class="ms">mic</i></div>
+      <div class="body">
+        <div class="top"><b>Football and guilt</b><span>3:18 PM · 2:17</span></div>
+        <p>Work was fine until around three, then I started thinking about football again and got angry. The gym helped, then I felt guilty for feeling better.</p>
+        <div class="meta"><span class="k s y"></span>2 suggestions <span class="dot"></span> Cleaned <span class="dot"></span> 1 pinned</div>
+      </div>
+    </div>
+    <div class="entry">
+      <div class="ico"><i class="ms">edit</i></div>
+      <div class="body">
+        <div class="top"><b>Quick thought</b><span>11:02 AM</span></div>
+        <p>Ask Dr. Park whether needing proof is itself a stuck point.</p>
+        <div class="meta"><span class="k s"></span>Pinned for Wednesday</div>
+      </div>
+    </div>
+    <div class="dayhd">Thursday, Sep 3 <div class="mini"><i style="--v:80%;--c:var(--yellow)"></i><i style="--v:40%;--c:var(--orange)"></i><i style="--v:30%;--c:var(--cocoa)"></i></div></div>
+    <div class="entry">
+      <div class="thumb"><i style="top:14px"></i><i style="top:24px;right:20px"></i><i style="top:34px"></i><i style="top:44px;right:28px"></i></div>
+      <div class="body">
+        <div class="top"><b>Handwritten page</b><span>9:40 PM</span></div>
+        <p>I keep thinking about senior year. I wanted the chance to prove I could have played. That part still feels unfinished.</p>
+        <div class="meta"><span class="k s y"></span>Text extracted <span class="dot"></span> 1 goal added</div>
+      </div>
+    </div>
+    <div class="entry">
+      <div class="ico"><i class="ms">edit</i></div>
+      <div class="body">
+        <div class="top"><b>The senior-year timeline</b><span>4:06 PM</span></div>
+        <p>Finished the section Dr. Park asked for. Writing it down made the coaches meeting feel smaller than it did at the time.</p>
+        <div class="meta"><span class="k s c"></span>Homework done</div>
+      </div>
+    </div>
+  </div>
+  <div class="fab"><i class="ms f" style="font-size:28px">mic</i></div>
+  <div class="tabbar"><div><i class="ms">flag</i>Goals</div><div class="on"><i class="ms f">edit_note</i>Journal</div><div><i class="ms">home</i>Today</div><div><i class="ms">history</i>History</div><div><i class="ms">settings</i>Settings</div></div>
+</div>
+</div>
+
+<div class="cap">
+<h2>Goals</h2>
+<p>Now a tab. Grouped by when, every row says who set it. Anything Candy Corn found sits apart in a warm card and needs your yes before it becomes a goal.</p>
+<div class="phone">
+  <div class="status"><span>9:41</span><span class="island"></span><span>●●● ⌔ ▮</span></div>
+  <div class="page">
+    <div class="title"><h3>Goals</h3><div class="act dark"><i class="ms">add</i></div></div>
+    <div class="sec">Today <span>1 of 2 done</span></div>
+    <div class="glist">
+      <div class="row"><div class="box"></div><div><b>Notice moving-forward guilt</b><small><span class="k s"></span>You chose this · Sep 3</small></div></div>
+      <div class="row"><div class="box done"><i class="ms" style="font-size:18px">check</i></div><div><b>Use exercise when thoughts feel stuck</b><small><span class="k s"></span>You chose this · ongoing</small></div></div>
+    </div>
+    <div class="sec">This week <span>1</span></div>
+    <div class="glist">
+      <div class="row"><div class="box"></div><div><b>Write one guilt example</b><small><span class="k s y"></span>Candy Corn suggested · you added it</small></div></div>
+    </div>
+    <div class="sec">Homework <span>Therapy · due Wed</span></div>
+    <div class="glist">
+      <div class="row"><div class="box done"><i class="ms" style="font-size:18px">check</i></div><div><b>Finish the senior-year timeline</b><small><span class="k s c"></span>Dr. Park assigned · Sep 2 at 42:18</small></div></div>
+    </div>
+    <div class="sec">Needs your yes <span>1 suggestion</span></div>
+    <div class="suggest">
+      <div class="who"><span class="k s y"></span>Found in your Sep 5 journal</div>
+      <b>Bring up why feeling better creates guilt</b>
+      <p>You said: "then I felt guilty for feeling better."</p>
+      <div class="btns"><span class="btn">Add as goal</span><span class="btn ghost">Not now</span></div>
+    </div>
+  </div>
+  <div class="tabbar"><div class="on"><i class="ms f">flag</i>Goals</div><div><i class="ms">edit_note</i>Journal</div><div><i class="ms">home</i>Today</div><div><i class="ms">history</i>History</div><div><i class="ms">settings</i>Settings</div></div>
+</div>
+</div>
+
+<div class="cap">
+<h2>History</h2>
+<p>Everything in the order it happened: journals, moods, therapy, TMS. Filter by kind. Day headers carry the day's mood. Sessions show length and whether the transcript is ready.</p>
+<div class="phone">
+  <div class="status"><span>9:41</span><span class="island"></span><span>●●● ⌔ ▮</span></div>
+  <div class="page">
+    <div class="title"><h3>History</h3><div class="act"><i class="ms">search</i></div></div>
+    <div class="filters"><span class="on">All</span><span>Journal</span><span>Mood</span><span>Therapy</span><span>TMS</span></div>
+    <div class="dayhd">Saturday, Sep 5 <div class="mini"><i style="--v:70%;--c:var(--yellow)"></i><i style="--v:60%;--c:var(--orange)"></i><i style="--v:40%;--c:var(--cocoa)"></i></div></div>
+    <div class="tl"><div class="ico"><i class="ms">mic</i></div><div><b>Football and guilt</b><small>Voice journal · 2 suggestions</small></div><div class="t">3:18 PM</div></div>
+    <div class="tl"><div class="ico"><i class="ms">favorite</i></div><div><b>Mood check-in</b><small>Anxiety 7 · Mood 6 · Energy 4</small></div><div class="t">3:10 PM</div></div>
+    <div class="tl"><div class="ico dark"><i class="ms">bolt</i></div><div><b>TMS, after session</b><small>Distress 6 to 4 · 1 note for provider</small></div><div class="t">9:52 AM</div></div>
+    <div class="dayhd">Thursday, Sep 3 <div class="mini"><i style="--v:80%;--c:var(--yellow)"></i><i style="--v:40%;--c:var(--orange)"></i><i style="--v:30%;--c:var(--cocoa)"></i></div></div>
+    <div class="tl"><div class="ico"><i class="ms">photo_camera</i></div><div><b>Handwritten page</b><small>Text extracted · 1 goal added</small></div><div class="t">9:40 PM</div></div>
+    <div class="tl"><div class="ico"><i class="ms">edit</i></div><div><b>The senior-year timeline</b><small>Homework done</small></div><div class="t">4:06 PM</div></div>
+    <div class="dayhd">Wednesday, Sep 2 <div class="mini"><i style="--v:60%;--c:var(--yellow)"></i><i style="--v:50%;--c:var(--orange)"></i><i style="--v:50%;--c:var(--cocoa)"></i></div></div>
+    <div class="tl"><div class="ico dark"><i class="ms f">event</i></div><div><b>Therapy with Dr. Park</b><small>52 min · transcript ready · 1 homework</small></div><div class="t">2:00 PM</div></div>
+  </div>
+  <div class="tabbar"><div><i class="ms">flag</i>Goals</div><div><i class="ms">edit_note</i>Journal</div><div><i class="ms">home</i>Today</div><div class="on"><i class="ms f">history</i>History</div><div><i class="ms">settings</i>Settings</div></div>
+</div>
+</div>
+
+<div class="cap">
+<h2>Settings</h2>
+<p>Three groups, plain rows, honest values. Privacy is a status board, not legal text. AI shows the mode, the model, and whether a key is present. Data holds export and the one red action.</p>
+<div class="phone">
+  <div class="status"><span>9:41</span><span class="island"></span><span>●●● ⌔ ▮</span></div>
+  <div class="page">
+    <div class="title"><h3>Settings</h3><div class="me" style="width:40px;height:40px;border-radius:20px;background:var(--warm);display:grid;place-items:center;font-weight:600">J</div></div>
+    <div class="group">
+      <div class="lbl">Privacy</div>
+      <div class="srow first"><div class="ico"><i class="ms">phone_iphone</i></div><b>Stored on this phone</b><div class="val ok"><i class="ms" style="font-size:18px">check</i></div></div>
+      <div class="srow"><div class="ico"><i class="ms">cloud_upload</i></div><b>Cloud upload</b><div class="val">Only when you tap Send</div></div>
+      <div class="srow"><div class="ico"><i class="ms">graphic_eq</i></div><b>Raw audio</b><div class="val">Keep <i class="ms" style="font-size:18px">chevron_right</i></div></div>
+    </div>
+    <div class="group">
+      <div class="lbl">AI</div>
+      <div class="srow first"><div class="ico"><i class="ms">tune</i></div><b>Mode</b><div class="val">Organizer <i class="ms" style="font-size:18px">chevron_right</i></div></div>
+      <div class="srow"><div class="ico"><i class="ms">memory</i></div><b>Model</b><div class="val">DeepSeek V4 Flash <i class="ms" style="font-size:18px">chevron_right</i></div></div>
+      <div class="srow"><div class="ico"><i class="ms">key</i></div><b>OpenRouter key</b><div class="val ok">Added <i class="ms" style="font-size:18px">check</i></div></div>
+    </div>
+    <div class="group">
+      <div class="lbl">Data</div>
+      <div class="srow first"><div class="ico"><i class="ms">ios_share</i></div><b>Export everything</b><div class="val"><i class="ms" style="font-size:18px">chevron_right</i></div></div>
+      <div class="srow"><div class="ico"><i class="ms">toggle_off</i></div><b>Sample content</b><div class="val">On <i class="ms" style="font-size:18px">chevron_right</i></div></div>
+      <div class="srow danger"><div class="ico" style="background:#fbeeea"><i class="ms">delete</i></div><b>Delete everything</b></div>
+    </div>
+    <div class="sub" style="margin-top:0">Candy Corn is not a therapist or a crisis service. In the US, 988 is there any time.</div>
+  </div>
+  <div class="tabbar"><div><i class="ms">flag</i>Goals</div><div><i class="ms">edit_note</i>Journal</div><div><i class="ms">home</i>Today</div><div><i class="ms">history</i>History</div><div class="on"><i class="ms f">settings</i>Settings</div></div>
+</div>
+</div>
+
+<div class="cap">
+<h2>Talk (kept as is)</h2>
+<p>The recording screen you liked, unchanged: question, timer, live waveform, one Stop. Reached from Today or the Journal button.</p>
+<div class="phone">
+  <div class="status"><span>9:41</span><span class="island"></span><span>●●● ⌔ ▮</span></div>
+  <div class="talkpage">
+    <div class="top"><i class="ms">close</i><span>Cancel</span></div>
+    <h3>What’s going on?</h3>
+    <div class="subt">Private journal recording</div>
+    <div class="rec">Recording</div>
+    <div class="timer">02:17</div>
+    <div class="wave">
+      <i style="height:28px"></i><i style="height:44px"></i><i style="height:62px"></i><i style="height:36px"></i><i style="height:70px"></i><i style="height:52px"></i><i style="height:30px"></i><i style="height:58px"></i><i style="height:76px"></i><i style="height:40px"></i><i style="height:64px"></i><i style="height:34px"></i><i style="height:50px"></i><i style="height:72px"></i><i style="height:46px"></i><i style="height:28px"></i><i style="height:60px"></i><i style="height:38px"></i><i style="height:66px"></i><i style="height:48px"></i><i style="height:30px"></i><i style="height:56px"></i><i style="height:74px"></i><i style="height:42px"></i><i style="height:62px"></i><i style="height:32px"></i><i style="height:54px"></i><i style="height:68px"></i><i style="height:40px"></i><i style="height:26px"></i>
+    </div>
+    <div class="stop"><i class="ms f" style="font-size:20px">stop</i>Stop</div>
+    <div class="foot">Audio is saved on this device before any organizing begins.</div>
+  </div>
+</div>
+</div>
+
+</div>
+</body>
+</html>
