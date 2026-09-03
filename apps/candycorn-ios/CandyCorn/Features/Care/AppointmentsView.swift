@@ -60,16 +60,28 @@ struct AppointmentsView: View {
     }
 
     private func statusText(_ appointment: Appointment) -> String {
-        switch appointment.status {
+        if let record = state.sessionProcessingRecord(for: appointment.id) {
+            if record.failure?.code == .summaryPermissionRequired { return "Ready to make the debrief" }
+            if record.failure != nil { return "Processing paused, tap to review" }
+            switch record.stage {
+            case .recordingSaved: return "Recording saved"
+            case .transcribing: return "Transcribing on this device"
+            case .separatingSpeakers: return "Separating speakers on this device"
+            case .summarizing: return "Creating your debrief"
+            case .ready: return "Transcript and debrief ready"
+            }
+        }
+        return switch appointment.status {
         case .planned: "Upcoming"
         case .recording: "Recording"
-        case .processing: "Saving"
+        case .processing: "Recording saved"
         case .completed: appointment.recordingAttachmentID == nil ? "Notes saved" : "Recording saved"
         }
     }
 
     private func open(_ appointment: Appointment) {
-        if appointment.status == .completed {
+        if appointment.recordingAttachmentID != nil,
+           appointment.status == .processing || appointment.status == .completed {
             state.selectAppointment(id: appointment.id)
             navigation.navigate(to: appointment.kind == .tms ? .tmsPost : .therapySession)
         }

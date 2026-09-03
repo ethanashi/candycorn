@@ -131,6 +131,22 @@ struct RuntimeDependencyFactory: Sendable {
             transport: transport,
             logger: aiLogger
         )
+        let transcriber = AppleSpeechTranscriber()
+        let diarizer = FluidAudioDiarizer()
+        let sessionSummarizer = OpenRouterSessionSummarizer(
+            keyProvider: openRouterKeyStore,
+            configurationProvider: configurationStore,
+            transport: transport,
+            logger: aiLogger
+        )
+        let sessionProcessing = SessionProcessingCoordinator(
+            careStore: repositories,
+            attachments: attachments,
+            transcriber: transcriber,
+            diarizer: diarizer,
+            aligner: TimestampTranscriptAligner(),
+            summarizer: sessionSummarizer
+        )
         let dependencies = AppDependencies(
             careStore: repositories,
             maintenance: database,
@@ -151,6 +167,10 @@ struct RuntimeDependencyFactory: Sendable {
             logger: logger,
             languageModel: languageModel,
             visionReader: visionReader,
+            transcriber: transcriber,
+            diarizer: diarizer,
+            sessionSummarizer: sessionSummarizer,
+            sessionProcessing: sessionProcessing,
             openRouterKeyStore: openRouterKeyStore,
             aiConfigurationStore: configurationStore,
             screenshotMode: false,

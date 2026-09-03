@@ -378,6 +378,7 @@ enum AISendAction: Hashable, Sendable {
     case readPhoto(journalID: UUID, attachmentID: UUID)
     case summarizeSession(UUID)
     case generateAppointmentBrief(Appointment.Kind)
+    case summarizeProcessedSession(UUID)
 }
 
 struct OutgoingSourceDescriptor: Equatable, Sendable, Identifiable {

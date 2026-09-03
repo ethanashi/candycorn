@@ -34,6 +34,15 @@ actor AVAudioPlaybackService: AudioPlaybackService {
     }
 
     func play(attachment: Attachment) async throws {
+        try await startPlayback(attachment: attachment, offset: nil)
+    }
+
+    func play(attachment: Attachment, fromMilliseconds: Int) async throws {
+        guard fromMilliseconds >= 0 else { throw UserFacingError.playback }
+        try await startPlayback(attachment: attachment, offset: fromMilliseconds)
+    }
+
+    private func startPlayback(attachment: Attachment, offset: Int?) async throws {
         guard attachment.kind == .audio, attachment.byteCount > 0 else { throw UserFacingError.playback }
         await stop()
         do {
@@ -41,6 +50,13 @@ actor AVAudioPlaybackService: AudioPlaybackService {
             guard try await files.fileSize(at: url) > 0 else { throw UserFacingError.playback }
             try await audioSession.beginPlayback()
             let newPlayer = try await playerFactory.makePlayer(url: url)
+            if let offset {
+                let duration = await newPlayer.durationMilliseconds()
+                guard offset <= duration,
+                      await newPlayer.seek(toMilliseconds: offset) else {
+                    throw UserFacingError.playback
+                }
+            }
             guard await newPlayer.play() else { throw UserFacingError.playback }
             player = newPlayer
             await emitSnapshot(for: newPlayer, isPlaying: true)

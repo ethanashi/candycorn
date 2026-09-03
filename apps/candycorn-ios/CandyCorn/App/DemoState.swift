@@ -18,6 +18,7 @@ private enum PreparedAIPayload: Equatable, Sendable {
     case photo(JournalEntry, Attachment)
     case session(Appointment, SourceTextDocument)
     case brief(AppointmentBriefInput, Int)
+    case processedSession(ProcessedSessionAIContext)
 
     var sourceRevision: Date? {
         switch self {
@@ -27,15 +28,24 @@ private enum PreparedAIPayload: Equatable, Sendable {
             appointment.endedAt ?? appointment.startedAt ?? appointment.scheduledAt
         case let .brief(input, _):
             input.sources.compactMap(\.occurredAt).max()
+        case let .processedSession(context):
+            context.appointment.endedAt ?? context.appointment.startedAt ?? context.appointment.scheduledAt
         }
     }
 
     var journalID: UUID? {
         switch self {
         case let .journal(journal, _), let .photo(journal, _): journal.id
-        case .session, .brief: nil
+        case .session, .brief, .processedSession: nil
         }
     }
+}
+
+private struct ProcessedSessionAIContext: Equatable, Sendable {
+    let appointment: Appointment
+    let attachmentID: UUID
+    let transcript: [SessionTranscriptSource]
+    let talkingPoints: [SessionTalkingPointSource]
 }
 
 enum AIProvider: String, CaseIterable, Codable, Sendable {
@@ -79,6 +89,9 @@ final class DemoState {
     private(set) var attachments: [Attachment]
     private(set) var providers: [ProviderProfile]
     private(set) var transcript: [TranscriptSegment]
+    private(set) var sessionProcessing: [SessionProcessingRecord]
+    private(set) var speakerAssignments: [SpeakerClusterAssignment]
+    private(set) var debriefDecisions: [SessionDebriefDecision]
     private(set) var settings: VaultSettings
     private(set) var speakerCorrections: [UUID: TranscriptSegment.Speaker] = [:]
     private(set) var searchResults: [SearchHit] = []
@@ -98,6 +111,7 @@ final class DemoState {
     private var searchGeneration = 0
     private(set) var activeRecordingKind: RecordingKind?
     private var recordingEventsTask: Task<Void, Never>?
+    private var processingEventsTask: Task<Void, Never>?
     private var busyGoalIDs: Set<UUID> = []
     private var busyTalkingPointIDs: Set<UUID> = []
     private var preparedAISends: [UUID: PreparedAIContext] = [:]
@@ -107,6 +121,8 @@ final class DemoState {
     private var careRevision = 0
     private var aiSettingsRevision = 0
     private var currentMoodID: UUID?
+    private var busySpeakerClusters: Set<String> = []
+    private let launchArguments: [String]
 
     var mood: MoodLog? {
         if let currentMoodID,
@@ -128,7 +144,9 @@ final class DemoState {
             scenario: ScreenshotScenario.parse(arguments: arguments)
         )
         self.dependencies = resolvedDependencies
-        let initial = dependencies == nil ? SeededData.careSnapshot : SeededData.emptySnapshot
+        launchArguments = arguments
+        let base = dependencies == nil ? SeededData.careSnapshot : SeededData.emptySnapshot
+        let initial = Phase4ScreenshotSeed.applyingIfNeeded(to: base, arguments: arguments)
         journals = initial.journals
         moods = initial.moods
         appointments = initial.appointments
@@ -139,6 +157,9 @@ final class DemoState {
         attachments = initial.attachments
         providers = initial.providers
         transcript = initial.transcript
+        sessionProcessing = initial.sessionProcessing
+        speakerAssignments = initial.speakerAssignments
+        debriefDecisions = initial.debriefDecisions
         settings = initial.settings
         currentMoodID = Self.latestMoodID(in: initial.moods)
         hasOpenRouterKey = (try? resolvedDependencies.openRouterKeyStore.hasKey()) ?? false
@@ -153,9 +174,13 @@ final class DemoState {
     func load() async {
         loadState = .loading
         do {
-            apply(try await dependencies.careStore.snapshot())
+            listenForProcessingEvents()
+            apply(Phase4ScreenshotSeed.applyingIfNeeded(
+                to: try await dependencies.careStore.snapshot(), arguments: launchArguments
+            ))
             refreshLoadState()
             dependencies.logger.record(.vaultOpened, metrics: EventMetrics())
+            await dependencies.sessionProcessing.resumePending()
         } catch {
             loadState = .failed(UserFacingError.loading.message)
         }
@@ -585,6 +610,10 @@ final class DemoState {
         return pending
     }
 
+    func prepareProcessedSessionSummary(appointmentID: UUID) throws -> PendingAISend {
+        try prepareAISend(.summarizeProcessedSession(appointmentID))
+    }
+
     @discardableResult
     func performAISend(_ pending: PendingAISend) async -> Bool {
         guard let prepared = consumePreparedSend(pending.id), prepared.pending == pending else {
@@ -601,6 +630,22 @@ final class DemoState {
         aiProcessingStates[pending.action] = .processing
         defer { activeAISends.remove(pending.action) }
         do {
+            if case .summarizeProcessedSession = pending.action {
+                try ensureCurrent(prepared, settingsRevision: settingsRevision, configuration: configuration)
+                guard case let .processedSession(context) = prepared.payload else {
+                    throw AIProviderError.invalidInput
+                }
+                try await dependencies.sessionProcessing.noteSummaryStarted(appointmentID: context.appointment.id)
+                apply(try await dependencies.careStore.snapshot())
+                guard sessionProcessingRecord(for: context.appointment.id)?.stage == .ready else {
+                    let message = sessionProcessingRecord(for: context.appointment.id)?.failure?.message
+                        ?? "The debrief could not be created. The recording and transcript are unchanged."
+                    throw UserFacingError(message: message)
+                }
+                aiProcessingStates[pending.action] = .succeeded
+                operationError = nil
+                return true
+            }
             let product = try await run(prepared.payload, action: pending.action)
             try ensureCurrent(prepared, settingsRevision: settingsRevision, configuration: configuration)
             try await dependencies.organizer.persist(product)
@@ -681,6 +726,93 @@ final class DemoState {
         artifacts
             .filter { $0.kind == kind && $0.sourceIDs.contains(sourceID) }
             .max { $0.createdAt < $1.createdAt }
+    }
+
+    func sessionProcessingRecord(for appointmentID: UUID) -> SessionProcessingRecord? {
+        sessionProcessing.first { $0.appointmentID == appointmentID }
+    }
+
+    func structuredSessionSummary(
+        for appointmentID: UUID
+    ) -> (artifact: AIArtifact, result: StructuredSessionSummaryResult)? {
+        guard let appointment = appointments.first(where: { $0.id == appointmentID }),
+              let summaryID = appointment.summaryID,
+              let artifact = artifacts.first(where: { $0.id == summaryID && $0.kind == .sessionSummary }),
+              let result = try? JSONDecoder().decode(StructuredSessionSummaryResult.self, from: artifact.structuredPayload),
+              result.debriefTopics.count >= 3, result.debriefTopics.count <= 5 else { return nil }
+        return (artifact, result)
+    }
+
+    func beginOrResumeSessionProcessing(appointmentID: UUID) async {
+        await dependencies.sessionProcessing.beginOrResume(appointmentID: appointmentID)
+        await refreshPhase4Snapshot()
+    }
+
+    func retrySessionProcessing(appointmentID: UUID) async {
+        await dependencies.sessionProcessing.retry(appointmentID: appointmentID)
+        await refreshPhase4Snapshot()
+    }
+
+    func persistSpeakerCluster(
+        segmentID: UUID,
+        as speaker: TranscriptSegment.Speaker,
+        rememberPatientVoice: Bool = false
+    ) async -> Bool {
+        guard speaker != .unknown,
+              let segment = transcript.first(where: { $0.id == segmentID }),
+              let label = segment.rawSpeakerLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !label.isEmpty else { return false }
+        let key = "\(segment.appointmentID.uuidString):\(label)"
+        guard !busySpeakerClusters.contains(key) else { return false }
+        busySpeakerClusters.insert(key)
+        defer { busySpeakerClusters.remove(key) }
+        let existing = speakerAssignments.first {
+            $0.appointmentID == segment.appointmentID && $0.rawSpeakerLabel == label
+        }
+        let assignment = SpeakerClusterAssignment(
+            id: existing?.id ?? UUID(), appointmentID: segment.appointmentID,
+            rawSpeakerLabel: label, speaker: speaker, updatedAt: dependencies.now()
+        )
+        do {
+            try await dependencies.careStore.assignSpeakerCluster(
+                assignment, rememberPatientVoice: rememberPatientVoice
+            )
+            apply(try await dependencies.careStore.snapshot())
+            operationError = nil
+            return true
+        } catch {
+            operationError = "That speaker label could not be saved. The transcript is unchanged."
+            return false
+        }
+    }
+
+    func applyDebriefMutation(_ mutation: SessionDebriefMutation) async -> Bool {
+        do {
+            try await dependencies.careStore.applySessionDebriefMutation(mutation)
+            apply(try await dependencies.careStore.snapshot())
+            operationError = nil
+            return true
+        } catch {
+            operationError = "That debrief choice could not be saved. Your session is unchanged."
+            return false
+        }
+    }
+
+    func playSessionRecording(appointmentID: UUID, fromMilliseconds: Int) async -> Bool {
+        guard fromMilliseconds >= 0,
+              let appointment = appointments.first(where: { $0.id == appointmentID }),
+              let attachmentID = appointment.recordingAttachmentID,
+              let attachment = attachments.first(where: { $0.id == attachmentID }) else { return false }
+        do {
+            try await dependencies.playback.play(
+                attachment: attachment, fromMilliseconds: fromMilliseconds
+            )
+            operationError = nil
+            return true
+        } catch {
+            operationError = UserFacingError.playback.message
+            return false
+        }
     }
 
     @discardableResult
@@ -793,6 +925,26 @@ final class DemoState {
                 title: "Manual notes from \(appointment.kind.displayName.lowercased())",
                 text: notes,
                 occurredAt: appointment.endedAt ?? appointment.startedAt ?? appointment.scheduledAt
+            ))
+        case let .summarizeProcessedSession(id):
+            guard let appointment = appointments.first(where: { $0.id == id }),
+                  let attachmentID = appointment.recordingAttachmentID else { throw UserFacingError.aiSource }
+            let segments = transcript.filter { $0.appointmentID == id }
+                .sorted { ($0.startMilliseconds, $0.id.uuidString) < ($1.startMilliseconds, $1.id.uuidString) }
+            guard !segments.isEmpty else { throw UserFacingError.aiSource }
+            return .processedSession(ProcessedSessionAIContext(
+                appointment: appointment,
+                attachmentID: attachmentID,
+                transcript: segments.map {
+                    SessionTranscriptSource(
+                        id: $0.id, speaker: $0.speaker, rawSpeakerLabel: $0.rawSpeakerLabel,
+                        startMilliseconds: $0.startMilliseconds, endMilliseconds: $0.endMilliseconds,
+                        text: $0.text
+                    )
+                },
+                talkingPoints: talkingPoints.filter {
+                    $0.status == .open && $0.targetAppointmentKind == appointment.kind
+                }.prefix(64).map { SessionTalkingPointSource(id: $0.id, text: $0.text) }
             ))
         case let .generateAppointmentBrief(kind):
             return try briefPayload(kind: kind)
@@ -974,6 +1126,20 @@ final class DemoState {
         case let .brief(input, omittedCount):
             sources = input.sources.map(textDescriptor)
             omitted = omittedCount
+        case let .processedSession(context):
+            sources = context.transcript.map { source in
+                OutgoingSourceDescriptor(
+                    id: source.id, kind: .text,
+                    title: "\(source.speaker.disclosureName) at \(AppointmentRecordingClock.format(milliseconds: source.startMilliseconds))",
+                    characterCount: source.text.count, imageCount: 0
+                )
+            } + context.talkingPoints.map { source in
+                OutgoingSourceDescriptor(
+                    id: source.id, kind: .text, title: "Open talking point",
+                    characterCount: source.text.count, imageCount: 0
+                )
+            }
+            omitted = 0
         }
         return WhatLeavesDeviceSummary(
             purpose: purpose(for: action),
@@ -1003,6 +1169,7 @@ final class DemoState {
         case .readPhoto: "Read text from this journal photo"
         case .summarizeSession: "Organize these manual session notes"
         case let .generateAppointmentBrief(kind): "Prepare for \(kind.displayName.lowercased())"
+        case .summarizeProcessedSession: "Create this session debrief"
         }
     }
 
@@ -1049,6 +1216,8 @@ final class DemoState {
             ))
         case (.generateAppointmentBrief, let .brief(input, _)):
             return try await dependencies.organizer.generateAppointmentBrief(input)
+        case (.summarizeProcessedSession, .processedSession):
+            throw AIProviderError.invalidInput
         default:
             throw AIProviderError.invalidInput
         }
@@ -1084,6 +1253,11 @@ final class DemoState {
                 return false
             }
             return current == input && currentOmitted == omitted
+        case let .processedSession(context):
+            guard case let .processedSession(current)? = try? preparedPayload(
+                for: .summarizeProcessedSession(context.appointment.id)
+            ) else { return false }
+            return current == context
         }
     }
 
@@ -1137,6 +1311,9 @@ final class DemoState {
         attachments = snapshot.attachments
         providers = snapshot.providers
         transcript = snapshot.transcript
+        sessionProcessing = snapshot.sessionProcessing
+        speakerAssignments = snapshot.speakerAssignments
+        debriefDecisions = snapshot.debriefDecisions
         settings = snapshot.settings
         if settings.aiMode == .off {
             settings.aiProvider = .off
@@ -1178,6 +1355,22 @@ final class DemoState {
         }
     }
 
+    private func listenForProcessingEvents() {
+        guard processingEventsTask == nil else { return }
+        processingEventsTask = Task { [weak self, dependencies] in
+            for await _ in await dependencies.sessionProcessing.events() {
+                guard !Task.isCancelled, let self else { return }
+                await self.refreshPhase4Snapshot()
+            }
+        }
+    }
+
+    private func refreshPhase4Snapshot() async {
+        guard let snapshot = try? await dependencies.careStore.snapshot() else { return }
+        apply(Phase4ScreenshotSeed.applyingIfNeeded(to: snapshot, arguments: launchArguments))
+        refreshLoadState()
+    }
+
     private func persist(_ recording: LocalRecording, kind: RecordingKind) async -> Bool {
         guard recording.attachment.byteCount > 0 else {
             operationError = UserFacingError.recording.message
@@ -1202,16 +1395,21 @@ final class DemoState {
         guard let appointment = appointments.first(where: { $0.id == id }) else { return }
         careRevision += 1
         var updated = appointment
+        if updated.recordingAttachmentID != recording.attachment.id {
+            updated.transcriptID = nil
+            updated.summaryID = nil
+        }
         updated.recordingAttachmentID = recording.attachment.id
         updated.endedAt = dependencies.now()
         if updated.startedAt == nil {
             let seconds = TimeInterval(recording.attachment.durationMilliseconds ?? 0) / 1_000
             updated.startedAt = dependencies.now().addingTimeInterval(-seconds)
         }
-        updated.status = .completed
+        updated.status = .processing
         do {
             try await dependencies.careStore.saveAppointment(updated)
             Self.upsert(updated, in: &appointments)
+            await beginOrResumeSessionProcessing(appointmentID: id)
         } catch {
             operationError = "The recording was saved, but the appointment details could not be updated."
         }
@@ -1230,5 +1428,15 @@ final class DemoState {
         let words = firstLine.split(whereSeparator: \.isWhitespace).prefix(8)
         let title = words.joined(separator: " ")
         return title.isEmpty ? "Journal entry" : title
+    }
+}
+
+private extension TranscriptSegment.Speaker {
+    var disclosureName: String {
+        switch self {
+        case .patient: "You"
+        case .provider: "Provider"
+        case .unknown: "Unknown speaker"
+        }
     }
 }

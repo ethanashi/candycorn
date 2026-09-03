@@ -402,7 +402,7 @@ struct JournalDetailView: View {
         case .summarizeJournal: selection = .summary
         case .extractJournalSignals: navigation.navigate(to: .journalSuggestions)
         case .readPhoto: selection = .extracted
-        case .summarizeSession, .generateAppointmentBrief: break
+        case .summarizeSession, .generateAppointmentBrief, .summarizeProcessedSession: break
         }
     }
 
@@ -501,7 +501,7 @@ struct JournalDetailView: View {
     private func actionMatchesJournal(_ action: AISendAction) -> Bool {
         switch action {
         case .rewriteJournal, .summarizeJournal, .extractJournalSignals, .readPhoto: true
-        case .summarizeSession, .generateAppointmentBrief: false
+        case .summarizeSession, .generateAppointmentBrief, .summarizeProcessedSession: false
         }
     }
 }
