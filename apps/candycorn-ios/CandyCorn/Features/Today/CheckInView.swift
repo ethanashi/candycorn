@@ -3,23 +3,24 @@ import SwiftUI
 
 struct CheckInDraft: Equatable, Sendable {
     private static let newMoodID = UUID(uuidString: "20000000-0000-0000-0000-000000000099")!
-    private static let newMoodDate = Date(timeIntervalSince1970: 1_788_654_600)
 
     private let id: UUID
     private let createdAt: Date
+    private let customValues: [String: Int]
     var values: MoodValues
     private(set) var note: String
     private(set) var saveStarted = false
 
-    init(mood: MoodLog?) {
+    init(mood: MoodLog?, now: Date) {
         id = mood?.id ?? Self.newMoodID
-        createdAt = mood?.createdAt ?? Self.newMoodDate
+        createdAt = mood?.createdAt ?? now
+        customValues = mood?.customValues ?? [:]
         values = MoodValues(mood: mood?.mood, anxiety: mood?.anxiety, energy: mood?.energy)
         note = String((mood?.note ?? "").prefix(180))
     }
 
-    mutating func set(_ dimension: MoodDimension, to value: Int) {
-        let next = min(max(value, 1), 10)
+    mutating func set(_ dimension: MoodDimension, to value: Int?) {
+        let next = value.map { min(max($0, 1), 10) }
         switch dimension {
         case .anxiety: values.anxiety = next
         case .mood: values.mood = next
@@ -41,7 +42,7 @@ struct CheckInDraft: Equatable, Sendable {
             mood: values.mood,
             anxiety: values.anxiety,
             energy: values.energy,
-            customValues: [:],
+            customValues: customValues,
             note: cleanedNote.isEmpty ? nil : cleanedNote
         )
     }
@@ -57,7 +58,7 @@ struct CheckInView: View {
     init(navigation: NavigationModel, state: DemoState) {
         self.navigation = navigation
         self.state = state
-        _draft = State(initialValue: CheckInDraft(mood: state.mood))
+        _draft = State(initialValue: CheckInDraft(mood: state.mood, now: state.dependencies.now()))
     }
 
     var body: some View {
@@ -86,7 +87,7 @@ struct CheckInView: View {
     }
 
     private var moodEditor: some View {
-        MoodBands(values: draft.values) { dimension, value in
+        MoodBands(values: draft.values) { (dimension: MoodDimension, value: Int?) in
             draft.set(dimension, to: value)
         }
     }

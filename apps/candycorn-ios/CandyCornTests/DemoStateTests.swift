@@ -53,9 +53,59 @@ struct DemoStateTests {
         #expect(state.aiProvider == .off)
         state.routerAvailable = false
         state.setAIMode(.reflection)
-        #expect(state.aiProvider == .onDeviceWhenAvailable)
+        #expect(state.aiProvider == .off)
         state.setAIProvider(.router)
         #expect(state.aiProvider == .off)
+        state.routerAvailable = true
+        state.setAIMode(.organizer)
+        #expect(state.aiProvider == .off)
+        state.setAIProvider(.router)
+        #expect(state.aiProvider == .router)
+        state.setAIMode(.reflection)
+        #expect(state.aiProvider == .router)
+        state.setAIMode(.off)
+        #expect(state.aiProvider == .off)
+    }
+
+    @Test("Mood persistence refreshes the repository and selects the saved record")
+    func moodPersistenceRefreshesSnapshot() async {
+        var snapshot = SeededData.careSnapshot
+        let future = MoodLog(
+            id: UUID(), createdAt: Date(timeIntervalSince1970: 9_999),
+            mood: 2, anxiety: 3, energy: 4, customValues: [:], note: nil
+        )
+        snapshot.moods = [future]
+        let store = MoodTestCareStore(snapshot: snapshot, clearsGoalsAfterMoodSave: true)
+        let state = DemoState(dependencies: makeDependencies(careStore: store), arguments: ["CandyCorn"])
+        await state.load()
+        let saved = MoodLog(
+            id: UUID(), createdAt: Date(timeIntervalSince1970: 10),
+            mood: 12, anxiety: 0, energy: nil, customValues: ["focus": 99], note: "Steady"
+        )
+
+        #expect(await state.persistMood(saved))
+        #expect(await store.moodSaveCount == 1)
+        #expect(state.mood == saved.normalized())
+        #expect(state.goals.isEmpty)
+    }
+
+    @Test("Failed mood persistence preserves state and can be retried")
+    func moodPersistenceFailure() async {
+        let store = MoodTestCareStore(snapshot: SeededData.careSnapshot, failsMoodSave: true)
+        let state = DemoState(dependencies: makeDependencies(careStore: store), arguments: ["CandyCorn"])
+        await state.load()
+        let priorMood = state.mood
+        let saved = MoodLog(
+            id: UUID(), createdAt: Date(timeIntervalSince1970: 10),
+            mood: 8, anxiety: nil, energy: 6, customValues: ["focus": 5], note: nil
+        )
+
+        #expect(await state.persistMood(saved) == false)
+        #expect(state.mood == priorMood)
+        #expect(state.operationError == UserFacingError.saving.message)
+        await store.setFailsMoodSave(false)
+        #expect(await state.persistMood(saved))
+        #expect(state.mood == saved)
     }
 
     @Test("Consent gates recording and duplicate activation")
@@ -100,4 +150,70 @@ struct DemoStateTests {
         #expect(state.goals == SeededData.goals)
         #expect(state.talkingPoints == SeededData.talkingPoints)
     }
+
+    private func makeDependencies(careStore: any CareStore) -> AppDependencies {
+        let base = PreviewDependencies.make()
+        return AppDependencies(
+            careStore: careStore,
+            maintenance: base.maintenance,
+            attachments: base.attachments,
+            recording: base.recording,
+            playback: base.playback,
+            photos: base.photos,
+            exporter: base.exporter,
+            logger: base.logger,
+            languageModel: base.languageModel,
+            visionReader: base.visionReader,
+            transcriber: base.transcriber,
+            distressClassifier: base.distressClassifier,
+            openRouterKeyStore: base.openRouterKeyStore,
+            aiConfigurationStore: base.aiConfigurationStore,
+            screenshotMode: false,
+            now: base.now
+        )
+    }
+}
+
+private actor MoodTestCareStore: CareStore {
+    private var current: CareSnapshot
+    private var failsMoodSave: Bool
+    private let clearsGoalsAfterMoodSave: Bool
+    private(set) var moodSaveCount = 0
+
+    init(
+        snapshot: CareSnapshot,
+        failsMoodSave: Bool = false,
+        clearsGoalsAfterMoodSave: Bool = false
+    ) {
+        current = snapshot
+        self.failsMoodSave = failsMoodSave
+        self.clearsGoalsAfterMoodSave = clearsGoalsAfterMoodSave
+    }
+
+    func snapshot() -> CareSnapshot { current }
+
+    func saveMood(_ mood: MoodLog) throws {
+        guard !failsMoodSave else { throw UserFacingError.saving }
+        moodSaveCount += 1
+        if let index = current.moods.firstIndex(where: { $0.id == mood.id }) {
+            current.moods[index] = mood.normalized()
+        } else {
+            current.moods.append(mood.normalized())
+        }
+        if clearsGoalsAfterMoodSave {
+            current.goals = []
+        }
+    }
+
+    func setFailsMoodSave(_ fails: Bool) { failsMoodSave = fails }
+    func saveJournal(_ entry: JournalEntry) { _ = entry }
+    func deleteJournal(id: UUID) { _ = id }
+    func saveAppointment(_ appointment: Appointment) { _ = appointment }
+    func saveGoal(_ goal: Goal) { _ = goal }
+    func addGoalProgress(_ progress: GoalProgress) { _ = progress }
+    func saveTalkingPoint(_ point: TalkingPoint) { _ = point }
+    func saveAttachment(_ attachment: CandyCorn.Attachment) { _ = attachment }
+    func search(_ query: String, limit: Int) -> [SearchHit] { [] }
+    func setSampleContentEnabled(_ enabled: Bool) { _ = enabled }
+    func updateSettings(_ settings: VaultSettings) { current.settings = settings }
 }

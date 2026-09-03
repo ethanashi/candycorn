@@ -106,8 +106,15 @@ final class DemoState {
     private var aiProcessingStates: [AISendAction: AIProcessingState] = [:]
     private var careRevision = 0
     private var aiSettingsRevision = 0
+    private var currentMoodID: UUID?
 
-    var mood: MoodLog? { moods.max { $0.createdAt < $1.createdAt } }
+    var mood: MoodLog? {
+        if let currentMoodID,
+           let current = moods.first(where: { $0.id == currentMoodID }) {
+            return current
+        }
+        return moods.max { $0.createdAt < $1.createdAt }
+    }
     var aiMode: AIMode { settings.aiMode }
     var aiProvider: AIProvider { settings.aiProvider }
 
@@ -133,6 +140,7 @@ final class DemoState {
         providers = initial.providers
         transcript = initial.transcript
         settings = initial.settings
+        currentMoodID = Self.latestMoodID(in: initial.moods)
         hasOpenRouterKey = (try? resolvedDependencies.openRouterKeyStore.hasKey()) ?? false
         aiConfiguration = resolvedDependencies.aiConfigurationStore.load()
         routerAvailable = hasOpenRouterKey
@@ -157,17 +165,25 @@ final class DemoState {
         careRevision += 1
         guard let mood else {
             moods = []
+            currentMoodID = nil
             return
         }
-        Self.upsert(mood.normalized(), in: &moods)
+        let normalized = mood.normalized()
+        Self.upsert(normalized, in: &moods)
+        currentMoodID = normalized.id
     }
 
     func persistMood(_ mood: MoodLog) async -> Bool {
         careRevision += 1
         operationError = nil
+        let normalized = mood.normalized()
         do {
-            try await dependencies.careStore.saveMood(mood.normalized())
-            saveMood(mood)
+            try await dependencies.careStore.saveMood(normalized)
+            apply(try await dependencies.careStore.snapshot())
+            if !moods.contains(where: { $0.id == normalized.id }) {
+                Self.upsert(normalized, in: &moods)
+            }
+            currentMoodID = normalized.id
             refreshLoadState()
             dependencies.logger.record(.moodSaved, metrics: EventMetrics(count: 1))
             return true
@@ -391,9 +407,13 @@ final class DemoState {
     func updateSettings(_ updated: VaultSettings) async -> Bool {
         aiSettingsRevision += 1
         operationError = nil
+        var normalized = updated
+        if normalized.aiMode == .off {
+            normalized.aiProvider = .off
+        }
         do {
-            try await dependencies.careStore.updateSettings(updated)
-            settings = updated
+            try await dependencies.careStore.updateSettings(normalized)
+            settings = normalized
             return true
         } catch {
             operationError = UserFacingError.saving.message
@@ -518,8 +538,6 @@ final class DemoState {
         settings.aiMode = mode
         if mode == .off {
             settings.aiProvider = .off
-        } else if settings.aiProvider == .off {
-            settings.aiProvider = routerAvailable ? .router : .onDeviceWhenAvailable
         }
     }
 
@@ -529,7 +547,14 @@ final class DemoState {
             settings.aiProvider = .off
             return
         }
-        settings.aiProvider = provider == .router && !routerAvailable ? .off : provider
+        switch provider {
+        case .router where routerAvailable:
+            settings.aiProvider = .router
+        case .off:
+            settings.aiProvider = .off
+        case .router, .onDeviceWhenAvailable:
+            settings.aiProvider = .off
+        }
     }
 
     func persistAIMode(_ mode: AIMode) async -> Bool {
@@ -1113,6 +1138,14 @@ final class DemoState {
         providers = snapshot.providers
         transcript = snapshot.transcript
         settings = snapshot.settings
+        if settings.aiMode == .off {
+            settings.aiProvider = .off
+        }
+        currentMoodID = Self.latestMoodID(in: snapshot.moods)
+    }
+
+    private static func latestMoodID(in moods: [MoodLog]) -> UUID? {
+        moods.max { $0.createdAt < $1.createdAt }?.id
     }
 
     private var hasCareContent: Bool {

@@ -77,11 +77,7 @@ enum AISettingsLogic {
 
     @MainActor
     static func selectMode(_ mode: AIMode, in state: DemoState) {
-        let providerWasOff = state.aiProvider == .off
         state.setAIMode(mode)
-        if mode != .off && providerWasOff {
-            state.setAIProvider(.off)
-        }
     }
 
     static func modeDescription(_ mode: AIMode) -> String {

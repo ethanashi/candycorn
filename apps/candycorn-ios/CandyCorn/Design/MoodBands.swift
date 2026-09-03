@@ -30,15 +30,45 @@ enum MoodBandSelection {
         return min(max(Int(bounded / width * 10) + 1, 1), 10)
     }
 
-    static func adjusted(_ value: Int?, by delta: Int) -> Int {
-        min(max((value ?? 5) + delta, 1), 10)
+    static func adjusted(_ value: Int?, by delta: Int) -> Int? {
+        guard let value else { return min(max(5 + delta, 1), 10) }
+        let adjusted = value + delta
+        guard adjusted >= 1 else { return nil }
+        return min(adjusted, 10)
+    }
+
+    static func adjusted(_ value: Int, by delta: Int) -> Int {
+        min(max(value + delta, 1), 10)
     }
 }
 
 struct MoodBands: View {
     let values: MoodValues
     var compact = false
-    var onChange: ((MoodDimension, Int) -> Void)?
+    var onChange: ((MoodDimension, Int?) -> Void)?
+
+    init(
+        values: MoodValues,
+        compact: Bool = false,
+        onChange: ((MoodDimension, Int?) -> Void)? = nil
+    ) {
+        self.values = values
+        self.compact = compact
+        self.onChange = onChange
+    }
+
+    init(
+        values: MoodValues,
+        compact: Bool = false,
+        onChange: @escaping (MoodDimension, Int) -> Void
+    ) {
+        self.values = values
+        self.compact = compact
+        self.onChange = { dimension, value in
+            guard let value else { return }
+            onChange(dimension, value)
+        }
+    }
 
     var body: some View {
         VStack(spacing: DesignTokens.Spacing.xSmall) {
