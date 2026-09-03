@@ -113,6 +113,51 @@ struct OrganizerOutputValidator: Sendable {
             }
     }
 
+    func validateWeeklySummaryInput(_ input: WeeklySummaryInput) throws {
+        guard input.interval.start < input.interval.end,
+              !input.sources.isEmpty, input.sources.count <= WeeklyConsolidator.maximumSources,
+              Set(input.sources.map(\.id)).count == input.sources.count,
+              !input.requestText.isEmpty,
+              input.requestText.count <= WeeklyConsolidator.maximumRequestCharacters else {
+            throw AIProviderError.invalidInput
+        }
+        try validateSources(input.sources.map(\.document))
+        for source in input.sources {
+            guard source.document.text.count <= WeeklyConsolidator.maximumSourceCharacters,
+                  let occurredAt = source.document.occurredAt,
+                  occurredAt < input.interval.end else {
+                throw AIProviderError.invalidInput
+            }
+        }
+    }
+
+    func validatedWeeklySummary(
+        _ result: WeeklySummaryResult,
+        input: WeeklySummaryInput
+    ) throws -> WeeklySummaryResult {
+        try validateWeeklySummaryInput(input)
+        let expectedKinds = WeeklySummarySectionKind.allCases
+        guard result.interval == input.interval,
+              result.sections.count == expectedKinds.count,
+              result.sections.map(\.kind) == expectedKinds,
+              Set(result.sections.map(\.id)).count == result.sections.count,
+              !result.metadata.provider.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !result.metadata.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw AIProviderError.invalidResponse
+        }
+        let items = result.sections.flatMap(\.items)
+        guard !items.isEmpty, items.count <= 20,
+              Set(items.map(\.id)).count == items.count,
+              result.sections.allSatisfy({ $0.items.count <= 6 }) else {
+            throw AIProviderError.invalidResponse
+        }
+        let sources = Dictionary(uniqueKeysWithValues: input.sources.map { ($0.id, $0) })
+        for item in items {
+            try validateWeeklyItem(item, sources: sources)
+        }
+        return result
+    }
+
     func validateSignals(_ signals: JournalSignals, source: SourceTextDocument) throws {
         try validateSources([source])
         try validateText(signals.summary, sources: [source])
@@ -184,6 +229,48 @@ struct OrganizerOutputValidator: Sendable {
         }
         if suggestion.mark == .doneToday {
             guard Self.isExplicitCompletion(combinedEvidence) else { throw AIProviderError.invalidResponse }
+        }
+    }
+
+    private func validateWeeklyItem(
+        _ item: WeeklySummaryItem,
+        sources: [UUID: WeeklySummarySource]
+    ) throws {
+        try validateText(item.text, maximumCharacters: 2_000, sources: sources.values.map(\.document))
+        try validateNoTreatmentRecommendation(item.text)
+        try validateWeeklySafety(item.text)
+        guard !item.evidence.isEmpty, item.evidence.count <= Self.maximumEvidenceItems else {
+            throw AIProviderError.invalidResponse
+        }
+        var citedVoices: [ProvenanceVoice] = []
+        for citation in item.evidence {
+            guard let source = sources[citation.sourceID], citation.timestampMilliseconds == nil else {
+                throw AIProviderError.invalidResponse
+            }
+            try validateVerbatim(citation.quote, source: source.document)
+            try validateUncertainty(sourceQuote: citation.quote, output: item.text)
+            citedVoices.append(source.provenance)
+        }
+        switch item.provenance {
+        case .user:
+            guard citedVoices.allSatisfy({ $0 == .user }) else { throw AIProviderError.invalidResponse }
+        case .provider:
+            guard citedVoices.allSatisfy({ $0 == .provider }) else { throw AIProviderError.invalidResponse }
+        case .candyCorn:
+            let text = item.text.lowercased()
+            guard Self.cautiousSynthesisMarkers.contains(where: text.contains),
+                  !Self.causalPhrases.contains(where: text.contains) else {
+                throw AIProviderError.invalidResponse
+            }
+        }
+    }
+
+    private func validateWeeklySafety(_ text: String) throws {
+        let normalized = text.lowercased()
+        guard !Self.weeklyTreatmentPhrases.contains(where: normalized.contains),
+              !Self.provocationInstructionPhrases.contains(where: normalized.contains),
+              !Self.tmsCausalityPhrases.contains(where: normalized.contains) else {
+            throw AIProviderError.invalidResponse
         }
     }
 
@@ -300,6 +387,22 @@ struct OrganizerOutputValidator: Sendable {
         "you should change", "you should stop", "stop taking", "start taking", "increase the dose",
         "decrease the dose", "change medication", "change treatment", "treatment should",
     ]
+    private static let weeklyTreatmentPhrases = [
+        "change your treatment", "adjust your treatment", "change your medication", "adjust your medication",
+        "increase medication", "decrease medication", "skip treatment", "stop treatment",
+    ]
+    private static let provocationInstructionPhrases = [
+        "try an exposure", "create an exposure", "provoke anxiety", "provoke distress",
+        "trigger yourself", "deliberately trigger", "induce anxiety", "induce distress",
+    ]
+    private static let tmsCausalityPhrases = [
+        "tms caused", "caused by tms", "because of tms", "due to tms", "tms led to",
+        "tms resulted in", "tms made your mood", "tms made my mood",
+    ]
+    private static let causalPhrases = [
+        " caused ", "caused by", "because of", " led to ", "resulted in", " due to ",
+    ]
+    private static let cautiousSynthesisMarkers = ["appeared", "was recorded", "were recorded", "came up"]
     // nyx: This bounded phrase gate catches deterministic fixture failures. A future local evaluator can widen it without making organizer output authoritative.
     private static let diagnosisTerms = [
         "ptsd", "post-traumatic stress", "bipolar", "ocd", "diagnosis", "clinical depression",

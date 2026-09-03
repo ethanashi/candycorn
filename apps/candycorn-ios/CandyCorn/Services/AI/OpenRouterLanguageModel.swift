@@ -132,6 +132,28 @@ actor OpenRouterLanguageModel: CandyCornLanguageModel {
         return GoalProgressSuggestionResult(suggestions: suggestions, metadata: completion.metadata)
     }
 
+    func consolidateWeek(_ input: WeeklySummaryInput) async throws -> WeeklySummaryResult {
+        try validator.validateWeeklySummaryInput(input)
+        guard input.requestText == (try WeeklyConsolidator.canonicalRequestText(
+            interval: input.interval,
+            sources: input.sources
+        )) else { throw AIProviderError.invalidInput }
+        let completion = try await client.complete(
+            route: .organizer,
+            taskInstructions: "Create exactly four weekly sections in the requested enum order. Keep every item short and cite exact supplied text. Preserve user and provider voice. Candy Corn synthesis must say appeared, was recorded, or came up. Do not diagnose, invent motives, assert causation, recommend treatment changes, or generate TMS exposure or provocation instructions.",
+            userContent: .string(input.requestText),
+            schemaName: "weekly_summary",
+            schema: OpenRouterSchemas.weeklySummary
+        )
+        let payload: WeeklySummaryPayload = try decode(completion.content)
+        let result = WeeklySummaryResult(
+            interval: input.interval,
+            sections: payload.sections,
+            metadata: completion.metadata
+        )
+        return try validator.validatedWeeklySummary(result, input: input)
+    }
+
     private func request<T: Encodable & Sendable>(
         _ input: T,
         task: String,
@@ -184,6 +206,7 @@ private struct GoalProgressProviderSuggestion: Codable {
     let note: String
     let evidence: [EvidenceCitation]
 }
+private struct WeeklySummaryPayload: Codable { let sections: [WeeklySummarySection] }
 
 enum OpenRouterSchemas {
     static let citation = object(
@@ -252,6 +275,28 @@ enum OpenRouterSchemas {
             ), maximum: 16, minimum: 1),
         ],
         required: ["suggestions"]
+    )
+
+    static let weeklySummary = object(
+        properties: [
+            "sections": array(object(
+                properties: [
+                    "id": uuid,
+                    "kind": stringEnum(WeeklySummarySectionKind.allCases.map(\.rawValue)),
+                    "items": array(object(
+                        properties: [
+                            "id": uuid,
+                            "text": boundedString(2_000),
+                            "provenance": stringEnum(ProvenanceVoice.allCases.map(\.rawValue)),
+                            "evidence": array(citation, maximum: 8, minimum: 1),
+                        ],
+                        required: ["id", "text", "provenance", "evidence"]
+                    ), maximum: 6),
+                ],
+                required: ["id", "kind", "items"]
+            ), maximum: 4, minimum: 4),
+        ],
+        required: ["sections"]
     )
 
     static let vision = object(

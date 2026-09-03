@@ -25,6 +25,7 @@ private enum PreparedAIPayload: Equatable, Sendable {
     case brief(AppointmentBriefInput, Int, BriefDisclosureStyle)
     case processedSession(ProcessedSessionAIContext)
     case goalProgress(GoalProgressSuggestionInput)
+    case weeklySummary(WeeklySummaryInput)
 
     var sourceRevision: Date? {
         switch self {
@@ -38,13 +39,15 @@ private enum PreparedAIPayload: Equatable, Sendable {
             context.appointment.endedAt ?? context.appointment.startedAt ?? context.appointment.scheduledAt
         case let .goalProgress(input):
             input.sources.compactMap(\.document.occurredAt).max()
+        case let .weeklySummary(input):
+            input.sources.compactMap(\.document.occurredAt).max()
         }
     }
 
     var journalID: UUID? {
         switch self {
         case let .journal(journal, _), let .photo(journal, _): journal.id
-        case .session, .brief, .processedSession, .goalProgress: nil
+        case .session, .brief, .processedSession, .goalProgress, .weeklySummary: nil
         }
     }
 }
@@ -134,6 +137,7 @@ final class DemoState {
     private var appointmentBriefPreparations: [Appointment.Kind: AppointmentBriefPreparation] = [:]
     private var preparedAppointmentBriefIDs: [Appointment.Kind: UUID] = [:]
     private var preparedGoalProgressIDs: [GoalProgressSuggestionSource: UUID] = [:]
+    private var preparedWeeklySummaryIDs: [Date: UUID] = [:]
     private var activeAISends: Set<AISendAction> = []
     private var aiProcessingStates: [AISendAction: AIProcessingState] = [:]
     private var careRevision = 0
@@ -162,6 +166,9 @@ final class DemoState {
                     from: artifact.structuredPayload
                 ))?.result.suggestions.filter { $0.resolution == .pending } ?? []
             }
+    }
+    var currentWeeklySummary: WeeklySummaryResult? {
+        WeeklyConsolidator.currentSummary(in: artifacts, for: dependencies.now())
     }
 
     init(
@@ -801,6 +808,64 @@ final class DemoState {
         return pending
     }
 
+    /// Prepares the current week's consent disclosure only. Present it, then call `performAISend` after the user taps Send.
+    func refreshWeeklySummary() async throws -> PendingAISend? {
+        let now = dependencies.now()
+        let interval = try WeeklyConsolidator.weekInterval(containing: now, calendar: .autoupdatingCurrent)
+        if currentWeeklySummary != nil { return nil }
+        guard canDispatchAI() else { throw UserFacingError.aiUnavailable }
+        if let existing = preparedWeeklySummary(weekStart: interval.start) { return existing }
+        let revision = careRevision
+        let consolidator = WeeklyConsolidator(
+            careStore: dependencies.careStore,
+            languageModel: dependencies.languageModel,
+            calendar: .autoupdatingCurrent,
+            now: dependencies.now
+        )
+        let preparation: WeeklySummaryPreparation?
+        do {
+            preparation = try await consolidator.prepareSummary(for: now)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw UserFacingError.aiSource
+        }
+        try Task.checkCancellation()
+        guard revision == careRevision else { throw UserFacingError.aiStale }
+        guard let preparation else { return nil }
+        if currentWeeklySummary != nil { return nil }
+        if let existing = preparedWeeklySummary(weekStart: interval.start) { return existing }
+        guard let firstSource = preparation.input.sources.first else { return nil }
+        let action = AISendAction.generateWeeklySummary(interval.start)
+        let pending = PendingAISend(
+            id: UUID(),
+            action: action,
+            sourceRevision: preparation.input.sources.compactMap(\.document.occurredAt).max(),
+            disclosure: WhatLeavesDeviceSummary(
+                purpose: "Create this weekly summary",
+                destination: "OpenRouter",
+                sources: [OutgoingSourceDescriptor(
+                    id: firstSource.id,
+                    kind: .text,
+                    title: "Weekly vault context",
+                    characterCount: preparation.input.requestText.count,
+                    imageCount: 0
+                )],
+                totalCharacterCount: preparation.input.requestText.count,
+                totalImageCount: 0,
+                omittedSourceCount: preparation.omittedSourceCount
+            )
+        )
+        storePreparedSend(PreparedAIContext(
+            pending: pending,
+            payload: .weeklySummary(preparation.input),
+            careRevision: revision
+        ))
+        preparedWeeklySummaryIDs[interval.start] = pending.id
+        aiProcessingStates[action] = .idle
+        return pending
+    }
+
     @discardableResult
     func accept(suggestionID: UUID) async -> Bool {
         await resolveProgressSuggestion(id: suggestionID, as: .accepted)
@@ -1117,6 +1182,7 @@ final class DemoState {
         appointmentBriefPreparations = [:]
         preparedAppointmentBriefIDs = [:]
         preparedGoalProgressIDs = [:]
+        preparedWeeklySummaryIDs = [:]
         activeAISends = []
         aiProcessingStates = [:]
     }
@@ -1383,6 +1449,17 @@ final class DemoState {
                 imageCount: 0
             )]
             omitted = 0
+        case let .weeklySummary(input):
+            sources = input.sources.first.map {
+                [OutgoingSourceDescriptor(
+                    id: $0.id,
+                    kind: .text,
+                    title: "Weekly vault context",
+                    characterCount: input.requestText.count,
+                    imageCount: 0
+                )]
+            } ?? []
+            omitted = 0
         }
         return WhatLeavesDeviceSummary(
             purpose: purpose(for: action),
@@ -1423,6 +1500,7 @@ final class DemoState {
             preparedAISends.removeValue(forKey: oldest)
             preparedAppointmentBriefIDs = preparedAppointmentBriefIDs.filter { $0.value != oldest }
             preparedGoalProgressIDs = preparedGoalProgressIDs.filter { $0.value != oldest }
+            preparedWeeklySummaryIDs = preparedWeeklySummaryIDs.filter { $0.value != oldest }
         }
         preparedAISends[context.pending.id] = context
         preparedAISendOrder.append(context.pending.id)
@@ -1432,6 +1510,7 @@ final class DemoState {
         preparedAISendOrder.removeAll { $0 == id }
         preparedAppointmentBriefIDs = preparedAppointmentBriefIDs.filter { $0.value != id }
         preparedGoalProgressIDs = preparedGoalProgressIDs.filter { $0.value != id }
+        preparedWeeklySummaryIDs = preparedWeeklySummaryIDs.filter { $0.value != id }
         return preparedAISends.removeValue(forKey: id)
     }
 
@@ -1452,6 +1531,17 @@ final class DemoState {
               context.careRevision == careRevision,
               context.pending.action == .suggestGoalProgress(source) else {
             preparedGoalProgressIDs[source] = nil
+            return nil
+        }
+        return context.pending
+    }
+
+    private func preparedWeeklySummary(weekStart: Date) -> PendingAISend? {
+        guard let id = preparedWeeklySummaryIDs[weekStart],
+              let context = preparedAISends[id],
+              context.careRevision == careRevision,
+              context.pending.action == .generateWeeklySummary(weekStart) else {
+            preparedWeeklySummaryIDs[weekStart] = nil
             return nil
         }
         return context.pending
@@ -1489,6 +1579,15 @@ final class DemoState {
             let product = try await GoalProgressSuggester(
                 careStore: dependencies.careStore,
                 languageModel: dependencies.languageModel,
+                now: dependencies.now
+            ).generate(input)
+            return OrganizerWorkProduct(artifact: product.artifact, journalMutation: nil)
+        case (let weeklyAction, let .weeklySummary(input))
+        where weeklyAction == .generateWeeklySummary(input.interval.start):
+            let product = try await WeeklyConsolidator(
+                careStore: dependencies.careStore,
+                languageModel: dependencies.languageModel,
+                calendar: .autoupdatingCurrent,
                 now: dependencies.now
             ).generate(input)
             return OrganizerWorkProduct(artifact: product.artifact, journalMutation: nil)
@@ -1532,6 +1631,8 @@ final class DemoState {
             ) else { return false }
             return current == context
         case .goalProgress:
+            return true
+        case .weeklySummary:
             return true
         }
     }

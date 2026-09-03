@@ -242,6 +242,52 @@ struct GoalProgressSuggestionArtifactPayload: Codable, Equatable, Sendable {
     var result: GoalProgressSuggestionResult
 }
 
+enum WeeklySummarySectionKind: String, Codable, CaseIterable, Sendable {
+    case moodTrend
+    case completedWork
+    case recurringTopics
+    case openForNextAppointment
+}
+
+struct WeeklySummarySource: Identifiable, Codable, Equatable, Sendable {
+    let document: SourceTextDocument
+    let provenance: ProvenanceVoice
+
+    var id: UUID { document.id }
+}
+
+struct WeeklySummaryItem: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    let text: String
+    let provenance: ProvenanceVoice
+    let evidence: [EvidenceCitation]
+}
+
+struct WeeklySummarySection: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    let kind: WeeklySummarySectionKind
+    let items: [WeeklySummaryItem]
+}
+
+struct WeeklySummaryInput: Equatable, Sendable {
+    let interval: DateInterval
+    let sources: [WeeklySummarySource]
+    let requestText: String
+}
+
+struct WeeklySummaryResult: Codable, Equatable, Sendable {
+    let interval: DateInterval
+    let sections: [WeeklySummarySection]
+    let metadata: AIResultMetadata
+}
+
+struct WeeklySummaryArtifactPayload: Codable, Equatable, Sendable {
+    let inputInterval: DateInterval
+    let sources: [WeeklySummarySource]
+    let requestText: String
+    let result: WeeklySummaryResult
+}
+
 struct TranscriptPiece: Codable, Equatable, Sendable {
     let text: String
     let startMilliseconds: Int?
@@ -404,11 +450,17 @@ protocol CandyCornLanguageModel: Sendable {
     func summarizeSession(_ input: SessionSummaryInput) async throws -> SessionSummaryResult
     func generateAppointmentBrief(_ input: AppointmentBriefInput) async throws -> AppointmentBriefResult
     func suggestGoalProgress(_ input: GoalProgressSuggestionInput) async throws -> GoalProgressSuggestionResult
+    func consolidateWeek(_ input: WeeklySummaryInput) async throws -> WeeklySummaryResult
 }
 
 extension CandyCornLanguageModel {
     func suggestGoalProgress(_ input: GoalProgressSuggestionInput) async throws -> GoalProgressSuggestionResult {
         _ = input.originID
+        throw AIProviderError.unavailable
+    }
+
+    func consolidateWeek(_ input: WeeklySummaryInput) async throws -> WeeklySummaryResult {
+        _ = input.interval.start
         throw AIProviderError.unavailable
     }
 }
@@ -495,6 +547,16 @@ extension AISendAction {
     // nyx: The factory preserves protected Feature switches. A dedicated enum case can replace it when Claude owns those views.
     static func suggestGoalProgress(_ source: GoalProgressSuggestionSource) -> AISendAction {
         .extractJournalSignals(source.sourceID)
+    }
+
+    // nyx: A factory preserves protected exhaustive Feature switches while retaining a stable action per calendar week.
+    static func generateWeeklySummary(_ normalizedWeekStart: Date) -> AISendAction {
+        let bits = normalizedWeekStart.timeIntervalSinceReferenceDate.bitPattern
+        let byte: (Int) -> UInt8 = { UInt8(truncatingIfNeeded: bits >> UInt64($0 * 8)) }
+        return .summarizeSession(UUID(uuid: (
+            0x57, 0x45, 0x45, 0x4B, 0x4C, 0x59, 0x00, 0x01,
+            byte(7), byte(6), byte(5), byte(4), byte(3), byte(2), byte(1), byte(0)
+        )))
     }
 }
 

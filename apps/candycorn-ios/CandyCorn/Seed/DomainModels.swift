@@ -128,6 +128,7 @@ struct AIArtifact: Identifiable, Codable, Equatable, Sendable {
         case appointmentBrief
         case goalSuggestions
         case goalProgressSuggestions
+        case weeklySummary
         case connectionSuggestion
     }
 
