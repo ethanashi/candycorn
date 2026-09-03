@@ -33,10 +33,12 @@ struct PhotoJournalView: View {
     }
 
     var body: some View {
-        ScreenLayout(
+        V2Screen(
             title: phase == .saved ? "Photo saved" : "Photograph a journal page",
             subtitle: "The original image stays on this device.",
             backAction: navigation.backAction(for: .journalPhoto),
+            backLabel: "Close",
+            backIcon: .close,
             bottomInset: DesignTokens.Spacing.section
         ) {
             content
@@ -100,20 +102,21 @@ struct PhotoJournalView: View {
             Image(uiImage: preview)
                 .resizable()
                 .scaledToFit()
-                .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: DesignTokens.v2CardRadius, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: DesignTokens.v2CardRadius, style: .continuous).stroke(DesignTokens.hairline, lineWidth: 1))
                 .accessibilityLabel("Original journal photo")
         } else {
             ZStack {
-                RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous)
+                RoundedRectangle(cornerRadius: DesignTokens.v2CardRadius, style: .continuous)
                     .fill(DesignTokens.surfaceWarm)
-                VStack(spacing: DesignTokens.Spacing.small) {
-                    Image(systemName: "doc.text.viewfinder").font(.system(size: 52))
+                VStack(spacing: DesignTokens.Spacing.compact) {
+                    IconTile(icon: .camera, size: 56, dark: true)
                     Text(phase == .saved ? "Original photo saved" : "Keep the full page inside the frame")
-                        .font(TypeScale.bodyMedium)
+                        .font(TypeScale.rowTitleCompact)
+                        .foregroundStyle(DesignTokens.cocoa)
                 }
-                .foregroundStyle(DesignTokens.cocoa)
             }
-            .frame(height: 360)
+            .frame(height: 320)
             .accessibilityLabel(phase == .saved ? "Original journal photo saved" : "Camera frame for a journal page")
         }
     }
@@ -148,47 +151,47 @@ struct PhotoJournalView: View {
     private func extractedRegion(
         _ extracted: (artifact: AIArtifact, result: VisionReadResult)
     ) -> some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
-            ProvenanceLine(provenance: Provenance(
-                voice: .candyCorn,
-                label: "Candy Corn extracted this",
-                detail: "\(extracted.artifact.provider), \(extracted.artifact.model)",
-                occurredAt: extracted.artifact.createdAt,
-                sourceRoute: .journalDetail
-            ))
-            Text(extracted.result.text)
-                .font(TypeScale.body)
-                .foregroundStyle(DesignTokens.cocoa)
-                .fixedSize(horizontal: false, vertical: true)
-            if !extracted.result.uncertainSpans.isEmpty {
-                Text("Check uncertain text: \(extracted.result.uncertainSpans.prefix(8).joined(separator: ", "))")
-                    .font(TypeScale.label)
-                    .foregroundStyle(DesignTokens.yellowText)
+        V2Card {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
+                HStack(spacing: DesignTokens.Spacing.compact) {
+                    IconTile(icon: .sparkles, size: 34)
+                    Text("Extracted text")
+                        .font(TypeScale.cardTitle)
+                        .foregroundStyle(DesignTokens.cocoa)
+                }
+                Text(extracted.result.text)
+                    .font(TypeScale.body)
+                    .foregroundStyle(DesignTokens.cocoa)
                     .fixedSize(horizontal: false, vertical: true)
+                if !extracted.result.uncertainSpans.isEmpty {
+                    Text("Check uncertain text: \(extracted.result.uncertainSpans.prefix(8).joined(separator: ", "))")
+                        .font(TypeScale.meta)
+                        .foregroundStyle(DesignTokens.yellowText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                ProvenanceStack(provenance: Provenance(
+                    voice: .candyCorn,
+                    label: "Candy Corn extracted this",
+                    detail: "\(extracted.artifact.provider), \(extracted.artifact.model)",
+                    occurredAt: extracted.artifact.createdAt,
+                    sourceRoute: .journalDetail
+                ))
             }
         }
-        .padding(DesignTokens.Spacing.base)
-        .background(DesignTokens.surfaceWarm)
-        .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
     }
 
     @ViewBuilder
     private var extractionControls: some View {
         if canExtract, let entry = savedEntry, let attachmentID = entry.originalAttachmentID {
-            Button {
-                prepareExtraction(journalID: entry.id, attachmentID: attachmentID)
-            } label: {
-                HStack(spacing: DesignTokens.Spacing.small) {
-                    KernelGlyph(voice: .candyCorn, height: 18)
-                    Text("Extract text")
-                    Spacer(minLength: 0)
-                }
+            let processing = state.aiProcessingState(for: .readPhoto(journalID: entry.id, attachmentID: attachmentID)) == .processing
+            V2GroupCard(title: "Organize") {
+                V2ListRow(
+                    icon: .sparkles,
+                    title: processing ? "Working" : "Extract text",
+                    detail: "Read the page into editable text. The photo stays.",
+                    disabled: processing
+                ) { prepareExtraction(journalID: entry.id, attachmentID: attachmentID) }
             }
-            .buttonStyle(SecondaryButtonStyle())
-            .disabled(state.aiProcessingState(for: .readPhoto(
-                journalID: entry.id,
-                attachmentID: attachmentID
-            )) == .processing)
         } else if state.aiMode == .off {
             StatusNotice(
                 title: "Organizing is off",
