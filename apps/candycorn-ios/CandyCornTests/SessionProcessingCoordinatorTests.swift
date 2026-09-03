@@ -57,6 +57,40 @@ struct SessionProcessingCoordinatorTests {
         #expect(await resumed.status(for: fixture.appointment.id)?.stage == .ready)
     }
 
+    @Test("Launch recovery resumes an interrupted stage from its durable checkpoint")
+    func resumePendingAfterRestart() async throws {
+        let fixture = try await makeFixture("resume-pending")
+        defer { VaultTestSupport.remove(fixture.root) }
+        let firstTranscriber = FakeTranscriber()
+        let firstDiarizer = SwitchableDiarizer()
+        let first = makeCoordinator(
+            fixture, firstTranscriber, firstDiarizer, FakeSessionSummarizer()
+        )
+        await first.beginOrResume(appointmentID: fixture.appointment.id)
+
+        var snapshot = try await fixture.store.snapshot()
+        #expect(snapshot.sessionProcessing.first?.failure?.code == .diarizationFailed)
+        #expect(snapshot.artifacts.filter { $0.kind == .transcript }.count == 1)
+        var interrupted = try #require(snapshot.sessionProcessing.first)
+        interrupted.failure = nil
+        try await fixture.store.saveSessionProcessing(interrupted)
+
+        let resumedTranscriber = FakeTranscriber()
+        let resumedDiarizer = FakeDiarizer()
+        let resumed = makeCoordinator(
+            fixture, resumedTranscriber, resumedDiarizer, FakeSessionSummarizer()
+        )
+        await resumed.resumePending()
+
+        snapshot = try await fixture.store.snapshot()
+        #expect(await resumedTranscriber.sessionCallCount == 0)
+        #expect(await resumedDiarizer.callCount == 1)
+        #expect(snapshot.artifacts.filter { $0.kind == .transcript }.count == 1)
+        #expect(snapshot.artifacts.filter { $0.kind == .diarization }.count == 1)
+        #expect(snapshot.sessionProcessing.first?.stage == .summarizing)
+        #expect(snapshot.sessionProcessing.first?.failure?.code == .summaryPermissionRequired)
+    }
+
     @Test("A transcription failure preserves the recording and retries only incomplete work")
     func transcriptionRetry() async throws {
         let fixture = try await makeFixture("transcription-retry")

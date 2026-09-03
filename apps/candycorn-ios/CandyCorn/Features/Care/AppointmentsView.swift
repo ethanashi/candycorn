@@ -26,15 +26,17 @@ struct AppointmentsView: View {
                             HStack(alignment: .top, spacing: DesignTokens.Spacing.compact) {
                                 VStack(spacing: 0) {
                                     Text(appointmentDate(appointment).formatted(.dateTime.month(.abbreviated)))
+                                        .tracking(0)
                                     Text(appointmentDate(appointment).formatted(.dateTime.day()))
                                         .font(TypeScale.section)
+                                        .tracking(0)
                                 }
                                 .font(TypeScale.provenance).monospacedDigit()
                                 .frame(width: 48)
                                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.xSmall) {
-                                    Text(appointment.kind.displayName).font(TypeScale.bodyMedium)
-                                    Text(appointment.providerName).font(TypeScale.label).foregroundStyle(DesignTokens.cocoaSoft)
-                                    Text(statusText(appointment)).font(TypeScale.provenance).foregroundStyle(DesignTokens.cocoaSoft)
+                                    Text(appointment.kind.displayName).font(TypeScale.bodyMedium).tracking(0)
+                                    Text(appointment.providerName).font(TypeScale.label).tracking(0).foregroundStyle(DesignTokens.cocoaSoft)
+                                    Text(statusText(appointment)).font(TypeScale.provenance).tracking(0).foregroundStyle(DesignTokens.cocoaSoft)
                                 }
                                 Spacer()
                                 Image(systemName: "chevron.right").foregroundStyle(DesignTokens.cocoaSoft)

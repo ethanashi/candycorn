@@ -19,6 +19,7 @@ struct TherapySessionView: View {
     @State private var actionError: String?
     @State private var openedScreenshotSheet = false
     @State private var relabelingSegmentIDs: Set<UUID> = []
+    @State private var showsCorrections = false
 
     @ViewBuilder
     var body: some View {
@@ -40,16 +41,17 @@ struct TherapySessionView: View {
             title: "Therapy with \(sessionAppointment?.providerName ?? "your provider")",
             subtitle: sessionMetadata,
             backAction: navigation.backAction(for: .therapySession),
-            bottomInset: 260
+            trailing: AnyView(correctionAction),
+            bottomInset: 180
         ) {
+            UnderlinePicker(options: visibleTabs, selection: $selection) { $0.rawValue }
+            panel
             SessionProcessingStatusView(
                 record: sessionAppointment.flatMap { state.sessionProcessingRecord(for: $0.id) },
                 onReviewSummary: prepareProcessedSummary,
                 onRetry: retryProcessing,
                 onOpenDebrief: openDebrief
             )
-            UnderlinePicker(options: TherapySessionTab.allCases, selection: $selection) { $0.rawValue }
-            panel
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if sessionAppointment?.recordingAttachmentID != nil {
@@ -86,7 +88,7 @@ struct TherapySessionView: View {
             if let summary = structuredSummary {
                 ForEach(summary.result.debriefTopics) { topic in
                     VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-                        Text(topic.text).font(TypeScale.body)
+                        Text(topic.text).font(TypeScale.body).tracking(0)
                         ProvenanceInline(voice: topic.provenance.provenanceVoice, text: "From the processed transcript")
                         if let timestamp = topic.evidence.first?.timestampMilliseconds {
                             Button("Play at \(AppointmentRecordingClock.format(milliseconds: timestamp))") {
@@ -106,12 +108,14 @@ struct TherapySessionView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         Text(section.title)
                             .font(TypeScale.sectionCompact)
+                            .tracking(-0.1)
                             .foregroundStyle(DesignTokens.cocoa)
                             .padding(.top, DesignTokens.Spacing.medium)
                         ForEach(section.statements) { statement in
                             VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
                                 Text(statement.text)
                                     .font(TypeScale.body)
+                                    .tracking(0)
                                     .foregroundStyle(DesignTokens.cocoa)
                                     .lineSpacing(5)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -132,9 +136,11 @@ struct TherapySessionView: View {
                                         VStack(alignment: .leading, spacing: DesignTokens.Spacing.xSmall) {
                                             Text("From your manual notes")
                                                 .font(TypeScale.provenance)
+                                                .tracking(0)
                                                 .underline()
                                             Text("“\(evidence.quote)”")
                                                 .font(TypeScale.provenance)
+                                                .tracking(0)
                                                 .multilineTextAlignment(.leading)
                                                 .fixedSize(horizontal: false, vertical: true)
                                         }
@@ -169,10 +175,16 @@ struct TherapySessionView: View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
             Text(sessionTranscript.isEmpty ? "Transcript is created on this device." : "Speaker labels can be corrected for the full transcript cluster.")
                 .font(TypeScale.provenance)
+                .tracking(0)
                 .foregroundStyle(DesignTokens.cocoaSoft)
                 .fixedSize(horizontal: false, vertical: true)
             SessionTranscriptView(
                 segments: sessionTranscript,
+                patientName: state.dependencies.screenshotMode ? "Jamie" : "You",
+                providerName: sessionAppointment?.providerName ?? "Provider",
+                providerRole: "Therapist",
+                sessionDate: sessionDateLabel,
+                showsCorrections: showsCorrections,
                 isRelabeling: { relabelingSegmentIDs.contains($0.id) },
                 onLabel: persistLabel,
                 onTimestamp: { playRecording(fromMilliseconds: $0.startMilliseconds) }
@@ -195,7 +207,7 @@ struct TherapySessionView: View {
 
     private var notesPanel: some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.base) {
-            Text("Manual notes").font(TypeScale.sectionCompact)
+            Text("Manual notes").font(TypeScale.sectionCompact).tracking(-0.1)
             TextEditor(text: $notes)
                 .font(TypeScale.body)
                 .frame(minHeight: 220)
@@ -214,12 +226,14 @@ struct TherapySessionView: View {
                     ? "Organizer is off. Your notes remain editable and on this device."
                     : "Add a Router key in Settings to organize these notes.")
                     .font(TypeScale.provenance)
+                    .tracking(0)
                     .foregroundStyle(DesignTokens.cocoaSoft)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if state.aiMode == .reflection {
                 Text("Reflection uses Organizer for this summary. It does not start a conversation.")
                     .font(TypeScale.provenance)
+                    .tracking(0)
                     .foregroundStyle(DesignTokens.yellowText)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -252,7 +266,30 @@ struct TherapySessionView: View {
 
     private var sessionTranscript: [TranscriptSegment] {
         guard let id = sessionAppointment?.id else { return [] }
-        return state.transcript.filter { $0.appointmentID == id }
+        let segments = state.transcript.filter { $0.appointmentID == id }
+        return state.dependencies.screenshotMode ? Array(segments.prefix(2)) : segments
+    }
+
+    private var visibleTabs: [TherapySessionTab] {
+        state.dependencies.screenshotMode
+            ? [.summary, .transcript, .homework, .talkingPoints]
+            : TherapySessionTab.allCases
+    }
+
+    private var correctionAction: some View {
+        Button(showsCorrections ? "Done" : "Correct") { showsCorrections.toggle() }
+            .font(TypeScale.label)
+            .fontWeight(.semibold)
+            .tracking(0)
+            .foregroundStyle(DesignTokens.cocoa)
+            .frame(minHeight: DesignTokens.controlMinimum)
+            .buttonStyle(.plain)
+            .accessibilityHint("Shows controls for correcting speaker labels")
+    }
+
+    private var sessionDateLabel: String? {
+        (sessionAppointment?.startedAt ?? sessionAppointment?.scheduledAt)?
+            .formatted(.dateTime.month(.abbreviated).day())
     }
 
     private var structuredSummary: (artifact: AIArtifact, result: StructuredSessionSummaryResult)? {
@@ -422,79 +459,6 @@ struct TherapySessionView: View {
     }
 }
 
-private struct TranscriptRow: View {
-    let segment: TranscriptSegment
-    let speaker: TranscriptSegment.Speaker
-    let correct: (TranscriptSegment.Speaker) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            HStack(spacing: DesignTokens.Spacing.small) {
-                speakerGlyph
-                Text(speakerName)
-                    .font(TypeScale.label)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(speakerColor)
-                Spacer()
-                Text(AppointmentRecordingClock.format(milliseconds: segment.startMilliseconds))
-                    .font(TypeScale.provenance)
-                    .foregroundStyle(DesignTokens.cocoaSoft)
-                    .monospacedDigit()
-            }
-            Text(segment.text)
-                .font(TypeScale.body)
-                .foregroundStyle(DesignTokens.cocoa)
-                .fixedSize(horizontal: false, vertical: true)
-            if speaker == .unknown { correctionButtons }
-        }
-        .padding(.vertical, DesignTokens.Spacing.base)
-        .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
-        .accessibilityElement(children: .contain)
-    }
-
-    @ViewBuilder private var speakerGlyph: some View {
-        if speaker == .unknown {
-            Text("?")
-                .font(TypeScale.provenance)
-                .foregroundStyle(DesignTokens.cocoaSoft)
-                .frame(width: 16, height: 20)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(DesignTokens.cocoaSoft))
-                .accessibilityHidden(true)
-        } else {
-            KernelGlyph(voice: speaker == .provider ? .provider : .user, height: 18, decorative: true)
-        }
-    }
-
-    private var correctionButtons: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: DesignTokens.Spacing.small) { correctionButtonContent }
-            VStack(spacing: DesignTokens.Spacing.small) { correctionButtonContent }
-        }
-        .padding(.top, DesignTokens.Spacing.xSmall)
-    }
-
-    @ViewBuilder private var correctionButtonContent: some View {
-        Button("Mark as me") { correct(.patient) }.buttonStyle(SecondaryButtonStyle())
-        Button("Mark as provider") { correct(.provider) }.buttonStyle(SecondaryButtonStyle())
-    }
-
-    private var speakerName: String {
-        switch speaker {
-        case .patient: "Jamie"
-        case .provider: "Dr. Elena Park"
-        case .unknown: "Unknown speaker"
-        }
-    }
-
-    private var speakerColor: Color {
-        switch speaker {
-        case .patient: DesignTokens.cocoa
-        case .provider: DesignTokens.cocoa
-        case .unknown: DesignTokens.cocoaSoft
-        }
-    }
-}
-
 private struct CareLedgerItem: Identifiable {
     let text: String
     let provenance: Provenance
@@ -509,12 +473,13 @@ private struct CareLedger: View {
             if items.isEmpty {
                 Text("Nothing saved here yet.")
                     .font(TypeScale.label)
+                    .tracking(0)
                     .foregroundStyle(DesignTokens.cocoaSoft)
                     .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
             }
             ForEach(items) { item in
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
-                    Text(item.text).font(TypeScale.body).fixedSize(horizontal: false, vertical: true)
+                    Text(item.text).font(TypeScale.body).tracking(0).fixedSize(horizontal: false, vertical: true)
                     ProvenanceLine(provenance: item.provenance)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -537,33 +502,40 @@ private extension SessionSummaryItemProvenance {
 
 private struct PlaybackScrubber: View {
     let onPlay: () -> Void
-    @State private var position = 768.0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xSmall) {
-            HStack {
-                Text("12:48")
-                Spacer()
-                Text("52:06")
+        Button(action: onPlay) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("12:48")
+                    Spacer()
+                    Text("52:06")
+                }
+                .font(TypeScale.meta)
+                .tracking(0)
+                .foregroundStyle(DesignTokens.cocoaSoft)
+                .monospacedDigit()
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(DesignTokens.hairline)
+                        Capsule().fill(DesignTokens.orange)
+                            .frame(width: proxy.size.width * 0.34)
+                    }
+                }
+                .frame(height: 4)
+                Text("Playing from the saved transcript")
+                    .font(TypeScale.rowTitleCompact)
+                    .tracking(0)
+                    .foregroundStyle(DesignTokens.cocoa)
             }
-            .font(TypeScale.provenance)
-            .foregroundStyle(DesignTokens.cocoaSoft)
-            .monospacedDigit()
-            Slider(value: $position, in: 0...3126)
-                .tint(DesignTokens.orange)
-                .frame(minHeight: DesignTokens.controlMinimum)
-                .accessibilityLabel("Playback position")
-            Text("Saved session audio")
-                .font(TypeScale.bodyMedium)
-            Button("Play recording", action: onPlay)
-                .buttonStyle(SecondaryButtonStyle())
+            .padding(.horizontal, DesignTokens.Spacing.base)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, minHeight: 98, alignment: .leading)
+            .background(DesignTokens.surface)
+            .overlay(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous).stroke(DesignTokens.hairline))
+            .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
         }
-        .padding(DesignTokens.Spacing.base)
-        .background(DesignTokens.surface)
-        .overlay(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous).stroke(DesignTokens.hairline))
-        .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
-        .shadow(color: DesignTokens.cocoa.opacity(0.06), radius: 8, y: 2)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Transcript playback")
+        .buttonStyle(.plain)
+        .accessibilityLabel("Play the saved transcript from 12 minutes 48 seconds")
     }
 }

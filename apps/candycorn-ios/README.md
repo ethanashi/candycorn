@@ -71,16 +71,21 @@ Pass `-screen <route>` at launch to open one screen deterministically. A missing
 | Privacy settings | `/settings/privacy` | `22-settings-privacy.png` |
 | AI and processing settings | `/settings/ai` | `23-settings-ai.png` |
 | Data and export settings | `/settings/data` | `24-settings-data.png` |
+| Journal | `/journal` | `25-journal.png` |
+| Settings | `/settings` | `26-settings.png` |
+| Session debrief | `/sessions/therapy-sep-2/debrief` | `32-session-debrief.png` |
 
 Phase 3 sheet acceptance uses these route and scenario pairs. Each scenario must open its sheet without manual interaction; failure to open is an implementation failure, not a reason to compose or substitute an image.
 
 | Sheet | Route | Scenario | Screenshot |
 | --- | --- | --- | --- |
-| OpenRouter key | `/settings/ai` | `openrouter-key` | `25-openrouter-key-sheet.png` |
-| Journal disclosure | `/journal/entry/football-and-guilt` | `journal-send` | `26-what-leaves-journal.png` |
-| Photo disclosure | `/journal/photo` | `photo-send` | `27-what-leaves-photo.png` |
-| Session disclosure | `/sessions/therapy-sep-2` | `session-send` | `28-what-leaves-session.png` |
-| Appointment brief disclosure | `/prepare/therapy` | `prepare-send` | `29-what-leaves-prepare.png` |
+| OpenRouter key | `/settings/ai` | `openrouter-key` | `27-openrouter-key-sheet.png` |
+| Journal disclosure | `/journal/entry/football-and-guilt` | `journal-send` | `28-what-leaves-journal.png` |
+| Photo disclosure | `/journal/photo` | `photo-send` | `29-what-leaves-photo.png` |
+| Session disclosure | `/sessions/therapy-sep-2` | `session-send` | `30-what-leaves-session.png` |
+| Appointment brief disclosure | `/prepare/therapy` | `prepare-send` | `31-what-leaves-prepare.png` |
+
+Phase 4 acceptance keeps fresh captures after the existing set. Capture the seeded debrief as `32-session-debrief.png` and the seeded transcript route as `33-session-transcript.png`. The latter intentionally uses the existing `/sessions/therapy-sep-2` route while retaining `15-therapy-session.png` for route-order compatibility.
 
 The active appointment screenshot route prepares deterministic consent and recording state. Normal access still requires the user's acknowledgement and microphone authorization.
 
@@ -143,6 +148,19 @@ Reset the simulator's microphone permission between prompt checks if needed:
 ```sh
 xcrun simctl privacy booted reset microphone dev.candycorn.app
 ```
+
+## Test session transcription in the simulator
+
+Use a normal launch without `-screen`; screenshot mode uses deterministic fakes and does not transcribe audio.
+
+1. In Simulator, choose **I/O, Audio Input, Mac microphone**. In Candy Corn, open Appointments, tap Record an appointment, choose Therapy or TMS, confirm permission, and start recording.
+2. Record a consented practice conversation with two speakers, then tap Stop. The saved source stays local. Candy Corn starts Apple Speech transcription and FluidAudio speaker separation from that file and persists each completed checkpoint.
+3. Open the saved appointment. Watch the status move through Transcribing on this device and Separating speakers on this device. The first run may need the Apple speech asset and FluidAudio models to download.
+4. Confirm transcript timestamps play from the original recording. Tap Correct, then use Mark as me or Mark as provider and confirm the label applies to the matching speaker cluster after relaunch.
+5. To finish the debrief, configure the Router organizer in Settings. When the pipeline pauses at Ready to make the debrief, review the What leaves this device sheet and tap Send. Only the reviewed transcript text leaves the device; the recording is never uploaded.
+6. Quit and relaunch during transcription or speaker separation. The appointment should resume from the last persisted checkpoint without replacing the recording or completed artifacts.
+
+The simulator can verify Mac-microphone capture, saved-file transcription, offline speaker separation, restart resume, correction persistence, consent disclosure, and debrief rendering. A real iPhone is still required to verify iOS 26 speech-model availability on the target hardware, long-session thermal and memory behavior, recording while locked, recovery after force termination, phone and Siri interruptions, and Bluetooth or AirPods route changes.
 
 ## Real-iPhone acceptance checklist
 

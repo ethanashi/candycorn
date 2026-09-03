@@ -31,6 +31,7 @@ struct RecordAppointmentView: View {
             }
             Text("The original audio stays on this device before any processing.")
                 .font(TypeScale.provenance)
+                .tracking(0)
                 .foregroundStyle(DesignTokens.cocoaSoft)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
@@ -43,9 +44,9 @@ struct RecordAppointmentView: View {
             HStack(alignment: .top, spacing: DesignTokens.Spacing.compact) {
                 KernelGlyph(voice: .user, height: 20, decorative: true)
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-                    Text("Recording requires permission").font(TypeScale.section)
+                    Text("Recording requires permission").font(TypeScale.section).tracking(-0.2)
                     Text("Ask everyone in the room before recording. Recording must be permitted where you are.")
-                        .font(TypeScale.body).foregroundStyle(DesignTokens.cocoaSoft)
+                        .font(TypeScale.body).tracking(0).foregroundStyle(DesignTokens.cocoaSoft)
                 }
             }
             Button { state.consentAcknowledged.toggle() } label: {
@@ -53,7 +54,7 @@ struct RecordAppointmentView: View {
                     Image(systemName: state.consentAcknowledged ? "checkmark.square.fill" : "square")
                         .font(.system(size: 24)).foregroundStyle(state.consentAcknowledged ? DesignTokens.orangePressed : DesignTokens.cocoa)
                         .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum)
-                    Text("I have permission to record this appointment").font(TypeScale.bodyMedium)
+                    Text("I have permission to record this appointment").font(TypeScale.bodyMedium).tracking(0)
                 }
                 .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
             }

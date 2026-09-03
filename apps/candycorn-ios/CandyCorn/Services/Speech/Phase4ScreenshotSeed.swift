@@ -15,6 +15,7 @@ enum Phase4ScreenshotSeed {
         var snapshot = source
         guard let appointmentIndex = snapshot.appointments.firstIndex(where: { $0.id == SeededData.therapySessionID }),
               let attachmentID = snapshot.appointments[appointmentIndex].recordingAttachmentID else { return source }
+        applyAcceptedTranscriptCopy(to: &snapshot.transcript)
         let transcript = snapshot.transcript.filter { $0.appointmentID == SeededData.therapySessionID }
         guard transcript.count >= 3 else { return source }
         let result = summary(transcript: transcript)
@@ -35,6 +36,29 @@ enum Phase4ScreenshotSeed {
         )
         upsertProcessing(processing, in: &snapshot.sessionProcessing)
         return snapshot
+    }
+
+    private static func applyAcceptedTranscriptCopy(to transcript: inout [TranscriptSegment]) {
+        let values = [
+            (761_000, "I think I care less about playing again than proving I really could have played."),
+            (768_000, "Maybe the grief is partly about never getting that chance to prove it."),
+        ]
+        let indices = transcript.indices.filter {
+            transcript[$0].appointmentID == SeededData.therapySessionID
+        }.sorted { transcript[$0].startMilliseconds < transcript[$1].startMilliseconds }
+        for (index, value) in zip(indices.prefix(values.count), values) {
+            let source = transcript[index]
+            transcript[index] = TranscriptSegment(
+                id: source.id,
+                appointmentID: source.appointmentID,
+                speaker: source.speaker,
+                rawSpeakerLabel: source.rawSpeakerLabel,
+                startMilliseconds: value.0,
+                endMilliseconds: max(value.0, source.endMilliseconds),
+                text: value.1,
+                confidence: source.confidence
+            )
+        }
     }
 
     private static func summary(transcript: [TranscriptSegment]) -> StructuredSessionSummaryResult {
@@ -61,9 +85,16 @@ enum Phase4ScreenshotSeed {
             title: "Questions left open",
             items: [item("8F210000-0000-0000-0000-000000000003", "What would proving yourself have changed?", .candyCorn, third)]
         )
+        let discussed = [item(
+            "8F210000-0000-0000-0000-000000000004",
+            "The senior-year meeting with the coaches",
+            .provider,
+            third,
+            relatedEntityID: uuid("50000000-0000-0000-0000-000000000003")
+        )]
         return StructuredSessionSummaryResult(
             template: .therapy, debriefTopics: topics,
-            sections: [homework, goals, questions], discussedTalkingPoints: [],
+            sections: [homework, goals, questions], discussedTalkingPoints: discussed,
             metadata: AIResultMetadata(
                 provider: "screenshot", model: "deterministic-session-debrief",
                 usage: AIUsage(promptTokens: nil, completionTokens: nil, reasoningTokens: nil, totalTokens: nil, costCredits: nil)
@@ -75,14 +106,15 @@ enum Phase4ScreenshotSeed {
         _ id: String,
         _ text: String,
         _ provenance: SessionSummaryItemProvenance,
-        _ segment: TranscriptSegment
+        _ segment: TranscriptSegment,
+        relatedEntityID: UUID? = nil
     ) -> StructuredSessionSummaryItem {
         StructuredSessionSummaryItem(
             id: uuid(id), text: text, provenance: provenance,
             evidence: [EvidenceCitation(
                 sourceID: segment.id, quote: segment.text,
                 timestampMilliseconds: segment.startMilliseconds
-            )], relatedEntityID: nil
+            )], relatedEntityID: relatedEntityID
         )
     }
 
