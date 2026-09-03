@@ -91,6 +91,7 @@ struct BringUpView: View {
     @Bindable var state: DemoState
     @State private var draft = ManualTalkingPointDraft()
     @State private var isSaving = false
+    @State private var showsClosed = false
 
     private var openItems: [TalkingPoint] {
         state.talkingPoints.filter { $0.status == .open }
@@ -101,87 +102,130 @@ struct BringUpView: View {
     }
 
     var body: some View {
-        ScreenLayout(
-            title: "Bring up next time",
-            subtitle: "A short inbox for the conversations you do not want to lose.",
-            backAction: navigation.backAction(for: .bringUp)
-        ) {
-            if openItems.isEmpty {
-                emptyState
-            } else {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    Divider().overlay(DesignTokens.hairline)
+        ScrollView {
+            VStack(alignment: .leading, spacing: DesignTokens.blockGap) {
+                HStack(spacing: DesignTokens.Spacing.small) {
+                    if let back = navigation.backAction(for: .bringUp) {
+                        Button(action: back) {
+                            AppIcon.back.image
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(DesignTokens.cocoa)
+                                .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Back")
+                    }
+                    Spacer()
+                }
+                .frame(height: DesignTokens.controlMinimum)
+                V2TitleRow(title: "Bring up next time")
+                SectionLine(title: openItems.isEmpty ? "Nothing waiting" : "For \(targetSummary)", trailing: openItems.isEmpty ? nil : "\(openItems.count) pinned")
+                if openItems.isEmpty {
+                    V2Card(background: DesignTokens.surfaceWarm, showsBorder: false) {
+                        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+                            Text("Nothing waiting for the next appointment")
+                                .font(TypeScale.cardTitle)
+                                .foregroundStyle(DesignTokens.cocoa)
+                            Text("Pin a thought from any journal, or add one below.")
+                                .font(TypeScale.label)
+                                .foregroundStyle(DesignTokens.cocoaSoft)
+                        }
+                    }
+                } else {
                     ForEach(openItems) { point in
-                        TalkingPointRow(point: point) { status in
+                        TalkingPointCard(point: point) { status in
                             Task { _ = await state.transitionTalkingPoint(id: point.id, to: status) }
                         }
                     }
                 }
+                manualSection
+                if !closedItems.isEmpty {
+                    closedSection
+                }
             }
-            manualSection
-                .padding(.top, DesignTokens.Spacing.base)
-            if !closedItems.isEmpty {
-                closedSection
-            }
+            .padding(.horizontal, DesignTokens.screenInset)
+            .padding(.top, DesignTokens.Spacing.xSmall)
+            .padding(.bottom, DesignTokens.tabBarClearance)
         }
+        .scrollDismissesKeyboard(.interactively)
+        .background(DesignTokens.canvas.ignoresSafeArea())
     }
 
-    private var emptyState: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            KernelGlyph(voice: .user, height: 20, decorative: true)
-            Text("Nothing waiting for the next appointment")
-                .font(TypeScale.sectionCompact)
-            Text("You can return here whenever something comes up.")
-                .font(TypeScale.label)
-                .foregroundStyle(DesignTokens.cocoaSoft)
-        }
-        .foregroundStyle(DesignTokens.cocoa)
-        .padding(.vertical, DesignTokens.Spacing.large)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .top) { Divider().overlay(DesignTokens.hairline) }
-        .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
+    private var targetSummary: String {
+        let kinds = Set(openItems.compactMap(\.targetAppointmentKind))
+        if kinds == [.therapy] { return "therapy" }
+        if kinds == [.tms] { return "TMS" }
+        return "your next appointments"
     }
 
     private var manualSection: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Divider().overlay(DesignTokens.hairline)
-                .padding(.bottom, DesignTokens.Spacing.base)
-            Text("Add your own")
-                .font(TypeScale.sectionCompact)
-            Text("What do you want to remember?")
-                .font(TypeScale.label)
-            TextEditor(text: Binding(get: { draft.text }, set: { draft.updateText($0) }))
-                .font(TypeScale.body)
-                .foregroundStyle(DesignTokens.cocoa)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 92)
-                .padding(DesignTokens.Spacing.compact)
-                .background(DesignTokens.surface)
-                .overlay(RoundedRectangle(cornerRadius: DesignTokens.controlRadius).stroke(DesignTokens.hairline))
-                .accessibilityLabel("What do you want to remember?")
-            if let error = draft.error {
-                Text(error).font(TypeScale.provenance).foregroundStyle(DesignTokens.rose)
+        V2Card {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+                Text("Add your own")
+                    .font(TypeScale.cardTitle)
+                    .foregroundStyle(DesignTokens.cocoa)
+                TextEditor(text: Binding(get: { draft.text }, set: { draft.updateText($0) }))
+                    .font(TypeScale.body)
+                    .foregroundStyle(DesignTokens.cocoa)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 84)
+                    .padding(DesignTokens.Spacing.compact)
+                    .background(DesignTokens.surfaceWarm)
+                    .clipShape(RoundedRectangle(cornerRadius: DesignTokens.controlRadius, style: .continuous))
+                    .overlay(alignment: .topLeading) {
+                        if draft.text.isEmpty {
+                            Text("What do you want to remember?")
+                                .font(TypeScale.body)
+                                .foregroundStyle(DesignTokens.cocoaSoft)
+                                .padding(DesignTokens.Spacing.compact + 4)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .accessibilityLabel("What do you want to remember?")
+                if let error = draft.error {
+                    Text(error).font(TypeScale.provenance).foregroundStyle(DesignTokens.rose)
+                }
+                Button(isSaving ? "Adding" : "Add to next appointment", action: addManualItem)
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(isSaving)
             }
-            Button(isSaving ? "Adding" : "Add to next appointment", action: addManualItem)
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(isSaving)
         }
     }
 
     private var closedSection: some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Text("Closed items").font(TypeScale.sectionCompact)
-            ForEach(closedItems) { point in
-                HStack {
-                    Text(point.text).font(TypeScale.label).foregroundStyle(DesignTokens.cocoaSoft)
-                    Spacer()
-                    Button("Reopen") {
-                        Task { _ = await state.transitionTalkingPoint(id: point.id, to: .open) }
+            Button {
+                showsClosed.toggle()
+            } label: {
+                SectionLine(title: "Discussed or dismissed", trailing: "\(closedItems.count)")
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Discussed or dismissed items, \(closedItems.count)")
+            .accessibilityValue(showsClosed ? "Expanded" : "Collapsed")
+            if showsClosed {
+                V2Card(padding: 0) {
+                    VStack(spacing: 0) {
+                        ForEach(Array(closedItems.enumerated()), id: \.element.id) { index, point in
+                            if index > 0 { Rectangle().fill(DesignTokens.hairline).frame(height: 1).padding(.horizontal, DesignTokens.Spacing.base) }
+                            HStack(spacing: DesignTokens.Spacing.compact) {
+                                Text(point.text)
+                                    .font(TypeScale.label)
+                                    .foregroundStyle(DesignTokens.cocoaSoft)
+                                    .strikethrough(point.status == .dismissed, color: DesignTokens.cocoaSoft)
+                                Spacer()
+                                Button("Reopen") {
+                                    Task { _ = await state.transitionTalkingPoint(id: point.id, to: .open) }
+                                }
+                                .font(TypeScale.metaStrong)
+                                .foregroundStyle(DesignTokens.cocoa)
+                                .frame(minHeight: DesignTokens.controlMinimum)
+                            }
+                            .padding(.horizontal, DesignTokens.Spacing.base)
+                            .padding(.vertical, DesignTokens.Spacing.xSmall)
+                        }
                     }
-                    .font(TypeScale.label)
-                    .frame(minHeight: DesignTokens.controlMinimum)
                 }
-                .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
             }
         }
     }
@@ -204,41 +248,43 @@ struct BringUpView: View {
     }
 }
 
-private struct TalkingPointRow: View {
+private struct TalkingPointCard: View {
     let point: TalkingPoint
     let onStatus: (TalkingPoint.Status) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Text(point.text)
-                .font(TypeScale.bodyMedium)
-                .foregroundStyle(DesignTokens.cocoa)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("\(point.isImportant ? "Important" : "Normal priority") · \(BringUpLogic.targetLabel(for: point))")
-                .font(TypeScale.provenance)
-                .foregroundStyle(DesignTokens.cocoaSoft)
-                .fixedSize(horizontal: false, vertical: true)
-            ProvenanceLine(provenance: point.provenance, compact: true)
-            HStack(spacing: DesignTokens.Spacing.small) {
-                actionButton("Discussed", status: .discussed)
-                actionButton("Dismiss", status: .dismissed)
+        V2Card {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+                HStack(alignment: .top, spacing: DesignTokens.Spacing.compact) {
+                    KernelGlyph(voice: point.provenance.voice, height: 20, decorative: true)
+                        .padding(.top, 2)
+                    Text(point.text)
+                        .font(TypeScale.rowTitle)
+                        .foregroundStyle(DesignTokens.cocoa)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    if point.isImportant {
+                        Text("Important")
+                            .font(TypeScale.metaStrong)
+                            .foregroundStyle(DesignTokens.cocoa)
+                            .padding(.horizontal, 10)
+                            .frame(minHeight: 26)
+                            .background(DesignTokens.yellow)
+                            .clipShape(Capsule())
+                            .accessibilityLabel("Important")
+                    }
+                }
+                ProvenanceInline(voice: point.provenance.voice, text: "\(point.provenance.label) · \(point.provenance.detail)")
+                HStack(spacing: DesignTokens.Spacing.small) {
+                    Button("Discussed") { onStatus(.discussed) }
+                        .buttonStyle(CompactDarkButtonStyle())
+                        .accessibilityLabel("Mark discussed: \(point.text)")
+                    Button("Dismiss") { onStatus(.dismissed) }
+                        .buttonStyle(CompactGhostButtonStyle())
+                        .accessibilityLabel("Dismiss: \(point.text)")
+                }
+                .padding(.top, DesignTokens.Spacing.xSmall)
             }
         }
-        .padding(.vertical, DesignTokens.Spacing.medium)
-        .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
-    }
-
-    private func actionButton(_ title: String, status: TalkingPoint.Status) -> some View {
-        Button(title) { onStatus(status) }
-            .font(TypeScale.label)
-            .foregroundStyle(DesignTokens.cocoa)
-            .frame(minWidth: 96, minHeight: DesignTokens.controlMinimum)
-            .background(DesignTokens.surface)
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(DesignTokens.hairline, lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .accessibilityLabel("\(title): \(point.text)")
     }
 }
