@@ -9,9 +9,12 @@ struct OpenRouterKeySheet: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        ScreenLayout(
+        V2Screen(
             title: "Paste OpenRouter key",
-            subtitle: "Add your own key for cloud organizer and photo-to-text requests.",
+            subtitle: "Your own key powers cloud organizing and photo-to-text.",
+            backAction: { dismiss() },
+            backLabel: "Cancel",
+            backIcon: .close,
             bottomInset: DesignTokens.Spacing.large
         ) {
             keyField
@@ -22,58 +25,39 @@ struct OpenRouterKeySheet: View {
             Button(isSaving ? "Saving" : "Save", action: save)
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(isSaving)
-            Button("Cancel") { dismiss() }
-                .buttonStyle(SecondaryButtonStyle())
-                .disabled(isSaving)
         }
         .interactiveDismissDisabled(isSaving)
     }
 
     private var keyField: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Text("OpenRouter key")
-                .font(TypeScale.sectionCompact)
-                .foregroundStyle(DesignTokens.cocoa)
-            SecureField("Paste key", text: boundedKeyBinding)
-                .font(TypeScale.body)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .keyboardType(.asciiCapable)
-                .textContentType(.password)
-                .padding(DesignTokens.Spacing.compact)
-                .frame(minHeight: DesignTokens.primaryButtonHeight)
-                .background(DesignTokens.surface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignTokens.controlRadius, style: .continuous)
-                        .stroke(DesignTokens.hairline, lineWidth: 1)
-                )
-                .accessibilityLabel("OpenRouter key")
-                .accessibilityHint("Secure text field. A saved key is never shown here.")
-            Text("The field is always empty when opened. Candy Corn never reveals a saved key.")
-                .font(TypeScale.provenance)
-                .foregroundStyle(DesignTokens.cocoaSoft)
-                .fixedSize(horizontal: false, vertical: true)
+        V2Card {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+                SectionLine(title: "OpenRouter key", trailing: "Never shown once saved")
+                SecureField("Paste key", text: boundedKeyBinding)
+                    .font(TypeScale.body)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.asciiCapable)
+                    .textContentType(.password)
+                    .padding(.horizontal, DesignTokens.Spacing.compact)
+                    .frame(minHeight: DesignTokens.controlMinimum + 4)
+                    .background(DesignTokens.surfaceWarm)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .accessibilityLabel("OpenRouter key")
+                    .accessibilityHint("Secure text field. A saved key is never shown here.")
+                Text("The field is always empty when opened. Candy Corn never reveals a saved key.")
+                    .font(TypeScale.meta)
+                    .foregroundStyle(DesignTokens.cocoaSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
     private var privacyExplanation: some View {
-        HStack(alignment: .top, spacing: DesignTokens.Spacing.compact) {
-            KernelGlyph(voice: .user, height: 18, decorative: true)
-                .padding(.top, 2)
-            Text(
-                "The key is stored only in this iPhone's Keychain and is not included in exports. "
-                    + "It is used only after you review what will leave this device and tap Send."
-            )
-                .font(TypeScale.label)
-                .foregroundStyle(DesignTokens.cocoaSoft)
-                .lineSpacing(3)
-                .fixedSize(horizontal: false, vertical: true)
+        V2GroupCard {
+            V2ListRow(icon: .key, title: "Stored in this iPhone's Keychain", detail: "Not included in exports.", trailing: .check, divider: false)
+            V2ListRow(icon: .cloudUpload, title: "Used only after you tap Send", detail: "You review what leaves this device first.", trailing: .check)
         }
-        .padding(DesignTokens.Spacing.base)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(DesignTokens.surfaceWarm)
-        .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
-        .accessibilityElement(children: .combine)
     }
 
     private var boundedKeyBinding: Binding<String> {

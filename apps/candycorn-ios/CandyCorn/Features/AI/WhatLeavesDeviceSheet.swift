@@ -70,9 +70,7 @@ struct WhatLeavesDeviceSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider().overlay(DesignTokens.hairline)
             sourceLedger
-            Divider().overlay(DesignTokens.hairline)
             footer
         }
         .background(DesignTokens.canvas.ignoresSafeArea())
@@ -80,111 +78,99 @@ struct WhatLeavesDeviceSheet: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
-            HStack(alignment: .top, spacing: DesignTokens.Spacing.compact) {
-                KernelGlyph(voice: .candyCorn, height: 20)
-                    .padding(.top, DesignTokens.Spacing.xSmall)
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text("What leaves this device")
-                        .font(TypeScale.pageTitle)
+                        .font(TypeScale.screenTitle)
                         .foregroundStyle(DesignTokens.cocoa)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(pendingSend.disclosure.purpose)
-                        .font(TypeScale.body)
+                        .font(TypeScale.label)
                         .foregroundStyle(DesignTokens.cocoaSoft)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                Spacer(minLength: DesignTokens.Spacing.small)
+                RoundActionButton(icon: .close, label: AISendDisclosureText.cancelActionName, action: onCancel)
+                    .disabled(isProcessing)
             }
-            ProvenanceLine(
-                provenance: Provenance(
-                    voice: .candyCorn,
-                    label: "Candy Corn suggestion",
-                    detail: "Review every source before sending.",
-                    occurredAt: nil,
-                    sourceRoute: nil
-                ),
-                compact: true
-            )
+            ProvenanceInline(voice: .candyCorn, text: "Candy Corn suggestion · review every source before sending")
         }
         .padding(.horizontal, DesignTokens.screenInset)
-        .padding(.vertical, DesignTokens.Spacing.large)
+        .padding(.top, DesignTokens.Spacing.medium)
+        .padding(.bottom, DesignTokens.blockGap)
     }
 
     private var sourceLedger: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: DesignTokens.blockGap) {
                 if hasSources {
-                    ForEach(pendingSend.disclosure.sources) { source in
-                        sourceRow(source)
-                        Divider().overlay(DesignTokens.hairline)
+                    V2Card(padding: 0) {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(pendingSend.disclosure.sources.enumerated()), id: \.element.id) { index, source in
+                                V2ListRow(
+                                    icon: source.imageCount > 0 ? .camera : .journal,
+                                    title: source.title,
+                                    detail: AISendDisclosureText.sourceCounts(source),
+                                    trailing: .none,
+                                    divider: index > 0
+                                )
+                                .accessibilityLabel(AISendDisclosureText.sourceAccessibilityLabel(source))
+                            }
+                        }
                     }
                 } else {
                     emptySources
                 }
             }
             .padding(.horizontal, DesignTokens.screenInset)
+            .padding(.bottom, DesignTokens.blockGap)
         }
         .frame(maxHeight: .infinity)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Sources leaving this device")
     }
 
-    private func sourceRow(_ source: OutgoingSourceDescriptor) -> some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Text(source.title)
-                .font(TypeScale.bodyMedium)
-                .foregroundStyle(DesignTokens.cocoa)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(AISendDisclosureText.sourceCounts(source))
-                .font(TypeScale.provenance.monospacedDigit())
-                .foregroundStyle(DesignTokens.cocoaSoft)
-        }
-        .frame(maxWidth: .infinity, minHeight: DesignTokens.Spacing.hero, alignment: .leading)
-        .padding(.vertical, DesignTokens.Spacing.compact)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(AISendDisclosureText.sourceAccessibilityLabel(source))
-    }
-
     private var emptySources: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Text("Nothing is ready to send")
-                .font(TypeScale.bodyMedium)
-                .foregroundStyle(DesignTokens.cocoa)
-            Text("Add source material, then review this list again.")
-                .font(TypeScale.label)
-                .foregroundStyle(DesignTokens.cocoaSoft)
+        V2Card {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+                Text("Nothing is ready to send")
+                    .font(TypeScale.cardTitle)
+                    .foregroundStyle(DesignTokens.cocoa)
+                Text("Add source material, then review this list again.")
+                    .font(TypeScale.meta)
+                    .foregroundStyle(DesignTokens.cocoaSoft)
+            }
         }
-        .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
 
     private var footer: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.base) {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
             disclosureTotals
             processingMessage
             actionButtons
         }
-        .padding(DesignTokens.screenInset)
+        .padding(.horizontal, DesignTokens.screenInset)
+        .padding(.top, DesignTokens.Spacing.base)
+        .padding(.bottom, DesignTokens.Spacing.small)
         .background(DesignTokens.surfaceWarm)
+        .clipShape(UnevenRoundedRectangle(topLeadingRadius: DesignTokens.heroRadius, topTrailingRadius: DesignTokens.heroRadius, style: .continuous))
     }
 
     private var disclosureTotals: some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            ledgerLine(title: "Destination", value: pendingSend.disclosure.destination, monospaced: false)
-            ledgerLine(
-                title: "Total",
-                value: totalCounts,
-                monospaced: true
-            )
+            HStack(alignment: .top, spacing: DesignTokens.blockGap) {
+                ledgerLine(title: "Destination", value: pendingSend.disclosure.destination, monospaced: false)
+                ledgerLine(title: "Total", value: totalCounts, monospaced: true)
+            }
             if let omitted = AISendDisclosureText.omittedSources(pendingSend.disclosure.omittedSourceCount) {
                 Text(omitted)
-                    .font(TypeScale.label)
+                    .font(TypeScale.meta)
                     .foregroundStyle(DesignTokens.cocoaSoft)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Text("Cloud upload starts only when you tap Send.")
-                .font(TypeScale.label)
-                .foregroundStyle(DesignTokens.cocoa)
-                .fixedSize(horizontal: false, vertical: true)
+            ProvenanceInline(voice: .user, text: "Cloud upload starts only when you tap Send.")
         }
     }
 
@@ -198,15 +184,16 @@ struct WhatLeavesDeviceSheet: View {
     }
 
     private func ledgerLine(title: String, value: String, monospaced: Bool) -> some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xSmall) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(TypeScale.provenance)
+                .font(TypeScale.metaStrong)
                 .foregroundStyle(DesignTokens.cocoaSoft)
             Text(value)
-                .font(monospaced ? TypeScale.bodyMedium.monospacedDigit() : TypeScale.bodyMedium)
+                .font(monospaced ? TypeScale.rowTitleCompact.monospacedDigit() : TypeScale.rowTitleCompact)
                 .foregroundStyle(DesignTokens.cocoa)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
 
