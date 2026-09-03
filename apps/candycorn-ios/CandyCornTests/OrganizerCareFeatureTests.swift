@@ -45,7 +45,8 @@ struct OrganizerCareFeatureTests {
 
         editor.begin()
         editor.update(sectionID: firstSection.id, statementID: firstStatement.id, text: "I want to revisit the football story and the guilt that followed relief.")
-        let edited = try #require(editor.preparedSave(at: Date(timeIntervalSince1970: 1_788_700_000)))
+        let prepared = editor.preparedSave(at: Date(timeIntervalSince1970: 1_788_700_000))
+        let edited = try #require(prepared)
         #expect(await state.saveEditedAppointmentBrief(artifact.id, result: edited))
 
         let replacement = try #require(state.artifacts.first { $0.id == artifact.id })
@@ -120,8 +121,10 @@ struct OrganizerCareFeatureTests {
         tms.begin()
         tms.update(.question, text: "Should I keep tracking this mild headache?")
 
-        #expect(therapy.save())
-        #expect(tms.save())
+        let therapySaved = therapy.save()
+        let tmsSaved = tms.save()
+        #expect(therapySaved)
+        #expect(tmsSaved)
     }
 
     private func result(text: String, sourceID: UUID = UUID()) -> AppointmentBriefResult {
