@@ -55,8 +55,8 @@ struct SettingsPrivacyView: View {
                     voice: .user
                 )
                 SettingsStatusRow(
-                    status: "Cloud upload: only when AI is on",
-                    detail: "Nothing uploads while AI is off. You choose what is sent when processing is enabled."
+                    status: "Cloud upload: Only when you tap Send",
+                    detail: "Before every cloud request, you review the exact entries and character or image counts. Cancel sends nothing."
                 )
                 SettingsStatusRow(
                     status: "Raw audio retention: you decide",
