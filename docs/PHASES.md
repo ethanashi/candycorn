@@ -54,8 +54,9 @@ Goal: record a consented appointment and get a trustworthy speaker-labeled trans
 - FluidAudio diarization; alignment into You, Provider, Unknown segments; editable speaker labels; optional local patient voice profile.
 - Structured therapy and TMS summaries through the organizer model, every item linked to a transcript timestamp.
 - Homework and provider-assigned goals extracted with provider provenance, confirmed by the user.
+- Session debrief (added 2026-09-02). The moment right after processing finishes is its own screen, not just the session detail tabs. It opens with a short, warm, honest acknowledgement in the app's own voice ("You showed up. Here is what came out of it."), never a streak, score, or celebration animation. Then, in order: what you talked about (three to five lines, each linked to a transcript timestamp), what your provider asked you to do (homework as provider-voice rows with Add to homework), things that sounded like goals (candidate goals with Add, Edit, Ignore), talking points you brought that got discussed (offer to mark them discussed), and questions left open (offer to pin them for next time). One primary action, Done, that lands on Today. Nothing is added to goals or homework without a tap. The same screen serves TMS sessions with the TMS extraction template, and a lighter version follows a processed voice journal.
 
-Done when a real session becomes a speaker-labeled transcript and a structured summary you trust.
+Done when a real session becomes a speaker-labeled transcript, a structured summary you trust, and a debrief you would actually read on the walk to the car.
 
 ## Phase 5. Memory and Prepare
 
