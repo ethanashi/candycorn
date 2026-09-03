@@ -269,3 +269,237 @@ extension Provenance {
         return label
     }
 }
+
+// MARK: - Detail screens (September 3, 2026)
+
+extension DesignTokens {
+    /// Fill for the energy band: warm taupe so cocoa text stays legible on top of it.
+    static let energyBand = Color(hex: "#D9CFC4")
+}
+
+/// Scaffold for pushed and full-screen v2 pages: round back button, large title, blocks with a constant gap.
+struct V2Screen<Content: View>: View {
+    let title: String
+    var subtitle: String? = nil
+    var backAction: (() -> Void)? = nil
+    var backLabel = "Back"
+    var backIcon: AppIcon = .back
+    var trailing: AnyView? = nil
+    var bottomInset: CGFloat = DesignTokens.tabBarClearance
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: DesignTokens.blockGap) {
+                if backAction != nil || trailing != nil {
+                    HStack {
+                        if let backAction {
+                            RoundActionButton(icon: backIcon, label: backLabel, action: backAction)
+                        }
+                        Spacer(minLength: 0)
+                        trailing
+                    }
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(title)
+                        .font(TypeScale.screenTitle)
+                        .foregroundStyle(DesignTokens.cocoa)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                    if let subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(TypeScale.label)
+                            .foregroundStyle(DesignTokens.cocoaSoft)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                content
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, DesignTokens.screenInset)
+            .padding(.top, DesignTokens.Spacing.small)
+            .padding(.bottom, bottomInset)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .background(DesignTokens.canvas.ignoresSafeArea())
+    }
+}
+
+/// A card holding list rows, with an optional quiet group label.
+struct V2GroupCard<Rows: View>: View {
+    var title: String? = nil
+    @ViewBuilder var rows: Rows
+
+    var body: some View {
+        V2Card(padding: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                if let title {
+                    Text(title)
+                        .font(TypeScale.metaStrong)
+                        .foregroundStyle(DesignTokens.cocoaSoft)
+                        .padding(.horizontal, DesignTokens.Spacing.base)
+                        .padding(.top, DesignTokens.Spacing.compact)
+                        .padding(.bottom, 2)
+                        .accessibilityAddTraits(.isHeader)
+                }
+                rows
+            }
+        }
+    }
+}
+
+/// List row: icon tile, title, optional detail, optional value, and a chevron or check at the right.
+struct V2ListRow: View {
+    enum Trailing { case none, chevron, check }
+
+    let icon: AppIcon?
+    let title: String
+    var detail: String? = nil
+    var value: String? = nil
+    var trailing: Trailing = .chevron
+    var divider = true
+    var danger = false
+    var disabled = false
+    var action: (() -> Void)? = nil
+
+    var body: some View {
+        Group {
+            if let action {
+                Button(action: action) { rowBody }
+                    .buttonStyle(.plain)
+                    .disabled(disabled)
+            } else {
+                rowBody
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var rowBody: some View {
+        HStack(alignment: .center, spacing: DesignTokens.Spacing.compact) {
+            if let icon {
+                icon.image
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(danger ? DesignTokens.rose : DesignTokens.cocoa)
+                    .frame(width: 34, height: 34)
+                    .background(danger ? DesignTokens.rose.opacity(0.12) : DesignTokens.surfaceWarm)
+                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    .accessibilityHidden(true)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(TypeScale.rowTitleCompact)
+                    .foregroundStyle(danger ? DesignTokens.rose : (disabled ? DesignTokens.cocoaSoft : DesignTokens.cocoa))
+                if let detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(TypeScale.meta)
+                        .foregroundStyle(DesignTokens.cocoaSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: DesignTokens.Spacing.small)
+            HStack(spacing: 4) {
+                if let value {
+                    Text(value)
+                        .font(TypeScale.provenance)
+                        .foregroundStyle(trailing == .check ? DesignTokens.sage : DesignTokens.cocoaSoft)
+                        .lineLimit(1)
+                }
+                switch trailing {
+                case .check:
+                    AppIcon.check.image.font(.system(size: 13, weight: .bold)).foregroundStyle(DesignTokens.sage)
+                case .chevron:
+                    AppIcon.chevronRight.image.font(.system(size: 13, weight: .semibold)).foregroundStyle(DesignTokens.cocoaSoft)
+                case .none:
+                    EmptyView()
+                }
+            }
+        }
+        .padding(.horizontal, DesignTokens.Spacing.base)
+        .padding(.vertical, 11)
+        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+        .overlay(alignment: .top) {
+            if divider {
+                Rectangle().fill(DesignTokens.hairline).frame(height: 1).padding(.horizontal, DesignTokens.Spacing.base)
+            }
+        }
+        .contentShape(Rectangle())
+    }
+}
+
+/// Single-choice row with a round selection mark at the right.
+struct V2ChoiceRow: View {
+    let title: String
+    let detail: String
+    let selected: Bool
+    var disabled = false
+    var divider = true
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .center, spacing: DesignTokens.Spacing.compact) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(TypeScale.rowTitleCompact)
+                        .foregroundStyle(disabled ? DesignTokens.cocoaSoft : DesignTokens.cocoa)
+                    Text(detail)
+                        .font(TypeScale.meta)
+                        .foregroundStyle(DesignTokens.cocoaSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: DesignTokens.Spacing.small)
+                ZStack {
+                    Circle().fill(selected ? DesignTokens.orange : DesignTokens.surface)
+                    Circle().stroke(selected ? DesignTokens.orange : Color(hex: "#D9D0C7"), lineWidth: 2)
+                    if selected {
+                        AppIcon.check.image
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                }
+                .frame(width: 24, height: 24)
+            }
+            .padding(.horizontal, DesignTokens.Spacing.base)
+            .padding(.vertical, 11)
+            .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+            .overlay(alignment: .top) {
+                if divider {
+                    Rectangle().fill(DesignTokens.hairline).frame(height: 1).padding(.horizontal, DesignTokens.Spacing.base)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title). \(detail)")
+        .accessibilityValue(selected ? "Selected" : "Not selected")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// Two-line provenance for cards whose source detail is too long for one line.
+struct ProvenanceStack: View {
+    let provenance: Provenance
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
+            KernelGlyph(voice: provenance.voice, height: 12, decorative: true)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(provenance.label)
+                    .font(TypeScale.metaStrong)
+                    .foregroundStyle(DesignTokens.cocoa)
+                if !provenance.detail.isEmpty {
+                    Text(provenance.detail)
+                        .font(TypeScale.meta)
+                        .foregroundStyle(DesignTokens.cocoaSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(provenance.label). \(provenance.detail)")
+    }
+}

@@ -57,6 +57,16 @@ enum TherapyBriefSection: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    var icon: AppIcon {
+        switch self {
+        case .whereLeftOff: .history
+        case .whatChanged: .journal
+        case .pinnedQuestion: .questionmark
+        case .carryingForward: .flag
+        case .possibleOpening: .sparkles
+        }
+    }
+
     var provenance: Provenance {
         switch self {
         case .whereLeftOff:
@@ -134,13 +144,14 @@ struct PrepareTherapyView: View {
     @State private var openedScreenshotSheet = false
 
     var body: some View {
-        ScreenLayout(
-            title: isEditing ? "Edit your therapy brief" : "Walk in knowing what matters",
+        V2Screen(
+            title: isEditing ? "Edit your brief" : "Walk in knowing what matters",
             subtitle: isEditing
-                ? "Change the wording without changing your original journals or session."
-                : "A brief for Jamie Rivera to read before therapy with Dr. Elena Park on Sep 9.",
+                ? "Change the wording without changing your journals or session."
+                : "Before therapy with Dr. Elena Park on Sep 9.",
             backAction: isEditing ? cancelEditing : navigation.backAction(for: .prepareTherapy),
             backLabel: isEditing ? "Cancel editing" : "Back",
+            backIcon: isEditing ? .close : .back,
             bottomInset: 220
         ) {
             if generatedEditor?.isEditing == true {
@@ -168,7 +179,7 @@ struct PrepareTherapyView: View {
             }
             if state.aiMode == .reflection {
                 Text("Reflection uses Organizer for this brief. It does not start a conversation.")
-                    .font(TypeScale.provenance)
+                    .font(TypeScale.meta)
                     .foregroundStyle(DesignTokens.yellowText)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -199,22 +210,14 @@ struct PrepareTherapyView: View {
     }
 
     private var manualBriefReading: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Divider().overlay(DesignTokens.hairline)
+        VStack(alignment: .leading, spacing: DesignTokens.blockGap) {
             ForEach(TherapyBriefSection.allCases) { section in
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-                    Text(section.title)
-                        .font(TypeScale.sectionCompact)
-                    Text(highlighted(manualEditor.saved.text(for: section), quoted: section == .possibleOpening))
-                        .font(TypeScale.body)
-                        .lineSpacing(5)
-                        .fixedSize(horizontal: false, vertical: true)
-                    ProvenanceLine(provenance: section.provenance, compact: true)
-                        .padding(.top, DesignTokens.Spacing.xSmall)
-                }
-                .foregroundStyle(DesignTokens.cocoa)
-                .padding(.vertical, DesignTokens.Spacing.medium)
-                Divider().overlay(DesignTokens.hairline)
+                BriefSectionCard(
+                    title: section.title,
+                    text: highlighted(manualEditor.saved.text(for: section), quoted: section == .possibleOpening),
+                    provenance: section.provenance,
+                    icon: section.icon
+                )
             }
         }
     }
@@ -305,7 +308,7 @@ struct PrepareTherapyView: View {
                     Text(state.aiMode == .off
                         ? "Organizer is off. This manual brief stays usable."
                         : "Add a Router key in Settings to generate a brief.")
-                        .font(TypeScale.provenance)
+                        .font(TypeScale.meta)
                         .foregroundStyle(DesignTokens.cocoaSoft)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -314,8 +317,7 @@ struct PrepareTherapyView: View {
         .padding(.horizontal, DesignTokens.screenInset)
         .padding(.top, DesignTokens.Spacing.small)
         .padding(.bottom, 76)
-        .background(DesignTokens.surface)
-        .overlay(alignment: .top) { Divider().overlay(DesignTokens.hairline) }
+        .background(DesignTokens.canvas)
     }
 
     private func draftBinding(for section: TherapyBriefSection) -> Binding<String> {

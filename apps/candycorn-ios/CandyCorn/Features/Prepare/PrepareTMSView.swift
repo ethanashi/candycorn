@@ -15,6 +15,14 @@ enum TMSBriefSection: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    var icon: AppIcon {
+        switch self {
+        case .observations: .heart
+        case .question: .questionmark
+        case .providerFocus: .checkCircle
+        }
+    }
+
     var provenance: Provenance {
         switch self {
         case .observations:
@@ -102,11 +110,12 @@ struct PrepareTMSView: View {
     @State private var isSavingGenerated = false
 
     var body: some View {
-        ScreenLayout(
+        V2Screen(
             title: isEditing ? "Edit your TMS brief" : "Prepare for TMS",
             subtitle: isEditing ? "Edit this brief without changing any source." : "Saved observations for the next Riverbend TMS visit.",
             backAction: isEditing ? cancelEditing : navigation.backAction(for: .prepareTMS),
             backLabel: isEditing ? "Cancel editing" : "Back",
+            backIcon: isEditing ? .close : .back,
             bottomInset: 240
         ) {
             currentMood
@@ -127,7 +136,7 @@ struct PrepareTMSView: View {
             )
             if state.aiMode == .reflection {
                 Text("Reflection uses Organizer for this brief. It does not start a conversation.")
-                    .font(TypeScale.provenance)
+                    .font(TypeScale.meta)
                     .foregroundStyle(DesignTokens.yellowText)
             }
             captureActions
@@ -163,13 +172,13 @@ struct PrepareTMSView: View {
     }
 
     private var manualBriefReading: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Divider().overlay(DesignTokens.hairline)
+        VStack(alignment: .leading, spacing: DesignTokens.blockGap) {
             ForEach(TMSBriefSection.allCases) { section in
-                TMSBriefLine(
+                BriefSectionCard(
                     title: section.title,
                     copy: manualEditor.saved.text(for: section),
-                    provenance: section.provenance
+                    provenance: section.provenance,
+                    icon: section.icon
                 )
             }
         }
@@ -244,7 +253,7 @@ struct PrepareTMSView: View {
                     Text(state.aiMode == .off
                         ? "Organizer is off. This manual brief stays usable."
                         : "Add a Router key in Settings to generate a brief.")
-                        .font(TypeScale.provenance)
+                        .font(TypeScale.meta)
                         .foregroundStyle(DesignTokens.cocoaSoft)
                 }
             }
@@ -252,34 +261,27 @@ struct PrepareTMSView: View {
         .padding(.horizontal, DesignTokens.screenInset)
         .padding(.top, DesignTokens.Spacing.small)
         .padding(.bottom, 76)
-        .background(DesignTokens.surface)
-        .overlay(alignment: .top) { Divider().overlay(DesignTokens.hairline) }
+        .background(DesignTokens.canvas)
     }
 
     private var captureActions: some View {
-        VStack(spacing: DesignTokens.Spacing.small) {
-            Button("Open pre-session capture") { navigation.navigate(to: .tmsPre) }
-                .buttonStyle(SecondaryButtonStyle())
-            Button("Open post-session capture") { navigation.navigate(to: .tmsPost) }
-                .buttonStyle(SecondaryButtonStyle())
+        V2GroupCard(title: "Capture") {
+            V2ListRow(icon: .clock, title: "Before the session", detail: "Log how you arrive.") { navigation.navigate(to: .tmsPre) }
+            V2ListRow(icon: .checkCircle, title: "After the session", detail: "Log how you leave.") { navigation.navigate(to: .tmsPost) }
         }
     }
 
     private var currentMood: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
-            Text("How you are doing now").font(TypeScale.sectionCompact).foregroundStyle(DesignTokens.cocoa)
-            if state.mood == nil {
-                Text("No check-in yet").font(TypeScale.label).foregroundStyle(DesignTokens.cocoaSoft)
+        V2Card {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
+                SectionLine(title: "How you are doing now", trailing: state.mood == nil ? "No check-in yet" : nil)
+                MoodMiniBars(values: moodValues, barWidth: 72)
+                Text(moodSummary)
+                    .font(TypeScale.meta)
+                    .foregroundStyle(DesignTokens.cocoaSoft)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            MoodBands(values: moodValues, compact: true)
-            Text(moodSummary)
-                .font(TypeScale.provenance)
-                .foregroundStyle(DesignTokens.cocoaSoft)
-                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(DesignTokens.Spacing.medium)
-        .background(DesignTokens.surfaceWarm)
-        .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
     }
 
     private var moodValues: MoodValues {
@@ -436,26 +438,5 @@ struct PrepareTMSView: View {
 
     private func value(_ value: Int?) -> String {
         value.map { "\($0) of 10" } ?? "not logged"
-    }
-}
-
-private struct TMSBriefLine: View {
-    let title: String
-    let copy: String
-    let provenance: Provenance
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Text(title).font(TypeScale.sectionCompact).foregroundStyle(DesignTokens.cocoa)
-            Text(copy)
-                .font(TypeScale.body)
-                .foregroundStyle(DesignTokens.cocoa)
-                .lineSpacing(5)
-                .fixedSize(horizontal: false, vertical: true)
-            ProvenanceLine(provenance: provenance, compact: true)
-                .padding(.top, DesignTokens.Spacing.xSmall)
-        }
-        .padding(.vertical, DesignTokens.Spacing.medium)
-        .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
     }
 }

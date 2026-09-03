@@ -74,7 +74,7 @@ struct MoodBands: View {
         VStack(spacing: DesignTokens.Spacing.xSmall) {
             band(.anxiety, color: DesignTokens.yellow)
             band(.mood, color: DesignTokens.orange)
-            band(.energy, color: DesignTokens.surfaceWarm)
+            band(.energy, color: DesignTokens.energyBand)
         }
         .frame(maxWidth: .infinity)
         .frame(height: compact && onChange == nil ? 84 : 168)

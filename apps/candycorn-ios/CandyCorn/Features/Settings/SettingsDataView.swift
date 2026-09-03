@@ -61,9 +61,9 @@ struct SettingsDataView: View {
     var body: some View {
         Group {
             if embedded {
-                content
+                VStack(alignment: .leading, spacing: DesignTokens.blockGap) { content }
             } else {
-                ScreenLayout(
+                V2Screen(
                     title: "Data and export",
                     subtitle: "Choose what stays on this phone and export a readable copy.",
                     backAction: navigation.backAction(for: .settingsData)
@@ -98,103 +98,134 @@ struct SettingsDataView: View {
     }
 
     private var sampleContent: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Toggle(isOn: Binding(
-                get: { state.settings.useSampleContent },
-                set: { enabled in
-                    guard !isUpdatingSamples else { return }
-                    isUpdatingSamples = true
-                    Task {
-                        _ = await state.setSampleContentEnabled(enabled)
-                        isUpdatingSamples = false
+        V2Card {
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle(isOn: Binding(
+                    get: { state.settings.useSampleContent },
+                    set: { enabled in
+                        guard !isUpdatingSamples else { return }
+                        isUpdatingSamples = true
+                        Task {
+                            _ = await state.setSampleContentEnabled(enabled)
+                            isUpdatingSamples = false
+                        }
+                    }
+                )) {
+                    HStack(spacing: DesignTokens.Spacing.compact) {
+                        IconTile(icon: .toggle, size: 34)
+                        Text("Use sample content")
+                            .font(TypeScale.rowTitleCompact)
+                            .foregroundStyle(DesignTokens.cocoa)
                     }
                 }
-            )) {
-                Text("Use sample content").font(TypeScale.bodyMedium)
+                .tint(DesignTokens.orange)
+                .frame(minHeight: DesignTokens.controlMinimum)
+                .disabled(isUpdatingSamples)
+                Text("Turning this off removes Jamie Rivera’s fictional examples. Your entries stay.")
+                    .font(TypeScale.meta)
+                    .foregroundStyle(DesignTokens.cocoaSoft)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .tint(DesignTokens.orange)
-            .frame(minHeight: DesignTokens.controlMinimum)
-            .disabled(isUpdatingSamples)
-            Text("Turning this off removes Jamie Rivera’s fictional examples. Your entries stay.")
-                .font(TypeScale.provenance)
-                .foregroundStyle(DesignTokens.cocoaSoft)
         }
-        .padding(.bottom, DesignTokens.Spacing.base)
-        .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
     }
 
     private var retentionChoices: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Raw audio retention").font(TypeScale.sectionCompact)
-                .padding(.bottom, DesignTokens.Spacing.compact)
-            Divider().overlay(DesignTokens.hairline)
+        V2GroupCard(title: "Raw audio") {
             ForEach(AudioRetentionChoice.allCases) { choice in
-                SettingsChoiceRow(
+                V2ChoiceRow(
                     title: choice.title,
                     detail: choice.detail,
                     selected: state.settings.audioRetention == choice,
-                    disabled: updatingRetention != nil,
-                    action: {
-                        guard updatingRetention == nil else { return }
-                        updatingRetention = choice
-                        var settings = state.settings
-                        settings.audioRetention = choice
-                        Task {
-                            _ = await state.updateSettings(settings)
-                            updatingRetention = nil
-                        }
+                    disabled: updatingRetention != nil
+                ) {
+                    guard updatingRetention == nil, state.settings.audioRetention != choice else { return }
+                    updatingRetention = choice
+                    var settings = state.settings
+                    settings.audioRetention = choice
+                    Task {
+                        _ = await state.updateSettings(settings)
+                        updatingRetention = nil
                     }
-                )
+                }
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Raw audio retention")
     }
 
     private var exportControls: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Text("Export your care vault").font(TypeScale.sectionCompact)
-            Text("Creates a temporary folder with Markdown entries, originals, and a JSON index.")
-                .font(TypeScale.label).foregroundStyle(DesignTokens.cocoaSoft)
-            Button(exportButtonTitle) { Task { await state.makeExport() } }
-                .buttonStyle(SecondaryButtonStyle())
-                .disabled(state.exportState == .exporting)
-            if case let .failed(message) = state.exportState {
-                StatusNotice(title: "Export failed", detail: message, kind: .warning)
+        V2Card {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
+                HStack(spacing: DesignTokens.Spacing.compact) {
+                    IconTile(icon: .share, size: 34)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Export everything")
+                            .font(TypeScale.cardTitle)
+                            .foregroundStyle(DesignTokens.cocoa)
+                        Text("A folder with Markdown entries, originals, and a JSON index.")
+                            .font(TypeScale.meta)
+                            .foregroundStyle(DesignTokens.cocoaSoft)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Button(exportButtonTitle) { Task { await state.makeExport() } }
+                    .buttonStyle(CompactDarkButtonStyle())
+                    .disabled(state.exportState == .exporting)
+                if case let .failed(message) = state.exportState {
+                    StatusNotice(title: "Export failed", detail: message, kind: .warning)
+                }
             }
         }
-        .padding(.vertical, DesignTokens.Spacing.base)
-        .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
     }
 
     private var deleteControls: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Text("Delete everything").font(TypeScale.sectionCompact)
-            Text("This removes the care vault and every attachment from this device.")
-                .font(TypeScale.label).foregroundStyle(DesignTokens.cocoaSoft)
-            if showingDeleteConfirmation {
-                TextField("Type DELETE", text: $deleteText)
-                    .textInputAutocapitalization(.characters)
-                    .font(TypeScale.body)
-                    .padding(DesignTokens.Spacing.compact)
-                    .overlay(RoundedRectangle(cornerRadius: DesignTokens.controlRadius).stroke(DesignTokens.hairline))
-                Button(isDeleting ? "Deleting" : "Delete everything", role: .destructive) {
-                    guard !isDeleting else { return }
-                    isDeleting = true
-                    Task {
-                        _ = await state.deleteEverything(typedText: deleteText)
-                        isDeleting = false
+        V2Card {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
+                HStack(spacing: DesignTokens.Spacing.compact) {
+                    AppIcon.trash.image
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(DesignTokens.rose)
+                        .frame(width: 34, height: 34)
+                        .background(DesignTokens.rose.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Delete everything")
+                            .font(TypeScale.cardTitle)
+                            .foregroundStyle(DesignTokens.rose)
+                        Text("Removes the vault and every attachment from this phone.")
+                            .font(TypeScale.meta)
+                            .foregroundStyle(DesignTokens.cocoaSoft)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .buttonStyle(DangerButtonStyle())
-                .disabled(isDeleting || DeleteConfirmation(typedText: deleteText) == nil)
-            } else {
-                Button("Delete everything") { showingDeleteConfirmation = true }
-                    .buttonStyle(SecondaryButtonStyle())
-            }
-            if state.exportState == .deleted {
-                StatusNotice(title: "Care vault deleted", detail: "The app is ready for a new entry. Sample content stays off.", kind: .saved)
+                if showingDeleteConfirmation {
+                    TextField("Type DELETE", text: $deleteText)
+                        .textInputAutocapitalization(.characters)
+                        .font(TypeScale.label)
+                        .padding(.horizontal, DesignTokens.Spacing.compact)
+                        .frame(minHeight: DesignTokens.controlMinimum)
+                        .background(DesignTokens.surfaceWarm)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    Button(isDeleting ? "Deleting" : "Delete everything", role: .destructive) {
+                        guard !isDeleting else { return }
+                        isDeleting = true
+                        Task {
+                            _ = await state.deleteEverything(typedText: deleteText)
+                            isDeleting = false
+                        }
+                    }
+                    .buttonStyle(DangerButtonStyle())
+                    .disabled(isDeleting || DeleteConfirmation(typedText: deleteText) == nil)
+                } else {
+                    Button("Delete everything") { showingDeleteConfirmation = true }
+                        .buttonStyle(CompactGhostButtonStyle())
+                }
+                if state.exportState == .deleted {
+                    StatusNotice(title: "Care vault deleted", detail: "The app is ready for a new entry. Sample content stays off.", kind: .saved)
+                }
             }
         }
-        .padding(.vertical, DesignTokens.Spacing.base)
     }
 
     private var exportButtonTitle: String {

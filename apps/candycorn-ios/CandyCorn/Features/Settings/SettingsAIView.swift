@@ -142,11 +142,11 @@ struct SettingsAIView: View {
     var body: some View {
         Group {
             if embedded {
-                content
+                VStack(alignment: .leading, spacing: DesignTokens.blockGap) { content }
             } else {
-                ScreenLayout(
+                V2Screen(
                     title: "AI and processing",
-                    subtitle: "AI is off by default. Your local journal works without it.",
+                    subtitle: "Off by default. Your journal works without it.",
                     backAction: navigation.backAction(for: .settingsAI)
                 ) {
                     content
@@ -196,110 +196,117 @@ struct SettingsAIView: View {
     }
 
     private var modeChoice: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
-            Text("AI mode")
-                .font(TypeScale.sectionCompact)
-                .foregroundStyle(DesignTokens.cocoa)
-            Text("Choose how much organizing help you want. Suggestions never change your originals.")
-                .font(TypeScale.label)
-                .foregroundStyle(DesignTokens.cocoaSoft)
-                .fixedSize(horizontal: false, vertical: true)
-            UnderlinePicker(options: AIMode.allCases, selection: modeBinding) { modeTitle($0) }
-                .disabled(isUpdatingChoice)
-            Text(AISettingsLogic.modeDescription(state.aiMode))
-                .font(TypeScale.label)
-                .foregroundStyle(DesignTokens.cocoaSoft)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityLabel("Current AI mode. \(AISettingsLogic.modeDescription(state.aiMode))")
+        V2GroupCard(title: "Mode") {
+            ForEach(AIMode.allCases, id: \.self) { mode in
+                V2ChoiceRow(
+                    title: modeTitle(mode),
+                    detail: AISettingsLogic.modeDescription(mode),
+                    selected: state.aiMode == mode,
+                    disabled: isUpdatingChoice
+                ) { updateMode(mode) }
+            }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("AI mode")
     }
 
     private var providerChoice: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Processing provider")
-                .font(TypeScale.sectionCompact)
-                .foregroundStyle(DesignTokens.cocoa)
-                .padding(.bottom, DesignTokens.Spacing.compact)
-            Divider().overlay(DesignTokens.hairline)
-            SettingsChoiceRow(
+        V2GroupCard(title: "Provider") {
+            V2ChoiceRow(
                 title: "Router",
                 detail: routerDetail,
                 selected: state.aiProvider == .router,
-                disabled: isUpdatingChoice || !AISettingsLogic.canSelect(.router, in: state),
-                action: { updateProvider(.router) }
-            )
-            SettingsChoiceRow(
+                disabled: isUpdatingChoice || !AISettingsLogic.canSelect(.router, in: state)
+            ) { updateProvider(.router) }
+            V2ChoiceRow(
                 title: "On-device when available",
                 detail: "Not yet available.",
                 selected: state.aiProvider == .onDeviceWhenAvailable,
-                disabled: true,
-                action: {}
-            )
-            SettingsChoiceRow(
+                disabled: true
+            ) {}
+            V2ChoiceRow(
                 title: "Off",
                 detail: "No AI processing leaves this device.",
                 selected: state.aiProvider == .off,
-                disabled: isUpdatingChoice,
-                action: { updateProvider(.off) }
-            )
+                disabled: isUpdatingChoice
+            ) { updateProvider(.off) }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Processing provider")
     }
 
     private var keyControls: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Text("OpenRouter key")
-                .font(TypeScale.sectionCompact)
-                .foregroundStyle(DesignTokens.cocoa)
-            SettingsStatusRow(
-                status: state.hasOpenRouterKey ? "Key saved" : "No key saved",
-                detail: state.hasOpenRouterKey
-                    ? "Stored securely in this iPhone's Keychain. The saved key is never displayed."
-                    : "Add your own key to make Router available.",
-                voice: .user
-            )
-            Button("Paste OpenRouter key") { showingKeySheet = true }
-                .buttonStyle(SecondaryButtonStyle())
-                .disabled(isRemovingKey)
-            if state.hasOpenRouterKey {
-                Button(isRemovingKey ? "Removing key" : "Remove key", role: .destructive) {
-                    showingRemoveConfirmation = true
+        V2Card {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
+                HStack(alignment: .center, spacing: DesignTokens.Spacing.compact) {
+                    IconTile(icon: .key, size: 34)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("OpenRouter key")
+                            .font(TypeScale.cardTitle)
+                            .foregroundStyle(DesignTokens.cocoa)
+                        Text(state.hasOpenRouterKey
+                            ? "Saved in this iPhone's Keychain. Never displayed."
+                            : "Add your own key to make Router available.")
+                            .font(TypeScale.meta)
+                            .foregroundStyle(DesignTokens.cocoaSoft)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: DesignTokens.Spacing.small)
+                    if state.hasOpenRouterKey {
+                        AppIcon.check.image
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(DesignTokens.sage)
+                            .accessibilityLabel("Key saved")
+                    }
                 }
-                .buttonStyle(DangerButtonStyle())
-                .disabled(isRemovingKey)
+                HStack(spacing: DesignTokens.Spacing.small) {
+                    Button(state.hasOpenRouterKey ? "Replace key" : "Paste key") { showingKeySheet = true }
+                        .buttonStyle(CompactDarkButtonStyle())
+                        .disabled(isRemovingKey)
+                    if state.hasOpenRouterKey {
+                        Button(isRemovingKey ? "Removing" : "Remove key", role: .destructive) {
+                            showingRemoveConfirmation = true
+                        }
+                        .buttonStyle(CompactGhostButtonStyle())
+                        .disabled(isRemovingKey)
+                    }
+                }
             }
         }
     }
 
     private var modelControls: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
-            Text("Cloud models")
-                .font(TypeScale.sectionCompact)
-                .foregroundStyle(DesignTokens.cocoa)
-            Text("These model IDs are read when you tap Send. Voice transcription is not yet available.")
-                .font(TypeScale.label)
-                .foregroundStyle(DesignTokens.cocoaSoft)
-                .fixedSize(horizontal: false, vertical: true)
-            modelField(
-                label: "Organizer model",
-                value: $organizerModelID,
-                accessibilityLabel: "Organizer model ID"
-            )
-            modelField(
-                label: "Photo-to-text model",
-                value: $visionModelID,
-                accessibilityLabel: "Photo-to-text model ID"
-            )
-            Button(isSavingModels ? "Saving models" : "Save models", action: saveModels)
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(isSavingModels || !modelsAreDirty)
-            Button("Restore defaults", action: restoreModelDefaults)
-                .buttonStyle(SecondaryButtonStyle())
-                .disabled(isSavingModels || modelFieldsAreDefaults)
-            if let modelSaveConfirmation {
-                Text(modelSaveConfirmation)
-                    .font(TypeScale.label)
+        V2Card {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
+                SectionLine(title: "Cloud models", trailing: modelFieldsAreDefaults ? "Defaults" : "Custom")
+                Text("Read when you tap Send. Voice transcription is not yet available.")
+                    .font(TypeScale.meta)
                     .foregroundStyle(DesignTokens.cocoaSoft)
-                    .accessibilityLabel(modelSaveConfirmation)
+                    .fixedSize(horizontal: false, vertical: true)
+                modelField(
+                    label: "Organizer model",
+                    value: $organizerModelID,
+                    accessibilityLabel: "Organizer model ID"
+                )
+                modelField(
+                    label: "Photo-to-text model",
+                    value: $visionModelID,
+                    accessibilityLabel: "Photo-to-text model ID"
+                )
+                HStack(spacing: DesignTokens.Spacing.small) {
+                    Button(isSavingModels ? "Saving" : "Save models", action: saveModels)
+                        .buttonStyle(CompactDarkButtonStyle())
+                        .disabled(isSavingModels || !modelsAreDirty)
+                    Button("Restore defaults", action: restoreModelDefaults)
+                        .buttonStyle(CompactGhostButtonStyle())
+                        .disabled(isSavingModels || modelFieldsAreDefaults)
+                }
+                if let modelSaveConfirmation {
+                    Text(modelSaveConfirmation)
+                        .font(TypeScale.meta)
+                        .foregroundStyle(DesignTokens.sage)
+                        .accessibilityLabel(modelSaveConfirmation)
+                }
             }
         }
     }
@@ -311,20 +318,17 @@ struct SettingsAIView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.xSmall) {
             Text(label)
-                .font(TypeScale.label)
+                .font(TypeScale.meta)
                 .foregroundStyle(DesignTokens.cocoaSoft)
             TextField(label, text: boundedModelBinding(value))
-                .font(TypeScale.body)
+                .font(TypeScale.label)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.asciiCapable)
-                .padding(DesignTokens.Spacing.compact)
+                .padding(.horizontal, DesignTokens.Spacing.compact)
                 .frame(minHeight: DesignTokens.controlMinimum)
-                .background(DesignTokens.surface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignTokens.controlRadius, style: .continuous)
-                        .stroke(DesignTokens.hairline, lineWidth: 1)
-                )
+                .background(DesignTokens.surfaceWarm)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .accessibilityLabel(accessibilityLabel)
         }
     }
@@ -370,7 +374,7 @@ struct SettingsAIView: View {
     }
 
     private func updateMode(_ mode: AIMode) {
-        guard !isUpdatingChoice else { return }
+        guard !isUpdatingChoice, mode != state.aiMode else { return }
         isUpdatingChoice = true
         localError = nil
         AISettingsLogic.selectMode(mode, in: state)

@@ -33,6 +33,7 @@ enum AIProcessingStatusLogic {
     }
 }
 
+/// v2: one card of rows. Short states sit at the right; long ones drop under the title.
 struct AIProcessingStatusView: View {
     let mode: AIMode
     let provider: AIProvider
@@ -49,40 +50,28 @@ struct AIProcessingStatusView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: DesignTokens.Spacing.small) {
-                KernelGlyph(voice: .candyCorn, height: 18)
-                Text("Processing status")
-                    .font(TypeScale.sectionCompact)
-                    .foregroundStyle(DesignTokens.cocoa)
-            }
-            .padding(.bottom, DesignTokens.Spacing.compact)
-
-            Divider().overlay(DesignTokens.hairline)
+        V2GroupCard(title: "Right now") {
             ForEach(rows) { row in
-                statusRow(row)
-                if row.id != rows.last?.id {
-                    Divider().overlay(DesignTokens.hairline)
-                }
+                V2ListRow(
+                    icon: icon(for: row),
+                    title: row.title,
+                    detail: row.detail.count > 26 ? row.detail : nil,
+                    value: row.detail.count > 26 ? nil : row.detail,
+                    trailing: .none
+                )
+                .accessibilityLabel(row.accessibilityLabel)
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Processing status")
     }
 
-    private func statusRow(_ row: AIProcessingStatusRow) -> some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xSmall) {
-            Text(row.title)
-                .font(TypeScale.bodyMedium)
-                .foregroundStyle(DesignTokens.cocoa)
-            Text(row.detail)
-                .font(TypeScale.provenance)
-                .foregroundStyle(DesignTokens.cocoaSoft)
-                .fixedSize(horizontal: false, vertical: true)
+    private func icon(for row: AIProcessingStatusRow) -> AppIcon {
+        switch row.id {
+        case "journal": .sparkles
+        case "voice": .waveform
+        case "photo": .camera
+        default: .cloudUpload
         }
-        .frame(maxWidth: .infinity, minHeight: DesignTokens.Spacing.hero, alignment: .leading)
-        .padding(.vertical, DesignTokens.Spacing.small)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(row.accessibilityLabel)
     }
 }

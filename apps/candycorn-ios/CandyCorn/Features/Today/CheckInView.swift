@@ -62,26 +62,28 @@ struct CheckInView: View {
     }
 
     var body: some View {
-        ScreenLayout(
+        V2Screen(
             title: "How are you doing?",
-            subtitle: "Tap or drag each band to choose a value from 1 to 10.",
+            subtitle: "Tap or drag each band, 1 to 10.",
             backAction: cancel,
             backLabel: "Cancel check-in",
+            backIcon: .close,
             bottomInset: DesignTokens.Spacing.large
         ) {
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.medium) {
-                if allValuesEmpty {
-                    Text("No check-in yet")
-                        .font(TypeScale.label)
-                        .foregroundStyle(DesignTokens.cocoaSoft)
-                }
-                moodEditor
-                Text("Drag across a band or use its minus and plus controls.")
-                    .font(TypeScale.provenance)
+            if allValuesEmpty {
+                Text("No check-in yet")
+                    .font(TypeScale.meta)
                     .foregroundStyle(DesignTokens.cocoaSoft)
-                noteEditor
-                actionButtons
             }
+            moodEditor
+            legend
+            noteEditor
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            saveButton
+                .padding(.horizontal, DesignTokens.screenInset)
+                .padding(.vertical, DesignTokens.Spacing.small)
+                .background(DesignTokens.canvas)
         }
         .interactiveDismissDisabled()
     }
@@ -92,38 +94,39 @@ struct CheckInView: View {
         }
     }
 
-    private var noteEditor: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Text("Optional note")
-                .font(TypeScale.label)
-                .foregroundStyle(DesignTokens.cocoa)
-            TextEditor(text: noteBinding)
-                .font(TypeScale.body)
-                .foregroundStyle(DesignTokens.cocoa)
-                .scrollContentBackground(.hidden)
-                .padding(DesignTokens.Spacing.compact)
-                .frame(minHeight: 100)
-                .background(DesignTokens.surface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: DesignTokens.controlRadius, style: .continuous)
-                        .stroke(DesignTokens.hairline, lineWidth: 1)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: DesignTokens.controlRadius, style: .continuous))
-                .accessibilityLabel("Optional note")
-                .accessibilityHint("Up to 180 characters")
+    private var legend: some View {
+        HStack(spacing: DesignTokens.blockGap) {
+            legendItem("Anxiety", color: DesignTokens.yellow)
+            legendItem("Mood", color: DesignTokens.orange)
+            legendItem("Energy", color: DesignTokens.energyBand)
+            Spacer(minLength: 0)
+            Text("Minus and plus also work")
+                .font(TypeScale.meta)
+                .foregroundStyle(DesignTokens.cocoaSoft)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func legendItem(_ title: String, color: Color) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 8, height: 8)
+            Text(title).font(TypeScale.meta).foregroundStyle(DesignTokens.cocoaSoft)
         }
     }
 
-    private var actionButtons: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: DesignTokens.Spacing.compact) {
-                saveButton
-            }
-            VStack(spacing: DesignTokens.Spacing.compact) {
-                saveButton
+    private var noteEditor: some View {
+        V2Card {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+                SectionLine(title: "Add a note", trailing: "Optional")
+                TextEditor(text: noteBinding)
+                    .font(TypeScale.body)
+                    .foregroundStyle(DesignTokens.cocoa)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 96)
+                    .accessibilityLabel("Optional note")
+                    .accessibilityHint("Up to 180 characters")
             }
         }
-        .padding(.top, DesignTokens.Spacing.xSmall)
     }
 
     private var saveButton: some View {

@@ -176,32 +176,27 @@ struct AppointmentBriefReadingView: View {
     let provenanceForSource: (UUID) -> Provenance
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if result.userEditedAt != nil {
-                ProvenanceLine(
-                    provenance: Provenance(
-                        voice: .user,
-                        label: "You edited this",
-                        detail: "The original sources and generated metadata are unchanged.",
-                        occurredAt: result.userEditedAt,
-                        sourceRoute: nil
-                    ),
-                    compact: true
+        VStack(alignment: .leading, spacing: DesignTokens.blockGap) {
+            if let editedAt = result.userEditedAt {
+                ProvenanceInline(
+                    voice: .user,
+                    text: "You edited this · \(editedAt.formatted(.dateTime.month(.abbreviated).day())) · Sources unchanged"
                 )
-                .padding(.vertical, DesignTokens.Spacing.base)
             }
-            Divider().overlay(DesignTokens.hairline)
             ForEach(result.sections) { section in
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.base) {
-                    Text(section.title)
-                        .font(TypeScale.sectionCompact)
-                        .foregroundStyle(DesignTokens.cocoa)
-                    ForEach(section.statements) { statement in
-                        statementView(statement)
+                V2Card {
+                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
+                        HStack(spacing: DesignTokens.Spacing.compact) {
+                            IconTile(icon: .sparkles, size: 34)
+                            Text(section.title)
+                                .font(TypeScale.cardTitle)
+                                .foregroundStyle(DesignTokens.cocoa)
+                        }
+                        ForEach(section.statements) { statement in
+                            statementView(statement)
+                        }
                     }
                 }
-                .padding(.vertical, DesignTokens.Spacing.medium)
-                Divider().overlay(DesignTokens.hairline)
             }
         }
     }
@@ -211,18 +206,15 @@ struct AppointmentBriefReadingView: View {
             Text(statement.text)
                 .font(TypeScale.body)
                 .foregroundStyle(DesignTokens.cocoa)
-                .lineSpacing(5)
+                .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
-            ProvenanceLine(
-                provenance: Provenance(
-                    voice: .candyCorn,
-                    label: "Candy Corn suggested this wording",
-                    detail: "\(artifact.provider), \(artifact.model)",
-                    occurredAt: artifact.createdAt,
-                    sourceRoute: nil
-                ),
-                compact: true
-            )
+            ProvenanceStack(provenance: Provenance(
+                voice: .candyCorn,
+                label: "Candy Corn suggested this wording",
+                detail: "\(artifact.provider), \(artifact.model)",
+                occurredAt: artifact.createdAt,
+                sourceRoute: nil
+            ))
             ForEach(Array(statement.evidence.enumerated()), id: \.offset) { _, citation in
                 evidenceView(citation)
             }
@@ -232,18 +224,22 @@ struct AppointmentBriefReadingView: View {
     private func evidenceView(_ citation: EvidenceCitation) -> some View {
         let provenance = provenanceForSource(citation.sourceID)
         return HStack(alignment: .top, spacing: DesignTokens.Spacing.small) {
-            KernelGlyph(voice: provenance.voice, height: 16, decorative: true)
+            KernelGlyph(voice: provenance.voice, height: 14, decorative: true)
                 .padding(.top, 2)
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.xSmall) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(provenance.label)
-                    .font(TypeScale.provenance)
+                    .font(TypeScale.metaStrong)
                     .foregroundStyle(DesignTokens.cocoa)
                 Text("“\(citation.quote)”")
-                    .font(TypeScale.provenance)
+                    .font(TypeScale.meta)
                     .foregroundStyle(DesignTokens.cocoaSoft)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .padding(DesignTokens.Spacing.compact)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DesignTokens.surfaceWarm)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .combine)
     }
 }

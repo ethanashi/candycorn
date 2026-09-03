@@ -63,12 +63,13 @@ struct JournalDetailView: View {
     }
 
     var body: some View {
-        ScreenLayout(
+        V2Screen(
             title: entry?.title ?? "Journal entry",
             backAction: navigation.backAction(for: .journalDetail),
             trailing: entry == nil || entry?.inputType == .photo ? nil : AnyView(editButton)
         ) {
             if let entry {
+                metaLine(for: entry)
                 sourceAttachment(for: entry)
                 if isEditing {
                     editor(for: entry)
@@ -97,15 +98,27 @@ struct JournalDetailView: View {
     }
 
     private var editButton: some View {
-        Button(isEditing ? "Cancel" : "Edit") {
+        RoundActionButton(icon: isEditing ? .close : .pencil, label: isEditing ? "Cancel editing" : "Edit") {
             guard let entry else { return }
             editText = entry.rawText
             isEditing.toggle()
             confirmingDelete = false
         }
-        .font(TypeScale.bodyMedium)
-        .foregroundStyle(DesignTokens.cocoa)
-        .frame(minWidth: DesignTokens.controlMinimum, minHeight: DesignTokens.controlMinimum)
+    }
+
+    private func metaLine(for entry: JournalEntry) -> some View {
+        ProvenanceInline(
+            voice: entry.provenance.voice,
+            text: "\(kindTitle(entry)) · \(entry.createdAt.formatted(.dateTime.month(.abbreviated).day().hour().minute()))"
+        )
+    }
+
+    private func kindTitle(_ entry: JournalEntry) -> String {
+        switch entry.inputType {
+        case .voice: "Voice journal"
+        case .photo: "Photo journal"
+        case .text: "Written journal"
+        }
     }
 
     @ViewBuilder
@@ -126,12 +139,16 @@ struct JournalDetailView: View {
                     )
                 }
             } else if attachment.kind == .audio {
-                Button {
-                    Task { try? await state.dependencies.playback.play(attachment: attachment) }
-                } label: {
-                    Label("Play original audio", systemImage: AppIcon.play.rawValue)
+                V2GroupCard {
+                    V2ListRow(
+                        icon: .play,
+                        title: "Original audio",
+                        detail: "Play the recording you made.",
+                        divider: false
+                    ) {
+                        Task { try? await state.dependencies.playback.play(attachment: attachment) }
+                    }
                 }
-                .buttonStyle(SecondaryButtonStyle())
             }
         } else if entry.inputType == .photo {
             StatusNotice(
@@ -145,19 +162,25 @@ struct JournalDetailView: View {
     private func detail(for entry: JournalEntry) -> some View {
         Group {
             UnderlinePicker(options: availableTabs(for: entry), selection: $selection) { $0.rawValue }
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.medium) {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
                 tabContent(entry)
-                ProvenanceLine(provenance: provenance(for: entry))
+                if selection == .original {
+                    ProvenanceInline(voice: entry.provenance.voice, text: entry.provenance.label)
+                } else {
+                    ProvenanceLine(provenance: provenance(for: entry), compact: true)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             organizerActions(for: entry)
-            Button {
-                addJournalTalkingPoint(entry)
-            } label: {
-                Label(isAddingPoint ? "Adding" : "Add to next appointment", systemImage: AppIcon.listPlus.rawValue)
+            V2GroupCard {
+                V2ListRow(
+                    icon: .listPlus,
+                    title: isAddingPoint ? "Adding" : "Add to next appointment",
+                    detail: "Bring this up with your provider.",
+                    divider: false,
+                    disabled: isAddingPoint
+                ) { addJournalTalkingPoint(entry) }
             }
-            .buttonStyle(SecondaryButtonStyle())
-            .disabled(isAddingPoint)
         }
     }
 
@@ -258,55 +281,48 @@ struct JournalDetailView: View {
 
     @ViewBuilder
     private func organizerActions(for entry: JournalEntry) -> some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
-            Text("Organize this journal")
-                .font(TypeScale.section)
-                .foregroundStyle(DesignTokens.cocoa)
+        V2GroupCard(title: "Organize") {
             if canUseOrganizer {
                 if entry.inputType == .photo && extracted == nil {
                     if let attachmentID = entry.originalAttachmentID {
-                        actionButton(
+                        actionRow(
                             "Extract text",
+                            detail: "Read the page into editable text.",
+                            icon: .camera,
                             action: .readPhoto(journalID: entry.id, attachmentID: attachmentID)
                         )
                     }
                 } else if hasLanguageSource(entry) {
-                    actionButton("Make this easier to read", action: .rewriteJournal(entry.id))
-                    actionButton("Summarize", action: .summarizeJournal(entry.id))
-                    actionButton("Find possible next steps", action: .extractJournalSignals(entry.id))
+                    actionRow("Make this easier to read", detail: "Cleaner wording. Your original stays.", icon: .pencil, action: .rewriteJournal(entry.id))
+                    actionRow("Summarize", detail: "A few short statements.", icon: .sparkles, action: .summarizeJournal(entry.id))
+                    actionRow("Find possible next steps", detail: "Goals and talking points you can accept or ignore.", icon: .flag, action: .extractJournalSignals(entry.id))
                 }
             } else {
-                StatusNotice(
+                V2ListRow(
+                    icon: .sliders,
                     title: state.aiMode == .off ? "Organizing is off" : "Router key needed",
-                    detail: "Your original stays available. You can keep editing and adding items manually.",
-                    kind: .information
-                )
-                Button("Open AI settings") { navigation.navigate(to: .settingsAI) }
-                    .buttonStyle(SecondaryButtonStyle())
-            }
-            if let actionError {
-                StatusNotice(
-                    title: "Could not organize this journal",
-                    detail: "\(actionError) The original is unchanged.",
-                    kind: .warning
-                )
+                    detail: "Your original stays available. Turn it on in AI settings.",
+                    value: "Settings"
+                ) { navigation.navigate(to: .settingsAI) }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        if let actionError {
+            StatusNotice(
+                title: "Could not organize this journal",
+                detail: "\(actionError) The original is unchanged.",
+                kind: .warning
+            )
+        }
     }
 
-    private func actionButton(_ title: String, action: AISendAction) -> some View {
-        Button {
-            prepare(action)
-        } label: {
-            HStack(spacing: DesignTokens.Spacing.small) {
-                KernelGlyph(voice: .candyCorn, height: 18)
-                Text(state.aiProcessingState(for: action) == .processing ? "Working" : title)
-                Spacer(minLength: 0)
-            }
-        }
-        .buttonStyle(SecondaryButtonStyle())
-        .disabled(state.aiProcessingState(for: action) == .processing)
+    private func actionRow(_ title: String, detail: String, icon: AppIcon, action: AISendAction) -> some View {
+        let processing = state.aiProcessingState(for: action) == .processing
+        return V2ListRow(
+            icon: icon,
+            title: processing ? "Working" : title,
+            detail: detail,
+            disabled: processing
+        ) { prepare(action) }
     }
 
     private func editor(for entry: JournalEntry) -> some View {
