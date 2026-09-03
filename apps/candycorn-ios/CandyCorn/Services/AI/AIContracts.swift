@@ -160,6 +160,7 @@ enum LocalModelAvailability: Equatable, Sendable {
 enum TranscriptionFailure: Error, Equatable, Sendable {
     case unavailableOnDevice
     case assetInstallationFailed
+    case authorizationDenied
     case invalidAudio
     case emptyResult
 }

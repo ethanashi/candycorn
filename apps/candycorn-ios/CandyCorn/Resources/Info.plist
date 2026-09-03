@@ -28,6 +28,8 @@
 	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Candy Corn uses the microphone only after you start a journal or appointment recording and confirm permission.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Candy Corn transcribes recordings on this device after you ask it to, so you can review what was said.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Candy Corn uses the camera only for journal pages you choose to photograph.</string>
 	<key>UIBackgroundModes</key>
