@@ -9,11 +9,15 @@ struct RuntimeBootstrapTests {
     func productionSelection() async throws {
         let root = temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
+        let transport = BootCountingTransport()
         let factory = RuntimeDependencyFactory.production(
             databaseURL: root.appending(path: "care.db"),
             attachmentRootURL: root.appending(path: "attachments", directoryHint: .isDirectory),
             keyStore: InMemoryVaultKeyStore(),
-            logger: PrivacyEventLogger()
+            logger: PrivacyEventLogger(),
+            openRouterKeyStore: InMemoryOpenRouterAPIKeyStore(),
+            configurationStore: InMemoryAIConfigurationStore(),
+            transport: transport
         )
         let bootstrap = RuntimeBootstrap(arguments: ["CandyCorn"], factory: factory)
         let graph = try await bootstrap.start()
@@ -28,6 +32,11 @@ struct RuntimeBootstrapTests {
         #expect(graph.dependencies.photos is LocalPhotoAttachmentService)
         #expect(graph.dependencies.exporter is VaultExportService)
         #expect(graph.dependencies.logger is PrivacyEventLogger)
+        #expect(graph.dependencies.languageModel is OpenRouterLanguageModel)
+        #expect(graph.dependencies.visionReader is OpenRouterVisionReader)
+        #expect(graph.dependencies.transcriber is UnavailableTranscriber)
+        #expect(graph.dependencies.distressClassifier is NoOpDistressSupportClassifier)
+        #expect(await transport.callCount == 0)
         #expect(graph.databaseURL == root.appending(path: "care.db").standardizedFileURL)
         #expect(graph.attachmentRootURL == root.appending(path: "attachments").standardizedFileURL)
         await (graph.dependencies.maintenance as? VaultDatabase)?.close()
@@ -46,11 +55,14 @@ struct RuntimeBootstrapTests {
         #expect(graph.dependencies.playback is FakeAudioPlaybackService)
         #expect(graph.dependencies.photos is FakePhotoAttachmentService)
         #expect(graph.dependencies.exporter is FakeVaultExporter)
+        #expect(graph.dependencies.languageModel is ScreenshotLanguageModel)
+        #expect(graph.dependencies.visionReader is ScreenshotVisionReader)
         #expect(graph.dependencies.screenshotMode)
         #expect(graph.databaseURL == nil)
         #expect(graph.attachmentRootURL == nil)
         #expect(graph.model.consentAcknowledged)
         #expect(graph.model.appointmentRecording == .recording(startSeconds: 0))
+        #expect(graph.model.hasOpenRouterKey)
 
         let appointment = try #require(SeededData.appointments.first)
         let events = await graph.dependencies.recording.events()
@@ -61,6 +73,16 @@ struct RuntimeBootstrapTests {
             normalizedLevel: 0.64,
             isRecording: true
         )))
+    }
+
+    @Test("Sheet scenarios are parsed only in screenshot mode")
+    func screenshotScenarioSelection() async throws {
+        let arguments = ["CandyCorn", "-screen", "/settings/ai", "-sheet", "openrouter-key"]
+        let graph = try await RuntimeBootstrap(arguments: arguments).start()
+
+        #expect(graph.dependencies.screenshotScenario == .openRouterKey)
+        #expect(ScreenshotScenario.parse(arguments: arguments) == .openRouterKey)
+        #expect(ScreenshotScenario.parse(arguments: ["CandyCorn", "-sheet", "unknown"]) == nil)
     }
 
     @Test("A failed start can retry and duplicate starts share one graph")
@@ -107,6 +129,15 @@ struct RuntimeBootstrapTests {
         FileManager.default.temporaryDirectory
             .appending(path: "candycorn-runtime-bootstrap-tests")
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+    }
+}
+
+private actor BootCountingTransport: AIHTTPTransport {
+    private(set) var callCount = 0
+
+    func send(_ request: URLRequest) throws -> (Data, HTTPURLResponse) {
+        callCount += 1
+        throw AIProviderError.serviceUnavailable
     }
 }
 

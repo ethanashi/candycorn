@@ -120,6 +120,8 @@ struct AIArtifact: Identifiable, Codable, Equatable, Sendable {
     enum Kind: String, Codable, Sendable {
         case journalRewrite
         case journalSummary
+        case journalSignals
+        case photoText
         case sessionSummary
         case appointmentBrief
         case goalSuggestions

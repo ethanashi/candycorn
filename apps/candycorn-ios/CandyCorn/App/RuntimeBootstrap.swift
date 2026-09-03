@@ -29,7 +29,7 @@ struct RuntimeDependencyFactory: Sendable {
 
     static func selected(arguments: [String]) -> RuntimeDependencyFactory {
         if Route.parseLaunchArguments(arguments) != nil {
-            return screenshot()
+            return screenshot(arguments: arguments)
         }
         return production()
     }
@@ -47,7 +47,10 @@ struct RuntimeDependencyFactory: Sendable {
             return try await RuntimeDependencyFactory.productionOutput(
                 database: database,
                 attachments: attachments,
-                logger: logger
+                logger: logger,
+                openRouterKeyStore: OpenRouterAPIKeyStore(),
+                configurationStore: UserDefaultsAIConfigurationStore(),
+                transport: URLSessionAIHTTPTransport()
             )
         }
     }
@@ -56,7 +59,10 @@ struct RuntimeDependencyFactory: Sendable {
         databaseURL: URL,
         attachmentRootURL: URL,
         keyStore: any VaultKeyProviding,
-        logger: any EventLogging = NoOpEventLogger()
+        logger: any EventLogging = NoOpEventLogger(),
+        openRouterKeyStore: any OpenRouterAPIKeyProviding = OpenRouterAPIKeyStore(),
+        configurationStore: any AIConfigurationProviding = UserDefaultsAIConfigurationStore(),
+        transport: any AIHTTPTransport = URLSessionAIHTTPTransport()
     ) -> RuntimeDependencyFactory {
         RuntimeDependencyFactory(mode: .production) {
             guard databaseURL.isFileURL, attachmentRootURL.isFileURL else {
@@ -72,27 +78,18 @@ struct RuntimeDependencyFactory: Sendable {
             return try await RuntimeDependencyFactory.productionOutput(
                 database: database,
                 attachments: attachments,
-                logger: logger
+                logger: logger,
+                openRouterKeyStore: openRouterKeyStore,
+                configurationStore: configurationStore,
+                transport: transport
             )
         }
     }
 
-    static func screenshot() -> RuntimeDependencyFactory {
+    static func screenshot(arguments: [String] = []) -> RuntimeDependencyFactory {
         RuntimeDependencyFactory(mode: .screenshot) {
-            let store = InMemoryCareStore(snapshot: SeededData.careSnapshot)
-            let attachments = InMemoryAttachmentStore()
-            let dependencies = AppDependencies(
-                careStore: store,
-                maintenance: store,
-                attachments: attachments,
-                recording: ScreenshotRecordingService(attachments: attachments),
-                playback: FakeAudioPlaybackService(),
-                photos: FakePhotoAttachmentService(),
-                exporter: FakeVaultExporter(store: store, attachments: attachments),
-                logger: NoOpEventLogger(),
-                screenshotMode: true,
-                now: { Date(timeIntervalSince1970: 1_788_654_600) }
-            )
+            let scenario = ScreenshotScenario.parse(arguments: arguments)
+            let dependencies = PreviewDependencies.make(screenshotMode: true, scenario: scenario)
             _ = try await dependencies.careStore.snapshot()
             return RuntimeFactoryOutput(
                 dependencies: dependencies,
@@ -105,7 +102,10 @@ struct RuntimeDependencyFactory: Sendable {
     private static func productionOutput(
         database: VaultDatabase,
         attachments: VaultAttachmentStore,
-        logger: any EventLogging
+        logger: any EventLogging,
+        openRouterKeyStore: any OpenRouterAPIKeyProviding,
+        configurationStore: any AIConfigurationProviding,
+        transport: any AIHTTPTransport
     ) async throws -> RuntimeFactoryOutput {
         try await database.open()
         let repositories = VaultRepositories(database: database, attachments: attachments, logger: logger)
@@ -116,6 +116,19 @@ struct RuntimeDependencyFactory: Sendable {
             registration: registration,
             logger: logger,
             checkpoint: NoOpRecordingCheckpointSink()
+        )
+        let aiLogger = logger as? any AIEventLogging ?? NoOpAIEventLogger()
+        let languageModel = OpenRouterLanguageModel(
+            keyProvider: openRouterKeyStore,
+            configurationProvider: configurationStore,
+            transport: transport,
+            logger: aiLogger
+        )
+        let visionReader = OpenRouterVisionReader(
+            keyProvider: openRouterKeyStore,
+            configurationProvider: configurationStore,
+            transport: transport,
+            logger: aiLogger
         )
         let dependencies = AppDependencies(
             careStore: repositories,
@@ -135,6 +148,10 @@ struct RuntimeDependencyFactory: Sendable {
                 logger: logger
             ),
             logger: logger,
+            languageModel: languageModel,
+            visionReader: visionReader,
+            openRouterKeyStore: openRouterKeyStore,
+            aiConfigurationStore: configurationStore,
             screenshotMode: false,
             now: { Date() }
         )

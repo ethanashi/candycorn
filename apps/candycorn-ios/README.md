@@ -1,6 +1,6 @@
 # Candy Corn for iPhone
 
-Candy Corn is a native, offline-first SwiftUI journal for continuity between mental health visits. Phase 2 stores journals, mood check-ins, goals, talking points, appointments, and attachments in a local care vault. It records voice journals and appointments, captures journal photos, searches local records, plays saved audio, and exports a readable folder without adding an account, network service, analytics, or AI processing.
+Candy Corn is a native, offline-first SwiftUI journal for continuity between mental health visits. Phase 3 adds optional organizer AI through OpenRouter while preserving the local care vault and every immutable source. A cloud request can begin only after the user reviews the exact source and character or image counts in a "What leaves this device" sheet and taps Send. The app remains fully usable with AI off.
 
 The app targets iOS 26 in Swift 6 language mode with Observation and Swift Testing. The Xcode project is generated from `project.yml`. Never edit or commit the generated project.
 
@@ -16,7 +16,7 @@ xcodebuild -project CandyCorn.xcodeproj -scheme CandyCorn -destination 'platform
 xcodebuild -project CandyCorn.xcodeproj -scheme CandyCorn -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/candycorn-ios-derived-data CODE_SIGNING_ALLOWED=NO test
 ```
 
-The tests cover vault migrations, SQLCipher availability and wrong-key rejection, repositories, Keychain behavior through a test seam, FTS5 and LIKE search, exports, logging privacy, navigation, mood interactions, media state machines, and runtime bootstrap.
+The tests cover vault migrations, SQLCipher availability and wrong-key rejection, repositories, Keychain behavior through test seams, FTS5 and LIKE search, exports, logging privacy, navigation, mood interactions, media state machines, runtime bootstrap, OpenRouter request shape, structured output validation, evidence rejection, retry policy, disclosure counts, immutable AI artifact persistence, and organizer workflows. Provider tests inject fake transports and do not make live network calls.
 
 The app supports iPhone portrait orientation. Simulator builds disable code signing. Device builds require the operator's normal signing setup and must not add secrets to the repository.
 
@@ -28,11 +28,14 @@ A normal launch uses the production dependency graph:
 - A 256-bit vault key is created once and kept in Keychain with this-device-only, after-first-unlock accessibility.
 - Audio, images, and documents live below the vault attachment root in separate directories.
 - Raw recordings and photos are immutable sources. Derived records remain separate and keep provenance.
+- The OpenRouter key is stored in a dedicated, this-device-only Keychain item. It is never stored in UserDefaults, an export, a fixture, or the app bundle.
+- Organizer and photo-to-text model identifiers are non-sensitive configuration. The production graph reads them at send time and uses an ephemeral URL session.
+- AI mode can be Off, Organizer, or Reflection. Reflection currently performs Organizer operations and states that a reflective conversation is not yet available.
 - Event logging accepts event names, durations, and counts only. It does not accept journal text, notes, titles, transcript text, payloads, or content-bearing paths.
 
 The first normal launch seeds the fictional Jamie Rivera thread. In Settings, `Use sample content` removes or restores only fictional rows and sample attachments. User-created records remain. Restoring samples inserts missing fixtures without duplicating them.
 
-Passing `-screen <route>` selects deterministic screenshot mode. That mode uses in-memory seeded data and fake recording, playback, photo, and export adapters. It does not open the production vault, request permissions, or write patient content. A normal launch without `-screen` is required for persistence and native media acceptance.
+Passing `-screen <route>` selects deterministic screenshot mode. That mode uses in-memory seeded data and fake recording, playback, photo, export, language-model, and vision adapters. It does not open the production vault, request permissions, make network calls, or write patient content. Add `-sheet <scenario>` to open a deterministic Phase 3 sheet. A normal launch without `-screen` is required for persistence and native media acceptance.
 
 `Delete everything` requires the exact typed value `DELETE`. A successful deletion removes the database and attachments, rotates the vault key, leaves sample content off, and returns an empty usable vault.
 
@@ -67,6 +70,16 @@ Pass `-screen <route>` at launch to open one screen deterministically. A missing
 | AI and processing settings | `/settings/ai` | `23-settings-ai.png` |
 | Data and export settings | `/settings/data` | `24-settings-data.png` |
 
+Phase 3 sheet acceptance uses these route and scenario pairs. Each scenario must open its sheet without manual interaction; failure to open is an implementation failure, not a reason to compose or substitute an image.
+
+| Sheet | Route | Scenario | Screenshot |
+| --- | --- | --- | --- |
+| OpenRouter key | `/settings/ai` | `openrouter-key` | `25-openrouter-key-sheet.png` |
+| Journal disclosure | `/journal/entry/football-and-guilt` | `journal-send` | `26-what-leaves-journal.png` |
+| Photo disclosure | `/journal/photo` | `photo-send` | `27-what-leaves-photo.png` |
+| Session disclosure | `/sessions/therapy-sep-2` | `session-send` | `28-what-leaves-session.png` |
+| Appointment brief disclosure | `/prepare/therapy` | `prepare-send` | `29-what-leaves-prepare.png` |
+
 The active appointment screenshot route prepares deterministic consent and recording state. Normal access still requires the user's acknowledgement and microphone authorization.
 
 ## Capture native screenshots
@@ -88,9 +101,17 @@ sleep 1
 xcrun simctl io booted screenshot screenshots/02-today.png
 ```
 
+For a Phase 3 sheet, include both deterministic arguments:
+
+```sh
+xcrun simctl launch --terminate-running-process booted dev.candycorn.app -screen /settings/ai -sheet openrouter-key
+sleep 1
+xcrun simctl io booted screenshot screenshots/25-openrouter-key-sheet.png
+```
+
 Wait for each route to settle before capture. A permission alert means screenshot mode did not initialize and the capture is invalid. Every accepted PNG must come directly from `simctl io`; do not resize a prototype render. Compare against `../candycorn-prototype/screenshots/` and the accepted pins in `../candycorn-prototype/design/sheet/`.
 
-For accessibility acceptance, inspect Today, Goals, Therapy session, Prepare for therapy, and AI settings at an accessibility content size. Confirm every item remains reachable by scrolling, text does not clip or overlap, and controls remain at least 44 points. Repeat with Reduce Motion enabled and confirm state remains understandable without pulsing or required travel.
+For Phase 3 accessibility acceptance, inspect Journal detail, Suggestions, Therapy session, Prepare for therapy, AI settings, the OpenRouter key sheet, and a disclosure sheet at an accessibility content size. Confirm every item remains reachable by scrolling, text wraps without clipping or overlap, the keyboard does not hide the active Save action, and controls remain at least 44 points. Repeat relevant transitions with Reduce Motion enabled and confirm state remains understandable without pulsing or required travel.
 
 ## Normal simulator acceptance
 
@@ -136,5 +157,7 @@ These items require a signed build on a real iPhone and are not proven by simula
 - Reboot the phone. Before first unlock the vault should remain protected; after first unlock, protected files and background appointment behavior should work as documented.
 - Complete and cancel the share sheet in separate exports. Confirm both temporary export folders are cleaned up.
 - With disposable device data, type `DELETE`, delete everything, and confirm an empty relaunch with sample content still off.
+
+Phase 3 adds Keychain, live BYOK, camera upload, connectivity-loss, provider-accounting, and no-audio-upload checks. Record those results with the evidence-safe template in `screenshots/PHASE3-DEVICE-CONTRACT.md`. Automated verification must never sign or install a device build, access a real key, or make a live provider request.
 
 Record the device model, iOS version, audio route, and pass or fail result for each item. Do not record journal content, filenames containing user content, database paths, or media payloads.

@@ -7,6 +7,37 @@ enum AIMode: String, CaseIterable, Codable, Sendable {
     case reflection
 }
 
+private struct PreparedAIContext: Equatable, Sendable {
+    let pending: PendingAISend
+    let payload: PreparedAIPayload
+    let careRevision: Int
+}
+
+private enum PreparedAIPayload: Equatable, Sendable {
+    case journal(JournalEntry, SourceTextDocument)
+    case photo(JournalEntry, Attachment)
+    case session(Appointment, SourceTextDocument)
+    case brief(AppointmentBriefInput, Int)
+
+    var sourceRevision: Date? {
+        switch self {
+        case let .journal(journal, _), let .photo(journal, _):
+            journal.updatedAt
+        case let .session(appointment, _):
+            appointment.endedAt ?? appointment.startedAt ?? appointment.scheduledAt
+        case let .brief(input, _):
+            input.sources.compactMap(\.occurredAt).max()
+        }
+    }
+
+    var journalID: UUID? {
+        switch self {
+        case let .journal(journal, _), let .photo(journal, _): journal.id
+        case .session, .brief: nil
+        }
+    }
+}
+
 enum AIProvider: String, CaseIterable, Codable, Sendable {
     case onDeviceWhenAvailable
     case router
@@ -56,6 +87,8 @@ final class DemoState {
     private(set) var recordingSnapshot = RecordingSnapshot(elapsedMilliseconds: 0, normalizedLevel: 0, isRecording: false)
     private(set) var latestRecording: LocalRecording?
     private(set) var operationError: String?
+    private(set) var hasOpenRouterKey: Bool
+    private(set) var aiConfiguration: AIModelConfiguration
     private(set) var selectedJournalID: UUID?
     private(set) var selectedAppointmentID: UUID?
     var routerAvailable = true
@@ -67,6 +100,12 @@ final class DemoState {
     private var recordingEventsTask: Task<Void, Never>?
     private var busyGoalIDs: Set<UUID> = []
     private var busyTalkingPointIDs: Set<UUID> = []
+    private var preparedAISends: [UUID: PreparedAIContext] = [:]
+    private var preparedAISendOrder: [UUID] = []
+    private var activeAISends: Set<AISendAction> = []
+    private var aiProcessingStates: [AISendAction: AIProcessingState] = [:]
+    private var careRevision = 0
+    private var aiSettingsRevision = 0
 
     var mood: MoodLog? { moods.max { $0.createdAt < $1.createdAt } }
     var aiMode: AIMode { settings.aiMode }
@@ -77,7 +116,11 @@ final class DemoState {
         arguments: [String] = ProcessInfo.processInfo.arguments
     ) {
         let screenshotMode = Route.parseLaunchArguments(arguments) != nil
-        self.dependencies = dependencies ?? PreviewDependencies.make(screenshotMode: screenshotMode)
+        let resolvedDependencies = dependencies ?? PreviewDependencies.make(
+            screenshotMode: screenshotMode,
+            scenario: ScreenshotScenario.parse(arguments: arguments)
+        )
+        self.dependencies = resolvedDependencies
         let initial = dependencies == nil ? SeededData.careSnapshot : SeededData.emptySnapshot
         journals = initial.journals
         moods = initial.moods
@@ -90,6 +133,9 @@ final class DemoState {
         providers = initial.providers
         transcript = initial.transcript
         settings = initial.settings
+        hasOpenRouterKey = (try? resolvedDependencies.openRouterKeyStore.hasKey()) ?? false
+        aiConfiguration = resolvedDependencies.aiConfigurationStore.load()
+        routerAvailable = hasOpenRouterKey
         if Route.parseLaunchArguments(arguments) == .activeAppointment {
             consentAcknowledged = true
             appointmentRecording = .recording(startSeconds: 0)
@@ -108,6 +154,7 @@ final class DemoState {
     }
 
     func saveMood(_ mood: MoodLog?) {
+        careRevision += 1
         guard let mood else {
             moods = []
             return
@@ -116,6 +163,7 @@ final class DemoState {
     }
 
     func persistMood(_ mood: MoodLog) async -> Bool {
+        careRevision += 1
         operationError = nil
         do {
             try await dependencies.careStore.saveMood(mood.normalized())
@@ -147,6 +195,7 @@ final class DemoState {
     }
 
     func saveJournal(_ entry: JournalEntry) async -> Bool {
+        careRevision += 1
         operationError = nil
         do {
             try await dependencies.careStore.saveJournal(entry)
@@ -172,6 +221,7 @@ final class DemoState {
     }
 
     func deleteJournal(id: UUID) async -> Bool {
+        careRevision += 1
         operationError = nil
         do {
             try await dependencies.careStore.deleteJournal(id: id)
@@ -185,6 +235,7 @@ final class DemoState {
     }
 
     func saveAppointment(_ appointment: Appointment) async -> Bool {
+        careRevision += 1
         operationError = nil
         do {
             try await dependencies.careStore.saveAppointment(appointment)
@@ -205,6 +256,7 @@ final class DemoState {
     }
 
     func saveGoal(_ goal: Goal) async -> Bool {
+        careRevision += 1
         operationError = nil
         do {
             try await dependencies.careStore.saveGoal(goal)
@@ -242,6 +294,7 @@ final class DemoState {
 
     func toggleGoal(id: UUID) {
         guard let index = goals.firstIndex(where: { $0.id == id }) else { return }
+        careRevision += 1
         goals[index].status = goals[index].status == .completed ? .active : .completed
     }
 
@@ -253,6 +306,7 @@ final class DemoState {
     }
 
     func saveTalkingPoint(_ point: TalkingPoint) async -> Bool {
+        careRevision += 1
         operationError = nil
         do {
             try await dependencies.careStore.saveTalkingPoint(point)
@@ -284,6 +338,7 @@ final class DemoState {
 
     func updateTalkingPoint(id: UUID, status: TalkingPoint.Status) {
         guard let index = talkingPoints.firstIndex(where: { $0.id == id }) else { return }
+        careRevision += 1
         talkingPoints[index].status = status
     }
 
@@ -320,6 +375,7 @@ final class DemoState {
     }
 
     func setSampleContentEnabled(_ enabled: Bool) async -> Bool {
+        careRevision += 1
         operationError = nil
         do {
             try await dependencies.careStore.setSampleContentEnabled(enabled)
@@ -333,6 +389,7 @@ final class DemoState {
     }
 
     func updateSettings(_ updated: VaultSettings) async -> Bool {
+        aiSettingsRevision += 1
         operationError = nil
         do {
             try await dependencies.careStore.updateSettings(updated)
@@ -390,6 +447,7 @@ final class DemoState {
     }
 
     func savePhotoJPEG(_ data: Data, pixelWidth: Int, pixelHeight: Int) async -> Attachment? {
+        careRevision += 1
         operationError = nil
         let status = await dependencies.photos.authorizationStatus()
         let permitted: Bool
@@ -438,7 +496,13 @@ final class DemoState {
         guard let confirmation = DeleteConfirmation(typedText: typedText) else { return false }
         do {
             try await dependencies.exporter.deleteEverything(confirmation: confirmation)
+            try dependencies.openRouterKeyStore.removeKey()
+            try dependencies.aiConfigurationStore.reset()
             apply(try await dependencies.careStore.snapshot())
+            hasOpenRouterKey = false
+            routerAvailable = false
+            aiConfiguration = .defaults
+            aiSettingsRevision += 1
             refreshLoadState()
             exportState = .deleted
             dependencies.logger.record(.vaultDeleted, metrics: EventMetrics())
@@ -450,6 +514,7 @@ final class DemoState {
     }
 
     func setAIMode(_ mode: AIMode) {
+        aiSettingsRevision += 1
         settings.aiMode = mode
         if mode == .off {
             settings.aiProvider = .off
@@ -459,6 +524,7 @@ final class DemoState {
     }
 
     func setAIProvider(_ provider: AIProvider) {
+        aiSettingsRevision += 1
         guard settings.aiMode != .off else {
             settings.aiProvider = .off
             return
@@ -474,6 +540,156 @@ final class DemoState {
     func persistAIProvider(_ provider: AIProvider) async -> Bool {
         setAIProvider(provider)
         return await updateSettings(settings)
+    }
+
+    func prepareAISend(_ action: AISendAction) throws -> PendingAISend {
+        let payload = try preparedPayload(for: action)
+        let disclosure = Self.disclosure(for: action, payload: payload)
+        let pending = PendingAISend(
+            id: UUID(),
+            action: action,
+            sourceRevision: payload.sourceRevision,
+            disclosure: disclosure
+        )
+        storePreparedSend(PreparedAIContext(
+            pending: pending,
+            payload: payload,
+            careRevision: careRevision
+        ))
+        aiProcessingStates[action] = .idle
+        return pending
+    }
+
+    @discardableResult
+    func performAISend(_ pending: PendingAISend) async -> Bool {
+        guard let prepared = consumePreparedSend(pending.id), prepared.pending == pending else {
+            return failAI(pending.action, UserFacingError.aiSource)
+        }
+        guard !activeAISends.contains(pending.action) else { return false }
+        guard canDispatchAI(), prepared.careRevision == careRevision else {
+            let error = prepared.careRevision == careRevision ? UserFacingError.aiUnavailable : UserFacingError.aiStale
+            return failAI(pending.action, error)
+        }
+        let settingsRevision = aiSettingsRevision
+        let configuration = aiConfiguration
+        activeAISends.insert(pending.action)
+        aiProcessingStates[pending.action] = .processing
+        defer { activeAISends.remove(pending.action) }
+        do {
+            let product = try await run(prepared.payload, action: pending.action)
+            try ensureCurrent(prepared, settingsRevision: settingsRevision, configuration: configuration)
+            try await dependencies.organizer.persist(product)
+            do {
+                try ensureCurrent(prepared, settingsRevision: settingsRevision, configuration: configuration)
+            } catch {
+                try? await dependencies.organizer.deleteArtifact(id: product.artifact.id)
+                throw error
+            }
+            try await commit(product, payload: prepared.payload)
+            aiProcessingStates[pending.action] = .succeeded
+            operationError = nil
+            return true
+        } catch is CancellationError {
+            return failAI(pending.action, UserFacingError.aiCanceled)
+        } catch let error as UserFacingError {
+            return failAI(pending.action, error)
+        } catch let error as AIProviderError {
+            return failAI(pending.action, UserFacingError(message: error.userMessage))
+        } catch {
+            return failAI(pending.action, UserFacingError(message: AIProviderError.serviceUnavailable.userMessage))
+        }
+    }
+
+    func aiProcessingState(for action: AISendAction) -> AIProcessingState {
+        aiProcessingStates[action] ?? .idle
+    }
+
+    @discardableResult
+    func storeOpenRouterKey(_ value: String) -> Bool {
+        do {
+            try dependencies.openRouterKeyStore.storeKey(value)
+            hasOpenRouterKey = try dependencies.openRouterKeyStore.hasKey()
+            routerAvailable = hasOpenRouterKey
+            aiSettingsRevision += 1
+            operationError = nil
+            return hasOpenRouterKey
+        } catch {
+            operationError = "That router key could not be saved. Check it and try again."
+            return false
+        }
+    }
+
+    @discardableResult
+    func removeOpenRouterKey() async -> Bool {
+        do {
+            try dependencies.openRouterKeyStore.removeKey()
+            hasOpenRouterKey = false
+            routerAvailable = false
+            aiSettingsRevision += 1
+            if settings.aiProvider == .router {
+                settings.aiProvider = .off
+                try await dependencies.careStore.updateSettings(settings)
+            }
+            operationError = nil
+            return true
+        } catch {
+            operationError = "The router key could not be removed. Try again."
+            return false
+        }
+    }
+
+    @discardableResult
+    func updateAIConfiguration(_ configuration: AIModelConfiguration) -> Bool {
+        do {
+            try dependencies.aiConfigurationStore.save(configuration)
+            aiConfiguration = dependencies.aiConfigurationStore.load()
+            aiSettingsRevision += 1
+            operationError = nil
+            return true
+        } catch {
+            operationError = "Those model settings could not be saved."
+            return false
+        }
+    }
+
+    func latestArtifact(kind: AIArtifact.Kind, sourceID: UUID) -> AIArtifact? {
+        artifacts
+            .filter { $0.kind == kind && $0.sourceIDs.contains(sourceID) }
+            .max { $0.createdAt < $1.createdAt }
+    }
+
+    @discardableResult
+    func saveEditedAppointmentBrief(_ artifactID: UUID, result: AppointmentBriefResult) async -> Bool {
+        guard let existing = artifacts.first(where: { $0.id == artifactID && $0.kind == .appointmentBrief }) else {
+            return false
+        }
+        let edited = AppointmentBriefResult(
+            sections: result.sections,
+            userEditedAt: result.userEditedAt ?? dependencies.now(),
+            metadata: AIResultMetadata(
+                provider: existing.provider,
+                model: existing.model,
+                usage: result.metadata.usage
+            )
+        )
+        do {
+            let payload = try Self.encode(edited)
+            let replacement = AIArtifact(
+                id: existing.id,
+                kind: existing.kind,
+                sourceIDs: existing.sourceIDs,
+                provider: existing.provider,
+                model: existing.model,
+                structuredPayload: payload,
+                createdAt: existing.createdAt
+            )
+            try await dependencies.organizer.replaceArtifact(replacement)
+            Self.upsert(replacement, in: &artifacts)
+            return true
+        } catch {
+            operationError = UserFacingError.saving.message
+            return false
+        }
     }
 
     func selectAppointmentKind(_ kind: Appointment.Kind) {
@@ -510,12 +726,18 @@ final class DemoState {
     func reset() {
         apply(SeededData.careSnapshot)
         speakerCorrections = [:]
-        routerAvailable = true
+        hasOpenRouterKey = (try? dependencies.openRouterKeyStore.hasKey()) ?? false
+        routerAvailable = hasOpenRouterKey
+        aiConfiguration = dependencies.aiConfigurationStore.load()
         consentAcknowledged = false
         selectedAppointmentKind = .therapy
         appointmentRecording = .idle
         exportState = .idle
         operationError = nil
+        preparedAISends = [:]
+        preparedAISendOrder = []
+        activeAISends = []
+        aiProcessingStates = [:]
     }
 
     func clearError() { operationError = nil }
@@ -523,7 +745,363 @@ final class DemoState {
     func selectJournal(id: UUID) { selectedJournalID = id }
     func selectAppointment(id: UUID) { selectedAppointmentID = id }
 
+    private func preparedPayload(for action: AISendAction) throws -> PreparedAIPayload {
+        switch action {
+        case let .rewriteJournal(id), let .summarizeJournal(id), let .extractJournalSignals(id):
+            guard let journal = journals.first(where: { $0.id == id }) else { throw UserFacingError.aiSource }
+            return .journal(journal, try journalSource(journal))
+        case let .readPhoto(journalID, attachmentID):
+            guard let journal = journals.first(where: { $0.id == journalID }),
+                  journal.inputType == .photo,
+                  journal.originalAttachmentID == attachmentID,
+                  let attachment = attachments.first(where: { $0.id == attachmentID && $0.kind == .image }) else {
+                throw UserFacingError.aiSource
+            }
+            return .photo(journal, attachment)
+        case let .summarizeSession(id):
+            guard let appointment = appointments.first(where: { $0.id == id }) else { throw UserFacingError.aiSource }
+            let notes = appointment.manualNotes
+            guard !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw UserFacingError.aiSource }
+            return .session(appointment, SourceTextDocument(
+                id: appointment.id,
+                kind: .sessionNotes,
+                title: "Manual notes from (appointment.kind.displayName.lowercased())",
+                text: notes,
+                occurredAt: appointment.endedAt ?? appointment.startedAt ?? appointment.scheduledAt
+            ))
+        case let .generateAppointmentBrief(kind):
+            return try briefPayload(kind: kind)
+        }
+    }
+
+    private func journalSource(_ journal: JournalEntry) throws -> SourceTextDocument {
+        if journal.inputType == .photo {
+            guard let artifact = latestArtifact(kind: .photoText, sourceID: journal.id),
+                  let result = try? JSONDecoder().decode(VisionReadResult.self, from: artifact.structuredPayload),
+                  !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw UserFacingError.aiSource
+            }
+            return SourceTextDocument(
+                id: artifact.id,
+                kind: .extractedPhotoText,
+                title: "Extracted text from (journal.title)",
+                text: result.text,
+                occurredAt: artifact.createdAt
+            )
+        }
+        guard !journal.rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw UserFacingError.aiSource
+        }
+        return SourceTextDocument(
+            id: journal.id,
+            kind: .journal,
+            title: journal.title,
+            text: journal.rawText,
+            occurredAt: journal.createdAt
+        )
+    }
+
+    private func briefPayload(kind: Appointment.Kind) throws -> PreparedAIPayload {
+        guard journals.count <= 100_000, moods.count <= 100_000, appointments.count <= 100_000,
+              goals.count <= 100_000, talkingPoints.count <= 100_000 else {
+            throw UserFacingError.aiSelectionTooLarge
+        }
+        let lastSession = latestCompletedAppointment(kind: kind)
+        let boundary = lastSession.flatMap { $0.endedAt ?? $0.startedAt ?? $0.scheduledAt }
+        var required = requiredBriefSources(kind: kind, lastSession: lastSession, boundary: boundary)
+        let requiredCount = required.reduce(0) { $0 + $1.text.count }
+        guard requiredCount <= 50_000, required.count <= 64 else { throw UserFacingError.aiSelectionTooLarge }
+        var total = requiredCount
+        var omitted = 0
+        let recentJournals = journals
+            .filter { journal in boundary.map { journal.createdAt > $0 } ?? true }
+            .sorted { $0.createdAt > $1.createdAt }
+        for journal in recentJournals {
+            guard let source = try? journalSource(journal) else {
+                omitted += 1
+                continue
+            }
+            guard required.count < 64, total + source.text.count <= 50_000 else {
+                omitted += 1
+                continue
+            }
+            required.append(source)
+            total += source.text.count
+        }
+        guard !required.isEmpty else { throw UserFacingError.aiSource }
+        return .brief(AppointmentBriefInput(appointmentKind: kind, sources: required), omitted)
+    }
+
+    private func requiredBriefSources(
+        kind: Appointment.Kind,
+        lastSession: Appointment?,
+        boundary: Date?
+    ) -> [SourceTextDocument] {
+        var sources: [SourceTextDocument] = []
+        if let lastSession, !lastSession.manualNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            sources.append(sessionSource(lastSession))
+        }
+        for goal in goals where isProviderHomework(goal, kind: kind) {
+            sources.append(goalSource(goal, kind: .homework, titlePrefix: "Provider homework"))
+        }
+        for goal in goals where goal.status == .active && !isProviderHomework(goal, kind: kind) {
+            sources.append(goalSource(goal, kind: .goal, titlePrefix: "Active goal"))
+        }
+        for point in talkingPoints where point.status == .open && point.targetAppointmentKind == kind {
+            sources.append(SourceTextDocument(
+                id: point.id, kind: .talkingPoint, title: "Pinned item", text: point.text, occurredAt: point.createdAt
+            ))
+        }
+        if let mood = moodTrendSource(boundary: boundary) { sources.append(mood) }
+        return sources
+    }
+
+    private func latestCompletedAppointment(kind: Appointment.Kind) -> Appointment? {
+        appointments
+            .filter { $0.kind == kind && $0.status == .completed }
+            .max { appointmentDate($0) < appointmentDate($1) }
+    }
+
+    private func isProviderHomework(_ goal: Goal, kind: Appointment.Kind) -> Bool {
+        guard goal.source == .providerExplicit, goal.cadence == .homework, goal.status != .dismissed else { return false }
+        guard let sourceID = goal.sourceEntityID,
+              let appointment = appointments.first(where: { $0.id == sourceID }) else { return true }
+        return appointment.kind == kind
+    }
+
+    private func sessionSource(_ appointment: Appointment) -> SourceTextDocument {
+        SourceTextDocument(
+            id: appointment.id,
+            kind: .sessionNotes,
+            title: "Last (appointment.kind.displayName.lowercased()) session notes",
+            text: appointment.manualNotes,
+            occurredAt: appointmentDate(appointment)
+        )
+    }
+
+    private func goalSource(_ goal: Goal, kind: SourceTextDocument.Kind, titlePrefix: String) -> SourceTextDocument {
+        let text = goal.detail.map { "\(goal.title)\n\($0)" } ?? goal.title
+        return SourceTextDocument(
+            id: goal.id, kind: kind, title: "\(titlePrefix): \(goal.title)", text: text, occurredAt: goal.createdAt
+        )
+    }
+
+    private func moodTrendSource(boundary: Date?) -> SourceTextDocument? {
+        let selected = moods
+            .filter { mood in boundary.map { mood.createdAt > $0 } ?? true }
+            .sorted { $0.createdAt < $1.createdAt }
+        guard let latest = selected.last else { return nil }
+        let lines = selected.map(Self.moodTrendLine)
+        return SourceTextDocument(
+            id: latest.id,
+            kind: .moodTrend,
+            title: "Mood trend since the last appointment",
+            text: lines.joined(separator: "\n"),
+            occurredAt: latest.createdAt
+        )
+    }
+
+    private static func moodTrendLine(_ mood: MoodLog) -> String {
+        var fields = ["Date \(dayString(mood.createdAt))"]
+        if let value = mood.mood { fields.append("mood \(value)/10") }
+        if let value = mood.anxiety { fields.append("anxiety \(value)/10") }
+        if let value = mood.energy { fields.append("energy \(value)/10") }
+        for key in mood.customValues.keys.sorted() {
+            if let value = mood.customValues[key] { fields.append("\(key) \(value)/10") }
+        }
+        if let note = mood.note, !note.isEmpty { fields.append("note: \(note)") }
+        return fields.joined(separator: ", ")
+    }
+
+    private static func dayString(_ date: Date) -> String {
+        let calendar = Calendar(identifier: .gregorian)
+        let zone = TimeZone(secondsFromGMT: 0) ?? .current
+        let parts = calendar.dateComponents(in: zone, from: date)
+        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+    }
+
+    private func appointmentDate(_ appointment: Appointment) -> Date {
+        appointment.endedAt ?? appointment.startedAt ?? appointment.scheduledAt ?? .distantPast
+    }
+
+    private static func disclosure(
+        for action: AISendAction,
+        payload: PreparedAIPayload
+    ) -> WhatLeavesDeviceSummary {
+        let sources: [OutgoingSourceDescriptor]
+        let omitted: Int
+        switch payload {
+        case let .journal(_, source):
+            sources = [textDescriptor(source)]
+            omitted = 0
+        case let .photo(journal, attachment):
+            sources = [OutgoingSourceDescriptor(
+                id: attachment.id,
+                kind: .image,
+                title: "Photo from \(journal.title)",
+                characterCount: 0,
+                imageCount: 1
+            )]
+            omitted = 0
+        case let .session(_, source):
+            sources = [textDescriptor(source)]
+            omitted = 0
+        case let .brief(input, omittedCount):
+            sources = input.sources.map(textDescriptor)
+            omitted = omittedCount
+        }
+        return WhatLeavesDeviceSummary(
+            purpose: purpose(for: action),
+            destination: "OpenRouter",
+            sources: sources,
+            totalCharacterCount: sources.reduce(0) { $0 + $1.characterCount },
+            totalImageCount: sources.reduce(0) { $0 + $1.imageCount },
+            omittedSourceCount: omitted
+        )
+    }
+
+    private static func textDescriptor(_ source: SourceTextDocument) -> OutgoingSourceDescriptor {
+        OutgoingSourceDescriptor(
+            id: source.id,
+            kind: .text,
+            title: source.title,
+            characterCount: source.text.count,
+            imageCount: 0
+        )
+    }
+
+    private static func purpose(for action: AISendAction) -> String {
+        switch action {
+        case .rewriteJournal: "Rewrite this journal"
+        case .summarizeJournal: "Summarize this journal"
+        case .extractJournalSignals: "Find optional journal suggestions"
+        case .readPhoto: "Read text from this journal photo"
+        case .summarizeSession: "Organize these manual session notes"
+        case let .generateAppointmentBrief(kind): "Prepare for \(kind.displayName.lowercased())"
+        }
+    }
+
+    private func storePreparedSend(_ context: PreparedAIContext) {
+        let maximumPreparedSends = 32
+        if preparedAISendOrder.count >= maximumPreparedSends {
+            let oldest = preparedAISendOrder.removeFirst()
+            preparedAISends.removeValue(forKey: oldest)
+        }
+        preparedAISends[context.pending.id] = context
+        preparedAISendOrder.append(context.pending.id)
+    }
+
+    private func consumePreparedSend(_ id: UUID) -> PreparedAIContext? {
+        preparedAISendOrder.removeAll { $0 == id }
+        return preparedAISends.removeValue(forKey: id)
+    }
+
+    private func canDispatchAI() -> Bool {
+        guard settings.aiMode == .organizer || settings.aiMode == .reflection,
+              settings.aiProvider == .router,
+              routerAvailable else { return false }
+        let stored = (try? dependencies.openRouterKeyStore.hasKey()) ?? false
+        hasOpenRouterKey = stored
+        routerAvailable = stored
+        return stored
+    }
+
+    private func run(_ payload: PreparedAIPayload, action: AISendAction) async throws -> OrganizerWorkProduct {
+        switch (action, payload) {
+        case (.rewriteJournal, let .journal(_, source)):
+            return try await dependencies.organizer.rewriteJournal(source)
+        case (.summarizeJournal, let .journal(_, source)):
+            return try await dependencies.organizer.summarizeJournal(source)
+        case (.extractJournalSignals, let .journal(_, source)):
+            return try await dependencies.organizer.extractJournalSignals(source)
+        case (.readPhoto, let .photo(journal, attachment)):
+            return try await dependencies.organizer.readPhoto(journalID: journal.id, attachment: attachment)
+        case (.summarizeSession, let .session(appointment, source)):
+            return try await dependencies.organizer.summarizeSession(SessionSummaryInput(
+                appointmentID: appointment.id,
+                appointmentKind: appointment.kind,
+                manualNotes: source
+            ))
+        case (.generateAppointmentBrief, let .brief(input, _)):
+            return try await dependencies.organizer.generateAppointmentBrief(input)
+        default:
+            throw AIProviderError.invalidInput
+        }
+    }
+
+    private func ensureCurrent(
+        _ prepared: PreparedAIContext,
+        settingsRevision: Int,
+        configuration: AIModelConfiguration
+    ) throws {
+        guard prepared.careRevision == careRevision,
+              settingsRevision == aiSettingsRevision,
+              configuration == aiConfiguration,
+              isPayloadCurrent(prepared.payload),
+              canDispatchAI() else {
+            throw UserFacingError.aiStale
+        }
+    }
+
+    private func isPayloadCurrent(_ payload: PreparedAIPayload) -> Bool {
+        switch payload {
+        case let .journal(journal, source):
+            guard journals.first(where: { $0.id == journal.id }) == journal else { return false }
+            return (try? journalSource(journal)) == source
+        case let .photo(journal, attachment):
+            return journals.first(where: { $0.id == journal.id }) == journal
+                && attachments.first(where: { $0.id == attachment.id }) == attachment
+        case let .session(appointment, source):
+            guard appointments.first(where: { $0.id == appointment.id }) == appointment else { return false }
+            return appointment.manualNotes == source.text
+        case let .brief(input, omitted):
+            guard case let .brief(current, currentOmitted)? = try? briefPayload(kind: input.appointmentKind) else {
+                return false
+            }
+            return current == input && currentOmitted == omitted
+        }
+    }
+
+    private func commit(_ product: OrganizerWorkProduct, payload: PreparedAIPayload) async throws {
+        Self.upsert(product.artifact, in: &artifacts)
+        guard let mutation = product.journalMutation,
+              let journalID = payload.journalID,
+              let index = journals.firstIndex(where: { $0.id == journalID }) else { return }
+        let original = journals[index]
+        var updated = original
+        switch mutation {
+        case let .cleanedText(text): updated.cleanedText = text
+        case let .summaryItems(items): updated.summaryItems = items
+        }
+        updated.processingStatus = .processed
+        journals[index] = updated
+        do {
+            try await dependencies.careStore.saveJournal(updated)
+        } catch {
+            if let currentIndex = journals.firstIndex(where: { $0.id == journalID }),
+               journals[currentIndex] == updated {
+                journals[currentIndex] = original
+            }
+            throw UserFacingError.saving
+        }
+    }
+
+    private func failAI(_ action: AISendAction, _ error: UserFacingError) -> Bool {
+        aiProcessingStates[action] = .failed(error.message)
+        operationError = error.message
+        return false
+    }
+
+    private static func encode<Payload: Encodable>(_ payload: Payload) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let data = try encoder.encode(payload)
+        guard !data.isEmpty else { throw AIProviderError.invalidResponse }
+        return data
+    }
+
     private func apply(_ snapshot: CareSnapshot) {
+        careRevision += 1
         journals = snapshot.journals
         moods = snapshot.moods
         appointments = snapshot.appointments
@@ -589,6 +1167,7 @@ final class DemoState {
 
     private func attach(_ recording: LocalRecording, toAppointment id: UUID) async {
         guard let appointment = appointments.first(where: { $0.id == id }) else { return }
+        careRevision += 1
         var updated = appointment
         updated.recordingAttachmentID = recording.attachment.id
         updated.endedAt = dependencies.now()

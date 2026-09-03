@@ -17,9 +17,23 @@ protocol CareStore: Sendable {
     func addGoalProgress(_ progress: GoalProgress) async throws
     func saveTalkingPoint(_ point: TalkingPoint) async throws
     func saveAttachment(_ attachment: Attachment) async throws
+    func saveArtifact(_ artifact: AIArtifact) async throws
+    func deleteArtifact(id: UUID) async throws
     func search(_ query: String, limit: Int) async throws -> [SearchHit]
     func setSampleContentEnabled(_ enabled: Bool) async throws
     func updateSettings(_ settings: VaultSettings) async throws
+}
+
+extension CareStore {
+    func saveArtifact(_ artifact: AIArtifact) async throws {
+        _ = artifact.id
+        throw AIProviderError.unavailable
+    }
+
+    func deleteArtifact(id: UUID) async throws {
+        _ = id
+        throw AIProviderError.unavailable
+    }
 }
 
 protocol VaultMaintenance: Sendable {
@@ -139,8 +153,66 @@ struct AppDependencies: Sendable {
     let photos: any PhotoAttachmentService
     let exporter: any VaultExporting
     let logger: any EventLogging
+    let languageModel: any CandyCornLanguageModel
+    let visionReader: any CandyCornVisionReader
+    let transcriber: any CandyCornTranscriber
+    let distressClassifier: any DistressSupportClassifier
+    let openRouterKeyStore: any OpenRouterAPIKeyProviding
+    let aiConfigurationStore: any AIConfigurationProviding
+    let organizer: OrganizerCoordinator
+    let screenshotScenario: ScreenshotScenario?
     let screenshotMode: Bool
     let now: @Sendable () -> Date
+
+    init(
+        careStore: any CareStore,
+        maintenance: any VaultMaintenance,
+        attachments: any AttachmentStore,
+        recording: any RecordingService,
+        playback: any AudioPlaybackService,
+        photos: any PhotoAttachmentService,
+        exporter: any VaultExporting,
+        logger: any EventLogging,
+        languageModel: (any CandyCornLanguageModel)? = nil,
+        visionReader: (any CandyCornVisionReader)? = nil,
+        transcriber: any CandyCornTranscriber = UnavailableTranscriber(),
+        distressClassifier: any DistressSupportClassifier = NoOpDistressSupportClassifier(),
+        openRouterKeyStore: (any OpenRouterAPIKeyProviding)? = nil,
+        aiConfigurationStore: (any AIConfigurationProviding)? = nil,
+        organizer: OrganizerCoordinator? = nil,
+        screenshotScenario: ScreenshotScenario? = nil,
+        screenshotMode: Bool,
+        now: @escaping @Sendable () -> Date
+    ) {
+        let keyStore = openRouterKeyStore ?? InMemoryOpenRouterAPIKeyStore()
+        let configurationStore = aiConfigurationStore ?? InMemoryAIConfigurationStore()
+        let resolvedLanguageModel = languageModel ?? AppleFoundationModelProvider()
+        let resolvedVisionReader = visionReader ?? UnavailableVisionReader()
+        self.careStore = careStore
+        self.maintenance = maintenance
+        self.attachments = attachments
+        self.recording = recording
+        self.playback = playback
+        self.photos = photos
+        self.exporter = exporter
+        self.logger = logger
+        self.languageModel = resolvedLanguageModel
+        self.visionReader = resolvedVisionReader
+        self.transcriber = transcriber
+        self.distressClassifier = distressClassifier
+        self.openRouterKeyStore = keyStore
+        self.aiConfigurationStore = configurationStore
+        self.organizer = organizer ?? OrganizerCoordinator(
+            careStore: careStore,
+            attachments: attachments,
+            languageModel: resolvedLanguageModel,
+            visionReader: resolvedVisionReader,
+            now: now
+        )
+        self.screenshotScenario = screenshotScenario
+        self.screenshotMode = screenshotMode
+        self.now = now
+    }
 }
 
 struct UserFacingError: Error, Equatable, Sendable {
@@ -151,4 +223,9 @@ struct UserFacingError: Error, Equatable, Sendable {
     static let recording = UserFacingError(message: "Recording could not start. Your existing entries are unchanged.")
     static let playback = UserFacingError(message: "This recording is not available for playback.")
     static let export = UserFacingError(message: "Your export could not be created. Try again.")
+    static let aiUnavailable = UserFacingError(message: "AI processing is off or unavailable. Your source is unchanged.")
+    static let aiSource = UserFacingError(message: "This source is not available for AI processing.")
+    static let aiSelectionTooLarge = UserFacingError(message: "The required appointment context is over 50,000 characters. Remove or shorten a required item before sending.")
+    static let aiStale = UserFacingError(message: "The source changed while Candy Corn was working. Review it and send again.")
+    static let aiCanceled = UserFacingError(message: "AI processing was canceled. Review and send again when ready.")
 }

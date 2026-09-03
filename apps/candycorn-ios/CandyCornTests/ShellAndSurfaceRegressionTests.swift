@@ -75,18 +75,35 @@ struct ShellAndSurfaceRegressionTests {
         let urls = (enumerator?.allObjects as? [URL] ?? []).prefix(1_000)
         let contentFields = [
             "rawText", "cleanedText", "transcript", "manualNotes", "talkingPoint",
-            "title", "payload", "relativePath", "fileURL",
+            "source.title", "payload", "relativePath", "fileURL", "promptText", "completionText",
+            "requestBody", "responseBody", "localizedDescription",
         ]
         var offenders: [String] = []
         for url in urls where url.pathExtension == "swift" {
             let lines = try String(contentsOf: url, encoding: .utf8).split(separator: "\n", omittingEmptySubsequences: false)
-            for (index, line) in lines.enumerated() where line.contains("logger.record(") {
-                let value = String(line)
-                if value.contains("\\(") || contentFields.contains(where: { value.contains($0) }) {
+            for index in lines.indices where lines[index].contains("logger.record(") || lines[index].contains("logger.info(") {
+                let call = Self.loggingCall(startingAt: index, lines: lines)
+                if contentFields.contains(where: { call.contains($0) }) {
                     offenders.append("\(url.lastPathComponent):\(index + 1)")
                 }
             }
         }
         #expect(offenders.isEmpty, "Content-bearing logging calls: \(offenders)")
+    }
+
+    private static func loggingCall(startingAt index: Int, lines: [Substring]) -> String {
+        var result = ""
+        var depth = 0
+        let end = min(lines.count, index + 40)
+        for position in index..<end {
+            let line = String(lines[position])
+            result += line
+            depth += line.reduce(into: 0) { count, character in
+                if character == "(" { count += 1 }
+                if character == ")" { count -= 1 }
+            }
+            if depth <= 0 { break }
+        }
+        return result
     }
 }

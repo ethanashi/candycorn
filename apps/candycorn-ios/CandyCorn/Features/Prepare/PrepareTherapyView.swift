@@ -124,40 +124,86 @@ struct TherapyBriefEditor: Equatable, Sendable {
 struct PrepareTherapyView: View {
     @Bindable var navigation: NavigationModel
     @Bindable var state: DemoState
-    @State private var editor = TherapyBriefEditor()
+    @State private var manualEditor = TherapyBriefEditor()
+    @State private var generatedEditor: AppointmentBriefEditor?
+    @State private var preferredArtifactID: UUID?
+    @State private var pendingSend: PendingAISend?
+    @State private var sendTask: Task<Void, Never>?
+    @State private var actionError: String?
+    @State private var isSavingGenerated = false
 
     var body: some View {
         ScreenLayout(
-            title: editor.isEditing ? "Edit your therapy brief" : "Walk in knowing what matters",
-            subtitle: editor.isEditing
+            title: isEditing ? "Edit your therapy brief" : "Walk in knowing what matters",
+            subtitle: isEditing
                 ? "Change the wording without changing your original journals or session."
                 : "A brief for Jamie Rivera to read before therapy with Dr. Elena Park on Sep 9.",
-            backAction: editor.isEditing ? { editor.cancel() } : navigation.backAction(for: .prepareTherapy),
-            backLabel: editor.isEditing ? "Cancel editing" : "Back",
-            bottomInset: 180
+            backAction: isEditing ? cancelEditing : navigation.backAction(for: .prepareTherapy),
+            backLabel: isEditing ? "Cancel editing" : "Back",
+            bottomInset: 220
         ) {
-            if editor.isEditing {
-                briefEditor
+            if generatedEditor?.isEditing == true {
+                generatedBriefEditor
+            } else if manualEditor.isEditing {
+                manualBriefEditor
+            } else if let generatedEditor, let artifact = generatedArtifact {
+                AppointmentBriefReadingView(
+                    result: generatedEditor.saved,
+                    artifact: artifact,
+                    provenanceForSource: provenance(for:)
+                )
             } else {
-                briefReading
+                manualBriefReading
+            }
+            if generatedEditor == nil, hasUnreadableArtifact {
+                StatusNotice(
+                    title: "Saved brief unavailable",
+                    detail: "Candy Corn could not read the generated brief. Your manual brief and source records are unchanged.",
+                    kind: .warning
+                )
+            }
+            if let actionError {
+                StatusNotice(title: "Brief not changed", detail: actionError, kind: .warning)
+            }
+            if state.aiMode == .reflection {
+                Text("Reflection uses Organizer for this brief. It does not start a conversation.")
+                    .font(TypeScale.provenance)
+                    .foregroundStyle(DesignTokens.yellowText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             actions
         }
         .background(DesignTokens.canvas)
-        .onAppear(perform: refreshBrief)
-        .onChange(of: state.loadState) { _, _ in refreshBrief() }
+        .onAppear {
+            refreshManualBrief()
+            refreshGeneratedBrief()
+        }
+        .onChange(of: state.loadState) { _, _ in
+            refreshManualBrief()
+            refreshGeneratedBrief()
+        }
+        .onChange(of: state.artifacts) { _, _ in refreshGeneratedBrief() }
+        .sheet(item: $pendingSend, onDismiss: cancelSend) { pending in
+            WhatLeavesDeviceSheet(
+                pending: pending,
+                processingState: state.aiProcessingState(for: pending.action),
+                onSend: { send(pending) },
+                onCancel: cancelSend
+            )
+        }
+        .onDisappear(perform: cancelSend)
     }
 
-    private var briefReading: some View {
+    private var manualBriefReading: some View {
         VStack(alignment: .leading, spacing: 0) {
             Divider().overlay(DesignTokens.hairline)
             ForEach(TherapyBriefSection.allCases) { section in
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
                     Text(section.title)
                         .font(TypeScale.sectionCompact)
-                    Text(highlighted(editor.saved.text(for: section), quoted: section == .possibleOpening))
+                    Text(highlighted(manualEditor.saved.text(for: section), quoted: section == .possibleOpening))
                         .font(TypeScale.body)
                         .lineSpacing(5)
                         .fixedSize(horizontal: false, vertical: true)
@@ -171,7 +217,7 @@ struct PrepareTherapyView: View {
         }
     }
 
-    private var briefEditor: some View {
+    private var manualBriefEditor: some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.medium) {
             ForEach(TherapyBriefSection.allCases) { section in
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
@@ -190,7 +236,7 @@ struct PrepareTherapyView: View {
                         .accessibilityLabel(section.title)
                 }
             }
-            if let error = editor.error {
+            if let error = manualEditor.error {
                 Text(error)
                     .font(TypeScale.label)
                     .foregroundStyle(DesignTokens.rose)
@@ -200,16 +246,67 @@ struct PrepareTherapyView: View {
         }
     }
 
+    private var generatedBriefEditor: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.medium) {
+            if let editor = generatedEditor {
+                ForEach(editor.draft.sections) { section in
+                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+                        Text(section.title)
+                            .font(TypeScale.sectionCompact)
+                            .foregroundStyle(DesignTokens.cocoa)
+                        ForEach(section.statements) { statement in
+                            TextEditor(text: generatedBinding(sectionID: section.id, statementID: statement.id))
+                                .font(TypeScale.body)
+                                .scrollContentBackground(.hidden)
+                                .padding(DesignTokens.Spacing.compact)
+                                .frame(minHeight: 128)
+                                .background(DesignTokens.surface)
+                                .overlay(RoundedRectangle(cornerRadius: DesignTokens.controlRadius).stroke(DesignTokens.hairline))
+                                .clipShape(RoundedRectangle(cornerRadius: DesignTokens.controlRadius))
+                                .accessibilityLabel(section.title)
+                        }
+                    }
+                }
+                if let error = editor.error {
+                    Text(error)
+                        .font(TypeScale.label)
+                        .foregroundStyle(DesignTokens.rose)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
     private var actions: some View {
-        Group {
-            if editor.isEditing {
-                Button("Save brief") { _ = editor.save() }
+        VStack(spacing: DesignTokens.Spacing.small) {
+            if generatedEditor?.isEditing == true {
+                Button(isSavingGenerated ? "Saving" : "Save brief", action: saveGeneratedBrief)
                     .buttonStyle(PrimaryButtonStyle())
+                    .disabled(isSavingGenerated)
+                Button("Cancel editing", action: cancelEditing)
+                    .buttonStyle(SecondaryButtonStyle())
+            } else if manualEditor.isEditing {
+                Button("Save brief") { _ = manualEditor.save() }
+                    .buttonStyle(PrimaryButtonStyle())
+                Button("Cancel editing", action: cancelEditing)
+                    .buttonStyle(SecondaryButtonStyle())
             } else {
-                Button(action: { editor.begin() }) {
+                Button(action: beginEditing) {
                     Label("Edit brief", systemImage: AppIcon.pencil.rawValue)
                 }
                 .buttonStyle(PrimaryButtonStyle())
+                if organizerAvailable {
+                    Button("Generate brief", action: prepareGeneration)
+                        .buttonStyle(SecondaryButtonStyle())
+                        .disabled(pendingSend != nil)
+                } else {
+                    Text(state.aiMode == .off
+                        ? "Organizer is off. This manual brief stays usable."
+                        : "Add a Router key in Settings to generate a brief.")
+                        .font(TypeScale.provenance)
+                        .foregroundStyle(DesignTokens.cocoaSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .padding(.horizontal, DesignTokens.screenInset)
@@ -221,8 +318,19 @@ struct PrepareTherapyView: View {
 
     private func draftBinding(for section: TherapyBriefSection) -> Binding<String> {
         Binding(
-            get: { editor.draft.text(for: section) },
-            set: { editor.update(section, text: $0) }
+            get: { manualEditor.draft.text(for: section) },
+            set: { manualEditor.update(section, text: $0) }
+        )
+    }
+
+    private func generatedBinding(sectionID: UUID, statementID: UUID) -> Binding<String> {
+        Binding(
+            get: {
+                generatedEditor?.draft.sections
+                    .first(where: { $0.id == sectionID })?.statements
+                    .first(where: { $0.id == statementID })?.text ?? ""
+            },
+            set: { generatedEditor?.update(sectionID: sectionID, statementID: statementID, text: $0) }
         )
     }
 
@@ -236,8 +344,8 @@ struct PrepareTherapyView: View {
         return result
     }
 
-    private func refreshBrief() {
-        guard !editor.isEditing else { return }
+    private func refreshManualBrief() {
+        guard !manualEditor.isEditing, generatedEditor?.isEditing != true else { return }
         let latestJournal = state.journals.max { $0.createdAt < $1.createdAt }
         let pinned = state.talkingPoints.first { $0.status == .open && $0.isImportant }
             ?? state.talkingPoints.first { $0.status == .open }
@@ -252,7 +360,137 @@ struct PrepareTherapyView: View {
             carryingForward: activeGoals.isEmpty ? seeded.carryingForward : activeGoals.joined(separator: " "),
             possibleOpening: pinned.map { "I want to start with this question: \($0.text)" } ?? seeded.possibleOpening
         )
-        editor = TherapyBriefEditor(brief: brief)
+        manualEditor = TherapyBriefEditor(brief: brief)
+    }
+
+    private var isEditing: Bool {
+        manualEditor.isEditing || generatedEditor?.isEditing == true
+    }
+
+    private var organizerAvailable: Bool {
+        state.aiMode != .off && state.aiProvider == .router && state.hasOpenRouterKey && state.routerAvailable
+    }
+
+    private var generatedArtifact: AIArtifact? {
+        AppointmentBriefArtifactReader.latest(
+            kind: .therapy,
+            preferredID: preferredArtifactID,
+            artifacts: state.artifacts,
+            appointments: state.appointments,
+            goals: state.goals,
+            talkingPoints: state.talkingPoints
+        )
+    }
+
+    private var hasUnreadableArtifact: Bool {
+        AppointmentBriefArtifactReader.hasUnreadableArtifact(
+            kind: .therapy,
+            preferredID: preferredArtifactID,
+            artifacts: state.artifacts,
+            appointments: state.appointments,
+            goals: state.goals,
+            talkingPoints: state.talkingPoints
+        )
+    }
+
+    private func refreshGeneratedBrief() {
+        guard generatedEditor?.isEditing != true else { return }
+        guard let artifact = generatedArtifact else {
+            generatedEditor = nil
+            return
+        }
+        generatedEditor = AppointmentBriefEditor(artifact: artifact)
+    }
+
+    private func beginEditing() {
+        actionError = nil
+        if generatedEditor != nil {
+            generatedEditor?.begin()
+        } else {
+            manualEditor.begin()
+        }
+    }
+
+    private func cancelEditing() {
+        generatedEditor?.cancel()
+        manualEditor.cancel()
+        actionError = nil
+    }
+
+    private func prepareGeneration() {
+        guard organizerAvailable, pendingSend == nil else { return }
+        actionError = nil
+        do {
+            pendingSend = try state.prepareAISend(.generateAppointmentBrief(.therapy))
+        } catch let error as UserFacingError {
+            actionError = error.message
+        } catch {
+            actionError = "Your saved sources are not ready to send."
+        }
+    }
+
+    private func send(_ pending: PendingAISend) {
+        guard sendTask == nil else { return }
+        if case .failed = state.aiProcessingState(for: pending.action) {
+            pendingSend = nil
+            prepareGeneration()
+            return
+        }
+        sendTask = Task {
+            let succeeded = await state.performAISend(pending)
+            guard !Task.isCancelled, pendingSend?.id == pending.id else {
+                sendTask = nil
+                return
+            }
+            sendTask = nil
+            if succeeded {
+                preferredArtifactID = state.artifacts.filter { $0.kind == .appointmentBrief }.max { $0.createdAt < $1.createdAt }?.id
+                refreshGeneratedBrief()
+                pendingSend = nil
+            } else if case let .failed(message) = state.aiProcessingState(for: pending.action) {
+                actionError = message
+            }
+        }
+    }
+
+    private func cancelSend() {
+        sendTask?.cancel()
+        sendTask = nil
+        pendingSend = nil
+    }
+
+    private func saveGeneratedBrief() {
+        guard !isSavingGenerated, let currentEditor = generatedEditor else { return }
+        var editor = currentEditor
+        guard let result = editor.preparedSave(at: state.dependencies.now()) else {
+            generatedEditor = editor
+            return
+        }
+        isSavingGenerated = true
+        Task {
+            let saved = await state.saveEditedAppointmentBrief(editor.artifactID, result: result)
+            isSavingGenerated = false
+            if saved {
+                editor.commit(result)
+                generatedEditor = editor
+            } else {
+                editor.failSave()
+                generatedEditor = editor
+            }
+        }
+    }
+
+    private func provenance(for sourceID: UUID) -> Provenance {
+        if let journal = state.journals.first(where: { $0.id == sourceID }) { return journal.provenance }
+        if let goal = state.goals.first(where: { $0.id == sourceID }) { return goal.provenance }
+        if let point = state.talkingPoints.first(where: { $0.id == sourceID }) { return point.provenance }
+        if state.appointments.contains(where: { $0.id == sourceID }) {
+            return Provenance(voice: .user, label: "From your manual session notes", detail: "Saved on this device", occurredAt: nil, sourceRoute: .therapySession)
+        }
+        if state.moods.contains(where: { $0.id == sourceID }) {
+            return Provenance(voice: .user, label: "From your mood check-ins", detail: "Saved on this device", occurredAt: nil, sourceRoute: .checkIn)
+        }
+        return Provenance(voice: .user, label: "From your saved source", detail: "Saved on this device", occurredAt: nil, sourceRoute: nil)
     }
 }
 
