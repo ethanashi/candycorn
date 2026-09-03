@@ -80,6 +80,22 @@ actor VaultRepositories: CareStore {
         logger.record(.attachmentSaved, metrics: EventMetrics(count: 1))
     }
 
+    func saveArtifact(_ artifact: AIArtifact) async throws {
+        let record = try ArtifactPersistenceRecord(artifact, isSample: false)
+        try await database.write { db in
+            try VaultRecordWriter.save(record, in: db)
+        }
+    }
+
+    func deleteArtifact(id: UUID) async throws {
+        try await database.write { db in
+            try db.execute(
+                sql: "DELETE FROM ai_artifacts WHERE id = ?",
+                arguments: [id.uuidString.lowercased()]
+            )
+        }
+    }
+
     func search(_ query: String, limit: Int) async throws -> [SearchHit] {
         let normalized = String(query.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200))
         guard !normalized.isEmpty, (1...100).contains(limit) else { throw VaultRepositoryError.invalidInput }
