@@ -40,11 +40,19 @@ protocol MediaRecorderFactory: Sendable {
 
 protocol MediaPlaybackClient: Sendable {
     func play() async -> Bool
+    func seek(toMilliseconds milliseconds: Int) async -> Bool
     func pause() async
     func stop() async
     func currentMilliseconds() async -> Int
     func durationMilliseconds() async -> Int
     func isPlaying() async -> Bool
+}
+
+extension MediaPlaybackClient {
+    func seek(toMilliseconds milliseconds: Int) async -> Bool {
+        _ = milliseconds
+        return false
+    }
 }
 
 protocol MediaPlaybackFactory: Sendable {
@@ -262,6 +270,12 @@ actor SystemPlaybackClient: MediaPlaybackClient {
     }
 
     func play() -> Bool { player.play() }
+    func seek(toMilliseconds milliseconds: Int) -> Bool {
+        let duration = Int((player.duration * 1_000).rounded())
+        guard milliseconds >= 0, milliseconds <= duration else { return false }
+        player.currentTime = TimeInterval(milliseconds) / 1_000
+        return true
+    }
     func pause() { player.pause() }
     func stop() {
         player.stop()

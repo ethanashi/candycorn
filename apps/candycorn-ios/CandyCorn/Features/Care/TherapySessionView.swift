@@ -18,6 +18,7 @@ struct TherapySessionView: View {
     @State private var isPreparingSummary = false
     @State private var actionError: String?
     @State private var openedScreenshotSheet = false
+    @State private var relabelingSegmentIDs: Set<UUID> = []
 
     @ViewBuilder
     var body: some View {
@@ -41,6 +42,12 @@ struct TherapySessionView: View {
             backAction: navigation.backAction(for: .therapySession),
             bottomInset: 260
         ) {
+            SessionProcessingStatusView(
+                record: sessionAppointment.flatMap { state.sessionProcessingRecord(for: $0.id) },
+                onReviewSummary: prepareProcessedSummary,
+                onRetry: retryProcessing,
+                onOpenDebrief: openDebrief
+            )
             UnderlinePicker(options: TherapySessionTab.allCases, selection: $selection) { $0.rawValue }
             panel
         }
@@ -76,7 +83,25 @@ struct TherapySessionView: View {
 
     private var summaryPanel: some View {
         VStack(spacing: 0) {
-            if let summary = sessionSummary {
+            if let summary = structuredSummary {
+                ForEach(summary.result.debriefTopics) { topic in
+                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+                        Text(topic.text).font(TypeScale.body)
+                        ProvenanceInline(voice: topic.provenance.provenanceVoice, text: "From the processed transcript")
+                        if let timestamp = topic.evidence.first?.timestampMilliseconds {
+                            Button("Play at \(AppointmentRecordingClock.format(milliseconds: timestamp))") {
+                                playRecording(fromMilliseconds: timestamp)
+                            }
+                            .buttonStyle(.plain)
+                            .font(TypeScale.provenance)
+                            .underline()
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, DesignTokens.Spacing.base)
+                    .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
+                }
+            } else if let summary = legacySessionSummary {
                 ForEach(summary.result.sections) { section in
                     VStack(alignment: .leading, spacing: 0) {
                         Text(section.title)
@@ -142,24 +167,16 @@ struct TherapySessionView: View {
 
     private var transcriptPanel: some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Text("Voice transcription: Not yet available")
+            Text(sessionTranscript.isEmpty ? "Transcript is created on this device." : "Speaker labels can be corrected for the full transcript cluster.")
                 .font(TypeScale.provenance)
                 .foregroundStyle(DesignTokens.cocoaSoft)
                 .fixedSize(horizontal: false, vertical: true)
-            if sessionTranscript.isEmpty {
-                StatusNotice(title: "No transcript", detail: "The original recording and your manual notes remain available.", kind: .information)
-            } else {
-                LazyVStack(spacing: 0) {
-            ForEach(sessionTranscript) { segment in
-                TranscriptRow(
-                    segment: segment,
-                    speaker: state.speakerCorrections[segment.id] ?? segment.speaker,
-                    correct: { speaker in _ = state.correctSpeaker(segmentID: segment.id, to: speaker) }
-                )
-                .id(segment.id)
-            }
-                }
-            }
+            SessionTranscriptView(
+                segments: sessionTranscript,
+                isRelabeling: { relabelingSegmentIDs.contains($0.id) },
+                onLabel: persistLabel,
+                onTimestamp: { playRecording(fromMilliseconds: $0.startMilliseconds) }
+            )
         }
         .accessibilityLabel("Source-preserving transcript")
     }
@@ -219,10 +236,16 @@ struct TherapySessionView: View {
 
     private var sessionAppointment: Appointment? {
         if let id = state.selectedAppointmentID,
-           let selected = state.appointments.first(where: { $0.id == id && $0.kind == .therapy && $0.status == .completed }) {
+           let selected = state.appointments.first(where: {
+               $0.id == id && $0.kind != .tms && $0.recordingAttachmentID != nil
+                   && ($0.status == .processing || $0.status == .completed)
+           }) {
             return selected
         }
-        return state.appointments.filter { $0.kind == .therapy && $0.status == .completed }.max {
+        return state.appointments.filter {
+            $0.kind != .tms && $0.recordingAttachmentID != nil
+                && ($0.status == .processing || $0.status == .completed)
+        }.max {
             ($0.startedAt ?? .distantPast) < ($1.startedAt ?? .distantPast)
         }
     }
@@ -232,7 +255,12 @@ struct TherapySessionView: View {
         return state.transcript.filter { $0.appointmentID == id }
     }
 
-    private var sessionSummary: (artifact: AIArtifact, result: SessionSummaryResult)? {
+    private var structuredSummary: (artifact: AIArtifact, result: StructuredSessionSummaryResult)? {
+        guard let id = sessionAppointment?.id else { return nil }
+        return state.structuredSessionSummary(for: id)
+    }
+
+    private var legacySessionSummary: (artifact: AIArtifact, result: SessionSummaryResult)? {
         guard let id = sessionAppointment?.id,
               let artifact = state.latestArtifact(kind: .sessionSummary, sourceID: id),
               let result = try? JSONDecoder().decode(SessionSummaryResult.self, from: artifact.structuredPayload),
@@ -243,7 +271,7 @@ struct TherapySessionView: View {
     private var hasCorruptSessionSummary: Bool {
         guard let id = sessionAppointment?.id,
               state.latestArtifact(kind: .sessionSummary, sourceID: id) != nil else { return false }
-        return sessionSummary == nil
+        return structuredSummary == nil && legacySessionSummary == nil
     }
 
     private var trimmedNotes: String {
@@ -283,6 +311,41 @@ struct TherapySessionView: View {
         Task { try? await state.dependencies.playback.play(attachment: attachment) }
     }
 
+    private func playRecording(fromMilliseconds: Int) {
+        guard let id = sessionAppointment?.id else { return }
+        Task { _ = await state.playSessionRecording(appointmentID: id, fromMilliseconds: fromMilliseconds) }
+    }
+
+    private func persistLabel(_ segment: TranscriptSegment, _ speaker: TranscriptSegment.Speaker) {
+        guard !relabelingSegmentIDs.contains(segment.id) else { return }
+        relabelingSegmentIDs.insert(segment.id)
+        Task {
+            _ = await state.persistSpeakerCluster(segmentID: segment.id, as: speaker)
+            relabelingSegmentIDs.remove(segment.id)
+        }
+    }
+
+    private func prepareProcessedSummary() {
+        guard pendingSend == nil, let id = sessionAppointment?.id else { return }
+        do {
+            pendingSend = try state.prepareProcessedSessionSummary(appointmentID: id)
+        } catch let error as UserFacingError {
+            actionError = error.message
+        } catch {
+            actionError = "This transcript is not ready to send."
+        }
+    }
+
+    private func retryProcessing() {
+        guard let id = sessionAppointment?.id else { return }
+        Task { await state.retrySessionProcessing(appointmentID: id) }
+    }
+
+    private func openDebrief() {
+        guard let route = Route(rawValue: "/sessions/therapy-sep-2/debrief") else { return }
+        navigation.navigate(to: route)
+    }
+
     @discardableResult
     private func saveNotes() async -> Bool {
         guard var appointment = sessionAppointment else { return false }
@@ -313,7 +376,11 @@ struct TherapySessionView: View {
         guard sendTask == nil else { return }
         if case .failed = state.aiProcessingState(for: pending.action) {
             pendingSend = nil
-            prepareSummary()
+            if case .summarizeProcessedSession = pending.action {
+                prepareProcessedSummary()
+            } else {
+                prepareSummary()
+            }
             return
         }
         sendTask = Task {
@@ -454,6 +521,16 @@ private struct CareLedger: View {
                 .padding(.vertical, DesignTokens.Spacing.base)
                 .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
             }
+        }
+    }
+}
+
+private extension SessionSummaryItemProvenance {
+    var provenanceVoice: ProvenanceVoice {
+        switch self {
+        case .patient: .user
+        case .provider: .provider
+        case .candyCorn: .candyCorn
         }
     }
 }

@@ -6,10 +6,10 @@ struct RouteTests {
     @Test("All route metadata is complete and unique")
     func metadata() {
         let routes = Route.allCases
-        #expect(routes.count == 26)
-        #expect(Set(routes.map(\.rawValue)).count == 26)
-        #expect(Set(routes.map(\.screenshotFilename)).count == 26)
-        #expect(routes.map(\.order) == Array(1...26))
+        #expect(routes.count == 27)
+        #expect(Set(routes.map(\.rawValue)).count == 27)
+        #expect(Set(routes.map(\.screenshotFilename)).count == 27)
+        #expect(routes.map(\.order) == Array(1...27))
     }
 
     @Test("Every route has one truthful presentation family")
@@ -20,7 +20,7 @@ struct RouteTests {
         let pushed: Set<Route> = [
             .journalDetail, .journalSuggestions, .bringUp, .appointments,
             .therapySession, .tmsPre, .tmsPost, .prepareTherapy, .prepareTMS, .search,
-            .settingsPrivacy, .settingsAI, .settingsData,
+            .settingsPrivacy, .settingsAI, .settingsData, .sessionDebrief,
         ]
         let fullScreen: Set<Route> = [
             .checkIn, .capture, .journalVoice, .journalWrite, .journalPhoto,
@@ -72,6 +72,7 @@ struct RouteTests {
             (.settingsData, "/settings/data", "24-settings-data.png"),
             (.journal, "/journal", "25-journal.png"),
             (.settings, "/settings", "26-settings.png"),
+            (.sessionDebrief, "/sessions/therapy-sep-2/debrief", "32-session-debrief.png"),
         ]
         for item in expected {
             #expect(item.0.rawValue == item.1)
@@ -83,9 +84,19 @@ struct RouteTests {
     func launchArguments() {
         #expect(Route.parseLaunchArguments(["CandyCorn", "-screen", "/today"]) == .today)
         #expect(Route.parseLaunchArguments(["CandyCorn", "-flag", "value", "-screen", "/settings/ai"]) == .settingsAI)
+        #expect(Route.parseLaunchArguments(["CandyCorn", "-screen", "/sessions/therapy-sep-2/debrief"]) == .sessionDebrief)
         #expect(Route.parseLaunchArguments(["CandyCorn"]) == nil)
         #expect(Route.parseLaunchArguments(["CandyCorn", "-screen"]) == nil)
         #expect(Route.parseLaunchArguments(["CandyCorn", "-screen", "/missing"]) == nil)
+    }
+
+    @Test("Session debrief belongs to History and keeps the floating tab bar")
+    func sessionDebriefMetadata() {
+        #expect(Route.sessionDebrief.order == 27)
+        #expect(Route.sessionDebrief.tab == .history)
+        #expect(Route.sessionDebrief.presentation == .pushed)
+        #expect(Route.sessionDebrief.showsFloatingTabBar)
+        #expect(Route.sessionDebrief.screenshotFilename == "32-session-debrief.png")
     }
 
     @Test("Navigation retains tab stacks and presents capture flows")

@@ -69,7 +69,11 @@ struct ActiveAppointmentView: View {
             subtitle: "The original recording is preserved locally.",
             backAction: navigation.backAction(for: .activeAppointment)
         ) {
-            StatusNotice(title: "Saved on this device", detail: "Transcription and speaker labels are not part of this version.", kind: .saved)
+            StatusNotice(
+                title: "Saved on this device",
+                detail: "On-device transcription starts after the saved recording is linked to this appointment.",
+                kind: .saved
+            )
             if let attachment = state.latestRecording?.attachment {
                 Button {
                     Task { try? await state.dependencies.playback.play(attachment: attachment) }

@@ -8,9 +8,24 @@ struct TMSPostSessionView: View {
     @State private var nextItem = "Ask whether the head pressure is expected to stay this brief."
     @State private var saved = false
     @State private var isSaving = false
+    @State private var pendingSend: PendingAISend?
+    @State private var sendTask: Task<Void, Never>?
+    @State private var relabelingSegmentIDs: Set<UUID> = []
+    @State private var processingError: String?
 
     var body: some View {
-        if saved { savedView } else { checkInView }
+        Group {
+            if saved { savedView } else { checkInView }
+        }
+        .sheet(item: $pendingSend, onDismiss: cancelSend) { pending in
+            WhatLeavesDeviceSheet(
+                pending: pending,
+                processingState: state.aiProcessingState(for: pending.action),
+                onSend: { send(pending) },
+                onCancel: cancelSend
+            )
+        }
+        .onDisappear(perform: cancelSend)
     }
 
     private var checkInView: some View {
@@ -20,6 +35,30 @@ struct TMSPostSessionView: View {
             backAction: navigation.backAction(for: .tmsPost),
             bottomInset: DesignTokens.Spacing.section
         ) {
+            if let appointment = sessionAppointment {
+                SessionProcessingStatusView(
+                    record: state.sessionProcessingRecord(for: appointment.id),
+                    onReviewSummary: prepareProcessedSummary,
+                    onRetry: retryProcessing,
+                    onOpenDebrief: openDebrief
+                )
+                SessionTranscriptView(
+                    segments: state.transcript.filter { $0.appointmentID == appointment.id },
+                    isRelabeling: { relabelingSegmentIDs.contains($0.id) },
+                    onLabel: persistLabel,
+                    onTimestamp: { segment in
+                        Task {
+                            _ = await state.playSessionRecording(
+                                appointmentID: appointment.id,
+                                fromMilliseconds: segment.startMilliseconds
+                            )
+                        }
+                    }
+                )
+                if let processingError {
+                    StatusNotice(title: "Processing paused", detail: processingError, kind: .warning)
+                }
+            }
             TMSMeasuresEditor(snapshot: $snapshot)
             noteField(title: "Provider instruction notes", text: $providerInstructions)
             ProvenanceLine(provenance: providerProvenance)
@@ -68,6 +107,16 @@ struct TMSPostSessionView: View {
         )
     }
 
+    private var sessionAppointment: Appointment? {
+        if let id = state.selectedAppointmentID,
+           let selected = state.appointments.first(where: {
+               $0.id == id && $0.kind == .tms && $0.recordingAttachmentID != nil
+           }) { return selected }
+        return state.appointments.filter {
+            $0.kind == .tms && $0.recordingAttachmentID != nil
+        }.max { ($0.startedAt ?? .distantPast) < ($1.startedAt ?? .distantPast) }
+    }
+
     private func noteField(title: String, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
             Text(title).font(TypeScale.sectionCompact)
@@ -103,5 +152,60 @@ struct TMSPostSessionView: View {
             saved = true
             isSaving = false
         }
+    }
+
+    private func prepareProcessedSummary() {
+        guard pendingSend == nil, let id = sessionAppointment?.id else { return }
+        do {
+            pendingSend = try state.prepareProcessedSessionSummary(appointmentID: id)
+            processingError = nil
+        } catch let error as UserFacingError {
+            processingError = error.message
+        } catch {
+            processingError = "This transcript is not ready to send."
+        }
+    }
+
+    private func send(_ pending: PendingAISend) {
+        guard sendTask == nil else { return }
+        if case .failed = state.aiProcessingState(for: pending.action) {
+            pendingSend = nil
+            prepareProcessedSummary()
+            return
+        }
+        sendTask = Task {
+            let succeeded = await state.performAISend(pending)
+            sendTask = nil
+            if succeeded {
+                pendingSend = nil
+            } else if case let .failed(message) = state.aiProcessingState(for: pending.action) {
+                processingError = message
+            }
+        }
+    }
+
+    private func cancelSend() {
+        sendTask?.cancel()
+        sendTask = nil
+        pendingSend = nil
+    }
+
+    private func retryProcessing() {
+        guard let id = sessionAppointment?.id else { return }
+        Task { await state.retrySessionProcessing(appointmentID: id) }
+    }
+
+    private func persistLabel(_ segment: TranscriptSegment, _ speaker: TranscriptSegment.Speaker) {
+        guard !relabelingSegmentIDs.contains(segment.id) else { return }
+        relabelingSegmentIDs.insert(segment.id)
+        Task {
+            _ = await state.persistSpeakerCluster(segmentID: segment.id, as: speaker)
+            relabelingSegmentIDs.remove(segment.id)
+        }
+    }
+
+    private func openDebrief() {
+        guard let route = Route(rawValue: "/sessions/therapy-sep-2/debrief") else { return }
+        navigation.navigate(to: route)
     }
 }

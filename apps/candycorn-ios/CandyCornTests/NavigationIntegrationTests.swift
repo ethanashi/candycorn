@@ -22,7 +22,7 @@ struct NavigationIntegrationTests {
             .goals: .goals, .bringUp: .goals,
             .journal: .journal, .capture: .journal, .journalVoice: .journal, .journalWrite: .journal,
             .journalPhoto: .journal, .journalDetail: .journal, .journalSuggestions: .journal,
-            .therapySession: .history, .tmsPost: .history, .history: .history, .search: .history,
+            .therapySession: .history, .tmsPost: .history, .history: .history, .search: .history, .sessionDebrief: .history,
             .settings: .settings, .settingsPrivacy: .settings, .settingsAI: .settings, .settingsData: .settings,
         ]
         let unowned: Set<Route> = [.welcome, .recordAppointment, .activeAppointment]
@@ -44,10 +44,10 @@ struct NavigationIntegrationTests {
             .today, .goals, .journal, .history, .settings,
             .journalDetail, .journalSuggestions, .bringUp,
             .appointments, .therapySession, .prepareTherapy, .prepareTMS,
-            .search, .settingsPrivacy, .settingsAI, .settingsData,
+            .search, .settingsPrivacy, .settingsAI, .settingsData, .sessionDebrief,
         ]
 
-        #expect(visible.count == 16)
+        #expect(visible.count == 17)
         for route in Route.allCases {
             #expect(route.showsFloatingTabBar == visible.contains(route))
         }
