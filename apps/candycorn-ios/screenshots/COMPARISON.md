@@ -1,3 +1,55 @@
+# Phase 3.1 host acceptance attempt, September 3, 2026
+
+Current status: Blocked by the managed host session before compilation, test execution, simulator boot, fresh capture, or accessibility inspection. This section records the Phase 3.1 attempt at source commit `1dda055`. The older reports below remain historical evidence and are not the current result.
+
+## Current host gates
+
+| Gate | Result |
+| --- | --- |
+| Source commit | `1dda055` |
+| XcodeGen | Passed, exit 0 |
+| Required iPhone 17 build and test | Blocked, exit 74 before source compilation |
+| Swift Testing summary | Unavailable. No test executed in this attempt. |
+| Zero-error build | Unavailable. Package resolution stopped the build before compilation. |
+| Simulator device set | Blocked. CoreSimulatorService connection refused and simdiskimaged was unavailable. |
+| Fresh captures 25 through 29 | 0 of 5. Existing PNGs were inspected and left byte-for-byte unchanged. |
+| Accessibility content-size pass | Blocked. No simulator device set could boot. |
+
+The required commands run from `apps/candycorn-ios` were:
+
+```sh
+/opt/homebrew/bin/xcodegen generate
+xcodebuild -project CandyCorn.xcodeproj -scheme CandyCorn -scmProvider system -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/cc-dd CODE_SIGNING_ALLOWED=NO build test
+```
+
+Project generation succeeded. The required build and test command exited 74 with:
+
+```text
+CoreSimulatorService connection became invalid. Simulator services will no longer be available.
+Unable to discover any Simulator runtimes.
+cannot open file '/Users/ethanashihundu/Library/Caches/org.swift.swiftpm/manifests/ManifestLoading/grdb.swift.dia' for diagnostics emission (Operation not permitted)
+```
+
+The documented pre-resolved SQLCipher cache at `dd5` was present and included `SQLCipher.xcframework`. The fallback command retained `-scmProvider system` and added `-disableAutomaticPackageResolution`, but it exited 74 with the same manifest-cache permission error. A final generic simulator compile attempt with writable package and module caches reached SwiftPM, then stopped with `sandbox-exec: sandbox_apply: Operation not permitted`. `xcrun simctl list devices available` separately exited 1 with `Unable to locate device set` and `Connection refused`.
+
+## Current capture inspection
+
+| Screenshot | Current observed file | Phase 3.1 acceptance |
+| --- | --- | --- |
+| `25-openrouter-key-sheet.png` | Prior 1206 by 2622 native capture shows the OpenRouter key sheet with Save and Cancel. | Not fresh, retained unchanged |
+| `26-what-leaves-journal.png` | Prior 1206 by 2622 native capture shows What leaves this device, OpenRouter, one journal source, 215 characters, Send, and Cancel. | Not fresh, retained unchanged |
+| `27-what-leaves-photo.png` | Prior 1206 by 2622 native capture shows What leaves this device, OpenRouter, one image source, Send, and Cancel. | Not fresh, retained unchanged |
+| `28-what-leaves-session.png` | Prior 1206 by 2622 native capture shows the therapy-session route without the disclosure sheet. | Failed prior evidence, fresh result blocked |
+| `29-what-leaves-prepare.png` | Prior 1206 by 2622 native capture shows the preparation route without the disclosure sheet. | Failed prior evidence, fresh result blocked |
+
+Rows 28 and 29 cannot be promoted to Pass until fresh native captures visibly show What leaves this device, destination OpenRouter, a nonempty source ledger with exact counts, Send, and Cancel. No screenshot was resized, retouched, replaced, or fabricated during this attempt.
+
+## Phase 3.1 failure classification
+
+The implementation commits classify the reported runtime defects as mood persistence and custom-dimension handling, implicit reseeding and deletion resurrection, fallback search scope, navigation source retention and route metadata, central AI provider restoration, missing session and preparation disclosure triggers, and production NoOp checkpoint wiring. The stale regression expectations were sub-millisecond `Date` equality, an artifact count of three instead of the canonical four, lowercase `transcript excerpts` matching, and treating an absent ImageIO alpha property as evidence of alpha. These fixes are present in commits `ffee019` through `1dda055`, but the blocked host gate means this attempt does not claim integrated runtime proof.
+
+The remaining device-only contracts are signing and real-device installation, lock-screen recording, phone and Siri interruptions, Bluetooth route changes, physical camera behavior, Keychain and file protection across reboot, and live-provider accounting. These are not simulator failures.
+
 # Host capture status, September 3, 2026, 2:30 AM
 
 All 29 PNGs in this directory are real iPhone 17 Pro (iOS 26.5) captures of the merged Phase 2 plus Phase 3 main (commit 9183bf1 plus the test fix), taken on the host with `-screen <route>` and `-sheet <scenario>`. The app builds on the iPhone 17 simulator once the SQLCipher artifact is pre-placed (see docs/HANDOFF-2026-09-02.md, Keychain hang).
