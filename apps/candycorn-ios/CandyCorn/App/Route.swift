@@ -34,11 +34,13 @@ enum Route: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     // Added with the v2 front end (September 3, 2026). Appended so existing screenshot numbers stay stable.
     case journal = "/journal"
     case settings = "/settings"
+    case sessionDebrief = "/sessions/therapy-sep-2/debrief"
 
     var id: Self { self }
     var order: Int { Self.allCases.firstIndex(of: self).map { $0 + 1 } ?? 0 }
 
     var screenshotFilename: String {
+        if self == .sessionDebrief { return "32-session-debrief.png" }
         let names = [
             "welcome", "today", "check-in", "capture", "voice-rant", "text-journal",
             "journal-photo", "journal-detail", "ai-suggestions", "goals", "bring-up",
@@ -58,7 +60,7 @@ enum Route: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
         case .goals, .bringUp: .goals
         case .journal, .capture, .journalVoice, .journalWrite, .journalPhoto, .journalDetail, .journalSuggestions: .journal
         case .recordAppointment, .activeAppointment: nil
-        case .therapySession, .tmsPost, .history, .search: .history
+        case .therapySession, .tmsPost, .history, .search, .sessionDebrief: .history
         case .settings, .settingsPrivacy, .settingsAI, .settingsData: .settings
         }
     }
@@ -81,7 +83,7 @@ enum Route: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
         switch self {
         case .today, .goals, .journal, .history, .settings,
              .journalDetail, .journalSuggestions, .bringUp, .appointments,
-             .therapySession, .prepareTherapy, .prepareTMS, .search,
+             .therapySession, .sessionDebrief, .prepareTherapy, .prepareTMS, .search,
              .settingsPrivacy, .settingsAI, .settingsData:
             true
         default:

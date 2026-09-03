@@ -60,6 +60,8 @@ struct RouteDestinationView: View {
             SettingsAIView(navigation: navigation, state: state)
         case .settingsData:
             SettingsDataView(navigation: navigation, state: state)
+        case .sessionDebrief:
+            SessionDebriefView(navigation: navigation, state: state)
         }
     }
 }
