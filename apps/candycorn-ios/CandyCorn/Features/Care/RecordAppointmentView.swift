@@ -14,110 +14,94 @@ extension Appointment.Kind {
 struct RecordAppointmentView: View {
     @Bindable var navigation: NavigationModel
     @Bindable var state: DemoState
+    @State private var isStarting = false
+    @State private var startFailed = false
 
     var body: some View {
         ScreenLayout(
             title: "Record an appointment",
             subtitle: "Choose the visit type before confirming permission.",
-            backAction: { navigation.dismissPresentedFlow() },
-            backLabel: "Back to appointments",
+            backAction: navigation.backAction(for: .recordAppointment),
             bottomInset: DesignTokens.Spacing.section
         ) {
-            UnderlinePicker(
-                options: Appointment.Kind.allCases,
-                selection: appointmentKind,
-                title: { $0.displayName }
-            )
+            UnderlinePicker(options: Appointment.Kind.allCases, selection: appointmentKind, title: { $0.displayName })
             consentCard
-            Text("The original audio stays on this device before any processing. Recording is simulated in this version.")
+            if startFailed {
+                StatusNotice(title: "Recording could not start", detail: state.operationError ?? "Try again. Your existing records are unchanged.", kind: .warning)
+            }
+            Text("The original audio stays on this device before any processing.")
                 .font(TypeScale.provenance)
                 .foregroundStyle(DesignTokens.cocoaSoft)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
-                .fixedSize(horizontal: false, vertical: true)
         }
-        .interactiveDismissDisabled(state.consentAcknowledged)
-        .onAppear(perform: resetSavedRecording)
+        .interactiveDismissDisabled(isStarting)
     }
 
     private var consentCard: some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.medium) {
             HStack(alignment: .top, spacing: DesignTokens.Spacing.compact) {
                 KernelGlyph(voice: .user, height: 20, decorative: true)
-                    .padding(.top, 2)
                 VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-                    Text("Recording requires permission")
-                        .font(TypeScale.section)
-                    Text(consentReason)
-                        .font(TypeScale.body)
-                        .foregroundStyle(DesignTokens.cocoaSoft)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Recording requires permission").font(TypeScale.section)
+                    Text("Ask everyone in the room before recording. Recording must be permitted where you are.")
+                        .font(TypeScale.body).foregroundStyle(DesignTokens.cocoaSoft)
                 }
             }
-            consentToggle
-            startButton
-        }
-        .foregroundStyle(DesignTokens.cocoa)
-        .padding(DesignTokens.Spacing.medium)
-        .background(DesignTokens.surface)
-        .overlay(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous).stroke(DesignTokens.hairline))
-        .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
-    }
-
-    private var consentToggle: some View {
-        Button {
-            state.consentAcknowledged.toggle()
-        } label: {
-            HStack(spacing: DesignTokens.Spacing.compact) {
-                Image(systemName: state.consentAcknowledged ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 24, weight: .regular))
-                    .foregroundStyle(state.consentAcknowledged ? DesignTokens.orangePressed : DesignTokens.cocoaSoft)
-                    .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum)
-                Text("I have permission to record this appointment")
-                    .font(TypeScale.bodyMedium)
-                    .foregroundStyle(DesignTokens.cocoa)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
+            Button { state.consentAcknowledged.toggle() } label: {
+                HStack(spacing: DesignTokens.Spacing.compact) {
+                    Image(systemName: state.consentAcknowledged ? "checkmark.square.fill" : "square")
+                        .font(.system(size: 24)).foregroundStyle(state.consentAcknowledged ? DesignTokens.orangePressed : DesignTokens.cocoa)
+                        .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum)
+                    Text("I have permission to record this appointment").font(TypeScale.bodyMedium)
+                }
+                .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-            .padding(.horizontal, DesignTokens.Spacing.compact)
-            .background(DesignTokens.surfaceWarm)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .buttonStyle(.plain)
+            .accessibilityValue(state.consentAcknowledged ? "Checked" : "Not checked")
+            Button(isStarting ? "Starting" : "Start recording", action: start)
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(!state.consentAcknowledged || isStarting)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("I have permission to record this appointment")
-        .accessibilityValue(state.consentAcknowledged ? "Checked" : "Not checked")
-        .accessibilityHint(consentReason)
-    }
-
-    private var startButton: some View {
-        Button("Start recording", action: start)
-            .buttonStyle(PrimaryButtonStyle())
-            .disabled(!state.consentAcknowledged || state.appointmentRecording != .idle)
-            .opacity(state.consentAcknowledged ? 1 : 0.48)
-            .accessibilityHint(state.consentAcknowledged ? "Starts a simulated recording" : consentReason)
+        .padding(DesignTokens.Spacing.medium)
+        .overlay(RoundedRectangle(cornerRadius: DesignTokens.cardRadius).stroke(DesignTokens.hairline))
     }
 
     private var appointmentKind: Binding<Appointment.Kind> {
-        Binding(
-            get: { state.selectedAppointmentKind },
-            set: { state.selectAppointmentKind($0) }
-        )
-    }
-
-    private var consentReason: String {
-        "Ask everyone in the room before recording. Start stays unavailable until you confirm."
+        Binding(get: { state.selectedAppointmentKind }, set: { state.selectAppointmentKind($0) })
     }
 
     private func start() {
-        guard state.startAppointmentRecording() else { return }
-        navigation.navigate(to: .activeAppointment)
+        guard state.consentAcknowledged, !isStarting else { return }
+        isStarting = true
+        startFailed = false
+        Task {
+            guard let appointment = await appointmentForRecording() else {
+                startFailed = true
+                isStarting = false
+                return
+            }
+            if await state.startRecording(kind: .appointment(id: appointment.id)) {
+                _ = state.startAppointmentRecording()
+                navigation.goBack(from: .recordAppointment)
+                navigation.navigate(to: .activeAppointment)
+            } else {
+                startFailed = true
+            }
+            isStarting = false
+        }
     }
 
-    private func resetSavedRecording() {
-        guard case .saved = state.appointmentRecording else { return }
-        let selected = state.selectedAppointmentKind
-        state.selectAppointmentKind(selected == .therapy ? .other : .therapy)
-        state.selectAppointmentKind(selected)
+    private func appointmentForRecording() async -> Appointment? {
+        if let existing = state.appointments.first(where: { $0.kind == state.selectedAppointmentKind && $0.status == .planned }) {
+            return existing
+        }
+        let now = state.dependencies.now()
+        let appointment = Appointment(
+            id: UUID(), kind: state.selectedAppointmentKind, scheduledAt: now, startedAt: now,
+            endedAt: nil, providerID: nil, providerName: "Care appointment",
+            recordingAttachmentID: nil, transcriptID: nil, summaryID: nil, status: .recording
+        )
+        return await state.saveAppointment(appointment) ? appointment : nil
     }
 }

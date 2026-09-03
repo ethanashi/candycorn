@@ -72,6 +72,7 @@ struct Appointment: Identifiable, Codable, Equatable, Sendable {
     var transcriptID: UUID?
     var summaryID: UUID?
     var status: Status
+    var manualNotes: String = ""
 }
 
 struct Goal: Identifiable, Codable, Equatable, Sendable {
@@ -145,4 +146,81 @@ struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
     let endMilliseconds: Int
     var text: String
     var confidence: Double?
+}
+
+enum AttachmentKind: String, Codable, Sendable {
+    case audio
+    case image
+    case document
+}
+
+struct Attachment: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    let kind: AttachmentKind
+    let relativePath: String
+    let mediaType: String
+    let byteCount: Int64
+    let durationMilliseconds: Int?
+    let createdAt: Date
+    let isSample: Bool
+}
+
+struct ProviderProfile: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    var name: String
+    var appointmentKind: Appointment.Kind
+    var isSample: Bool
+}
+
+struct GoalProgress: Identifiable, Codable, Equatable, Sendable {
+    enum Source: String, Codable, Sendable {
+        case userConfirmed
+        case aiSuggestedProgress
+    }
+
+    let id: UUID
+    let goalID: UUID
+    var sourceEntryID: UUID?
+    var note: String
+    var source: Source
+    let createdAt: Date
+}
+
+struct VaultSettings: Codable, Equatable, Sendable {
+    var useSampleContent: Bool
+    var audioRetention: AudioRetentionChoice
+    var aiMode: AIMode
+    var aiProvider: AIProvider
+}
+
+struct CareSnapshot: Sendable, Equatable {
+    var journals: [JournalEntry]
+    var moods: [MoodLog]
+    var appointments: [Appointment]
+    var goals: [Goal]
+    var goalProgress: [GoalProgress]
+    var talkingPoints: [TalkingPoint]
+    var artifacts: [AIArtifact]
+    var attachments: [Attachment]
+    var providers: [ProviderProfile]
+    var transcript: [TranscriptSegment]
+    var settings: VaultSettings
+}
+
+enum SearchEntityKind: String, Codable, Sendable {
+    case journal
+    case mood
+    case appointment
+    case goal
+    case talkingPoint
+    case summary
+}
+
+struct SearchHit: Identifiable, Codable, Equatable, Sendable {
+    let id: String
+    let entityID: UUID
+    let kind: SearchEntityKind
+    let title: String
+    let excerpt: String
+    let occurredAt: Date
 }

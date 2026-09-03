@@ -1,8 +1,10 @@
 # Candy Corn for iPhone
 
-This directory contains the Phase 1 native SwiftUI application shell. It uses iOS 26, Swift 6, Observation, and Swift Testing. The Xcode project is generated from `project.yml` and must not be edited or committed.
+Candy Corn is a native, offline-first SwiftUI journal for continuity between mental health visits. Phase 2 stores journals, mood check-ins, goals, talking points, appointments, and attachments in a local care vault. It records voice journals and appointments, captures journal photos, searches local records, plays saved audio, and exports a readable folder without adding an account, network service, analytics, or AI processing.
 
-All content is seeded and fictional. Recording, camera capture, AI processing, export, and persistence are simulated. The app does not request permissions, access a device sensor, send a network request, create an export, or persist a change.
+The app targets iOS 26 in Swift 6 language mode with Observation and Swift Testing. The Xcode project is generated from `project.yml`. Never edit or commit the generated project.
+
+All bundled sample content is fictional and belongs to Jamie Rivera. Do not use real patient content in screenshots, tests, logs, or commits.
 
 ## Generate, build, and test
 
@@ -14,11 +16,29 @@ xcodebuild -project CandyCorn.xcodeproj -scheme CandyCorn -destination 'platform
 xcodebuild -project CandyCorn.xcodeproj -scheme CandyCorn -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/candycorn-ios-derived-data CODE_SIGNING_ALLOWED=NO test
 ```
 
-The app supports iPhone portrait orientation. Code signing, device installation, deployment, and App Store work are outside this phase.
+The tests cover vault migrations, SQLCipher availability and wrong-key rejection, repositories, Keychain behavior through a test seam, FTS5 and LIKE search, exports, logging privacy, navigation, mood interactions, media state machines, and runtime bootstrap.
+
+The app supports iPhone portrait orientation. Simulator builds disable code signing. Device builds require the operator's normal signing setup and must not add secrets to the repository.
+
+## Runtime modes and storage
+
+A normal launch uses the production dependency graph:
+
+- `care.db` is stored below the app's Application Support directory and opened with the SQLCipher-enabled GRDB package.
+- A 256-bit vault key is created once and kept in Keychain with this-device-only, after-first-unlock accessibility.
+- Audio, images, and documents live below the vault attachment root in separate directories.
+- Raw recordings and photos are immutable sources. Derived records remain separate and keep provenance.
+- Event logging accepts event names, durations, and counts only. It does not accept journal text, notes, titles, transcript text, payloads, or content-bearing paths.
+
+The first normal launch seeds the fictional Jamie Rivera thread. In Settings, `Use sample content` removes or restores only fictional rows and sample attachments. User-created records remain. Restoring samples inserts missing fixtures without duplicating them.
+
+Passing `-screen <route>` selects deterministic screenshot mode. That mode uses in-memory seeded data and fake recording, playback, photo, and export adapters. It does not open the production vault, request permissions, or write patient content. A normal launch without `-screen` is required for persistence and native media acceptance.
+
+`Delete everything` requires the exact typed value `DELETE`. A successful deletion removes the database and attachments, rotates the vault key, leaves sample content off, and returns an empty usable vault.
 
 ## Routes
 
-Pass `-screen <route>` at launch to open one screen deterministically. A missing, incomplete, or unknown route starts the welcome flow.
+Pass `-screen <route>` at launch to open one screen deterministically. A missing, incomplete, or unknown route follows the normal onboarding path.
 
 | Screen | Route | Screenshot |
 | --- | --- | --- |
@@ -47,21 +67,20 @@ Pass `-screen <route>` at launch to open one screen deterministically. A missing
 | AI and processing settings | `/settings/ai` | `23-settings-ai.png` |
 | Data and export settings | `/settings/data` | `24-settings-data.png` |
 
-The active appointment route prepares consent and a simulated running timer only when launched with that screenshot argument. Normal access without consent shows the recording guard.
+The active appointment screenshot route prepares deterministic consent and recording state. Normal access still requires the user's acknowledgement and microphone authorization.
 
-## Capture simulator screenshots
+## Capture native screenshots
 
-Use the installed iPhone 17 simulator running iOS 26.5. After a successful build:
+Use an iPhone 17 simulator after a successful named build:
 
 ```sh
 open -a Simulator
 xcrun simctl boot 'iPhone 17'
 xcrun simctl bootstatus booted -b
 xcrun simctl install booted /tmp/candycorn-ios-derived-data/Build/Products/Debug-iphonesimulator/CandyCorn.app
-mkdir -p screenshots
 ```
 
-Launch and capture one route at a time:
+Launch and capture one route at a time, using the route and filename table above:
 
 ```sh
 xcrun simctl launch --terminate-running-process booted dev.candycorn.app -screen /today
@@ -69,25 +88,53 @@ sleep 1
 xcrun simctl io booted screenshot screenshots/02-today.png
 ```
 
-Repeat with every route and filename in the table. These files must come from the native simulator. The approved references are in `../candycorn-prototype/screenshots/`, with the strongest visual pins in `../candycorn-prototype/design/sheet/`.
+Wait for each route to settle before capture. A permission alert means screenshot mode did not initialize and the capture is invalid. Every accepted PNG must come directly from `simctl io`; do not resize a prototype render. Compare against `../candycorn-prototype/screenshots/` and the accepted pins in `../candycorn-prototype/design/sheet/`.
 
-For accessibility checks, set an accessibility content size in the simulator and inspect Today, Goals, Therapy session, Prepare for therapy, and AI settings. Copy and controls must remain readable, scrollable, and reachable.
+For accessibility acceptance, inspect Today, Goals, Therapy session, Prepare for therapy, and AI settings at an accessibility content size. Confirm every item remains reachable by scrolling, text does not clip or overlap, and controls remain at least 44 points. Repeat with Reduce Motion enabled and confirm state remains understandable without pulsing or required travel.
 
-## Navigation and simulated state
+## Normal simulator acceptance
 
-The app uses five retained `NavigationStack` instances and a custom floating bar for Today, Journal, Prepare, History, and Settings. Capture and recording routes are full-screen flows. Switching tabs preserves each tab path. State changes live only in memory and reset on relaunch.
+Do not pass `-screen` for these checks. Use only disposable fictional content.
 
-## Future device contracts
+1. Create a text journal, mood log, goal, and talking point. Terminate and relaunch the app, then confirm all four remain.
+2. Turn off sample content. Confirm the Jamie Rivera examples disappear and the four user records remain. Turn samples back on twice and confirm no duplication.
+3. Record and save a voice journal, play it from the saved screen and journal detail, then record an appointment for more than 15 seconds and confirm its duration survives relaunch.
+4. Run a search that crosses journals, goals, and talking points. Confirm a no-results query shows the local empty state.
+5. Create an export. Inspect its Markdown entries, `index.json`, and copied attachments before presenting the share sheet. Dismiss or complete sharing and confirm the temporary folder is removed.
+6. Against disposable simulator data only, type `DELETE`, delete everything, and relaunch. Confirm the vault is empty, usable, and does not silently restore samples.
 
-These contracts guide later native adapters. None are implemented in Phase 1.
+Export packages are assembled below the app's system temporary directory. The share sheet receives the completed folder only. Dismissing the sheet calls export cleanup; cancelled or failed assembly removes partial staging content.
 
-| Capability | Later contract | Phase 1 behavior |
-| --- | --- | --- |
-| Microphone and recording | Explain why access is needed, request consent at the action boundary, honor participant acknowledgement, handle interruptions and route changes, define background behavior, preserve the immutable source audio, and validate on a real device. | Simulated timer and waveform only. No permission request or audio session. |
-| Camera | Request permission only when capture begins, handle denial and cancellation, preserve the immutable source photo beside extracted text, and validate focus, rotation, and memory use on a real device. | Static journal-page fixture only. No camera access. |
-| Local vault | Encrypt originals and derived artifacts at rest, keep vault keys in Keychain, preserve provenance and source identifiers, and test recovery and migration. | Fresh in-memory seeded state on every launch. No database or Keychain access. |
-| Cloud AI | Show what will leave the device, require an enabled mode and provider, minimize selected content, record provider and model provenance, preserve originals, and make failure safe and retryable. | Choice controls and deterministic suggestions only. No model or network call. |
-| Export | Build a user-requested archive, show its contents before sharing, protect temporary files, and clean them up after the share flow. | Preview text only. No file is created. |
-| Real-device proof | Validate permission prompts, interruptions, background transitions, thermal and memory behavior, accessibility, and source preservation on supported iPhones. | Simulator build, tests, and renders only. |
+## Test recording in the simulator
 
-The protocol boundaries for recording, photo capture, processing, and export are declared in `CandyCorn/App/Capabilities.swift` so later device adapters can be added without changing product views.
+1. Boot and install the app, then configure the Simulator to use the Mac microphone as its audio input.
+2. Launch normally. Tap Talk or Record appointment and accept the microphone prompt. The prompt must not appear before the tap.
+3. Speak and confirm the timer advances and the waveform responds to real meter levels.
+4. Stop and save. Play the recording from the saved screen and journal detail.
+5. Record an appointment past 15 seconds. Confirm the displayed duration advances and the saved duration survives app relaunch.
+6. Disconnect or change the simulator input route while recording. The app must stop, finalize the source, and show `Recording stopped` with `Saved on this device` when a valid file exists.
+7. If the simulator exposes no camera source, confirm the unavailable state preserves existing content. Camera capture remains a real-device check.
+
+Reset the simulator's microphone permission between prompt checks if needed:
+
+```sh
+xcrun simctl privacy booted reset microphone dev.candycorn.app
+```
+
+## Real-iPhone acceptance checklist
+
+These items require a signed build on a real iPhone and are not proven by simulator tests or screenshot mode:
+
+- Confirm the microphone prompt appears only after Talk or Start recording is tapped.
+- Save a journal recording and play it from both the saved screen and journal detail.
+- Record an appointment for more than 15 seconds, lock the phone, and confirm recording continues with background audio.
+- Force termination after a 15-second checkpoint and confirm the last persisted duration supports recovery.
+- Receive a phone call and invoke Siri during separate recordings. Each interruption must stop and save a valid source, then show a clear stopped state.
+- Connect, switch, and disconnect Bluetooth input routes. Confirm route changes never discard a finalized recording.
+- Navigate away from and back to an active appointment recording. Confirm recording state and duration remain coherent.
+- Test camera permission denial, Settings recovery, cancellation, portrait rotation handling, focus, capture, and immutable JPEG display in journal detail.
+- Reboot the phone. Before first unlock the vault should remain protected; after first unlock, protected files and background appointment behavior should work as documented.
+- Complete and cancel the share sheet in separate exports. Confirm both temporary export folders are cleaned up.
+- With disposable device data, type `DELETE`, delete everything, and confirm an empty relaunch with sample content still off.
+
+Record the device model, iOS version, audio route, and pass or fail result for each item. Do not record journal content, filenames containing user content, database paths, or media payloads.

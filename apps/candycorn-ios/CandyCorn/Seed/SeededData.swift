@@ -97,6 +97,58 @@ enum SeededData {
         artifact("70000000-0000-0000-0000-000000000003", .appointmentBrief, [footballJournalID, timelineJournalID, therapySessionID], "{\"editable\":true}"),
     ]
 
+    static let attachments: [Attachment] = [
+        Attachment(
+            id: uuid("11000000-0000-0000-0000-000000000001"),
+            kind: .audio,
+            relativePath: "audio/sample-football.m4a",
+            mediaType: "audio/mp4",
+            byteCount: 1_024,
+            durationMilliseconds: 137_000,
+            createdAt: date(1_788_646_680),
+            isSample: true
+        ),
+        Attachment(
+            id: uuid("32000000-0000-0000-0000-000000000001"),
+            kind: .audio,
+            relativePath: "audio/sample-therapy.m4a",
+            mediaType: "audio/mp4",
+            byteCount: 2_048,
+            durationMilliseconds: 3_120_000,
+            createdAt: date(1_788_382_800),
+            isSample: true
+        ),
+    ]
+
+    static let providers: [ProviderProfile] = [
+        ProviderProfile(id: uuid("31000000-0000-0000-0000-000000000001"), name: therapyProviderName, appointmentKind: .therapy, isSample: true),
+        ProviderProfile(id: uuid("31000000-0000-0000-0000-000000000002"), name: tmsProviderName, appointmentKind: .tms, isSample: true),
+    ]
+
+    static var careSnapshot: CareSnapshot {
+        CareSnapshot(
+            journals: journalEntries,
+            moods: moodLogs,
+            appointments: appointments,
+            goals: goals,
+            goalProgress: [],
+            talkingPoints: talkingPoints,
+            artifacts: aiArtifacts,
+            attachments: attachments,
+            providers: providers,
+            transcript: transcript,
+            settings: VaultSettings(useSampleContent: true, audioRetention: .ask, aiMode: .off, aiProvider: .off)
+        )
+    }
+
+    static var emptySnapshot: CareSnapshot {
+        CareSnapshot(
+            journals: [], moods: [], appointments: [], goals: [], goalProgress: [],
+            talkingPoints: [], artifacts: [], attachments: [], providers: [], transcript: [],
+            settings: VaultSettings(useSampleContent: false, audioRetention: .ask, aiMode: .off, aiProvider: .off)
+        )
+    }
+
     private static func uuid(_ value: String) -> UUID {
         guard let id = UUID(uuidString: value) else { preconditionFailure("Seed UUID must be valid") }
         return id

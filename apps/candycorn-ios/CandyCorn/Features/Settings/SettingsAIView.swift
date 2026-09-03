@@ -62,17 +62,27 @@ enum AISettingsLogic {
 struct SettingsAIView: View {
     @Bindable var navigation: NavigationModel
     @Bindable var state: DemoState
+    var embedded = false
+    @State private var isUpdating = false
 
     private var status: AIProcessingStatus {
         AISettingsLogic.processingStatus(mode: state.aiMode, provider: state.aiProvider)
     }
 
     var body: some View {
-        ScreenLayout(
-            title: "AI and processing",
-            subtitle: "The first version plans to use a cloud router when AI is on. No request is sent in this shell."
-        ) {
-            SettingsSectionPicker(current: .ai, navigation: navigation)
+        Group {
+            if embedded {
+                content
+            } else {
+                ScreenLayout(title: "AI and processing", subtitle: "AI is off by default. Your local journal works without it.") {
+                    SettingsSectionPicker(navigation: navigation)
+                    content
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var content: some View {
             processingLedger
             if !state.routerAvailable {
                 unavailableRouter
@@ -84,7 +94,6 @@ struct SettingsAIView: View {
                 detail: AISettingsLogic.leavesDeviceCopy(mode: state.aiMode, provider: state.aiProvider),
                 kind: state.aiMode == .off || state.aiProvider == .off ? .saved : .information
             )
-        }
     }
 
     private var processingLedger: some View {
@@ -114,10 +123,11 @@ struct SettingsAIView: View {
                 .font(TypeScale.provenance)
                 .foregroundStyle(DesignTokens.cocoaSoft)
                 .fixedSize(horizontal: false, vertical: true)
-            Button("Turn AI off") { AISettingsLogic.selectMode(.off, in: state) }
+            Button("Turn AI off") { updateMode(.off) }
                 .font(TypeScale.bodyMedium)
-                .foregroundStyle(DesignTokens.orangePressed)
+                .foregroundStyle(DesignTokens.cocoa)
                 .frame(minHeight: DesignTokens.controlMinimum)
+                .disabled(isUpdating)
         }
         .padding(DesignTokens.Spacing.base)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -136,6 +146,7 @@ struct SettingsAIView: View {
                 .foregroundStyle(DesignTokens.cocoaSoft)
                 .fixedSize(horizontal: false, vertical: true)
             UnderlinePicker(options: AIMode.allCases, selection: modeBinding) { modeTitle($0) }
+                .disabled(isUpdating)
             Text(AISettingsLogic.modeDescription(state.aiMode))
                 .font(TypeScale.label)
                 .foregroundStyle(DesignTokens.cocoaSoft)
@@ -163,14 +174,15 @@ struct SettingsAIView: View {
                 title: "Router",
                 detail: state.routerAvailable ? "First-version cloud processing." : "Unavailable right now. Originals are unaffected.",
                 selected: state.aiProvider == .router,
-                disabled: !AISettingsLogic.canSelect(.router, in: state),
-                action: { state.setAIProvider(.router) }
+                disabled: isUpdating || !AISettingsLogic.canSelect(.router, in: state),
+                action: { updateProvider(.router) }
             )
             SettingsChoiceRow(
                 title: "Off",
                 detail: "No AI processing leaves this device.",
                 selected: state.aiProvider == .off,
-                action: { state.setAIProvider(.off) }
+                disabled: isUpdating,
+                action: { updateProvider(.off) }
             )
         }
     }
@@ -178,7 +190,7 @@ struct SettingsAIView: View {
     private var modeBinding: Binding<AIMode> {
         Binding(
             get: { state.aiMode },
-            set: { AISettingsLogic.selectMode($0, in: state) }
+            set: { updateMode($0) }
         )
     }
 
@@ -187,6 +199,25 @@ struct SettingsAIView: View {
         case .off: "Off"
         case .organizer: "Organizer"
         case .reflection: "Reflection"
+        }
+    }
+
+    private func updateMode(_ mode: AIMode) {
+        guard !isUpdating else { return }
+        AISettingsLogic.selectMode(mode, in: state)
+        isUpdating = true
+        Task {
+            _ = await state.updateSettings(state.settings)
+            isUpdating = false
+        }
+    }
+
+    private func updateProvider(_ provider: AIProvider) {
+        guard !isUpdating else { return }
+        isUpdating = true
+        Task {
+            _ = await state.persistAIProvider(provider)
+            isUpdating = false
         }
     }
 }

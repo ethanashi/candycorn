@@ -26,21 +26,43 @@ struct GoalLedgerSectionModel: Equatable, Sendable {
 enum GoalLedgerModel {
     static func sections(for goals: [Goal]) -> [GoalLedgerSectionModel] {
         GoalLedgerCadence.allCases.map { cadence in
-            GoalLedgerSectionModel(cadence: cadence, goals: goals.filter(cadence.includes))
+            GoalLedgerSectionModel(cadence: cadence, goals: goals.filter { cadence.includes($0) && $0.status != .dismissed })
         }
     }
 }
 
+struct GoalEditorDraft: Identifiable, Equatable, Sendable {
+    let id = UUID()
+    var existing: Goal?
+    var title: String
+    var detail: String
+    var cadence: Goal.Cadence
+
+    init(goal: Goal? = nil) {
+        existing = goal
+        title = goal?.title ?? ""
+        detail = goal?.detail ?? ""
+        cadence = goal?.cadence ?? .weekly
+    }
+}
+
 struct GoalsView: View {
+    @Bindable var navigation: NavigationModel
     @Bindable var state: DemoState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var expanded = Set(GoalLedgerCadence.allCases)
+    @State private var editor: GoalEditorDraft?
 
     var body: some View {
         ScreenLayout(
             title: "Goals",
-            subtitle: "What you chose, what was assigned, and what still needs your approval."
+            subtitle: "What you chose, what was assigned, and what still needs your approval.",
+            backAction: navigation.backAction(for: .goals)
         ) {
+            Button { editor = GoalEditorDraft() } label: {
+                Label("Add goal", systemImage: "plus")
+            }
+            .buttonStyle(SecondaryButtonStyle())
             LazyVStack(alignment: .leading, spacing: 0) {
                 Divider().overlay(DesignTokens.hairline)
                 ForEach(GoalLedgerModel.sections(for: state.goals), id: \.cadence) { section in
@@ -48,10 +70,14 @@ struct GoalsView: View {
                         section: section,
                         isExpanded: expanded.contains(section.cadence),
                         onToggleSection: { toggle(section.cadence) },
-                        onToggleGoal: state.toggleGoal
+                        onEdit: { editor = GoalEditorDraft(goal: $0) },
+                        onStatus: updateStatus
                     )
                 }
             }
+        }
+        .sheet(item: $editor) { draft in
+            GoalEditorSheet(draft: draft, onCancel: { editor = nil }, onSave: save)
         }
     }
 
@@ -64,13 +90,40 @@ struct GoalsView: View {
             }
         }
     }
+
+    private func updateStatus(_ goal: Goal, _ status: Goal.Status) {
+        Task { _ = await state.transitionGoal(id: goal.id, to: status) }
+    }
+
+    private func save(_ draft: GoalEditorDraft) async -> Bool {
+        let trimmed = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let goal: Goal
+        if var existing = draft.existing {
+            existing.title = trimmed
+            existing.detail = draft.detail.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            existing.cadence = draft.cadence
+            goal = existing
+        } else {
+            let now = state.dependencies.now()
+            goal = Goal(
+                id: UUID(), title: trimmed,
+                detail: draft.detail.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                cadence: draft.cadence, source: .userExplicit, sourceEntityID: nil,
+                sourceTimestampMilliseconds: nil, status: .active, createdAt: now, targetDate: nil,
+                provenance: Provenance(voice: .user, label: "You chose this", detail: "Created in Goals", occurredAt: now, sourceRoute: .goals)
+            )
+        }
+        return await state.saveGoal(goal)
+    }
 }
 
 private struct GoalLedgerSection: View {
     let section: GoalLedgerSectionModel
     let isExpanded: Bool
     let onToggleSection: () -> Void
-    let onToggleGoal: (UUID) -> Void
+    let onEdit: (Goal) -> Void
+    let onStatus: (Goal, Goal.Status) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -105,7 +158,7 @@ private struct GoalLedgerSection: View {
                         .overlay(alignment: .top) { Divider().overlay(DesignTokens.hairline) }
                 } else {
                     ForEach(section.goals) { goal in
-                        GoalLedgerRow(goal: goal) { onToggleGoal(goal.id) }
+                        GoalLedgerRow(goal: goal, onEdit: { onEdit(goal) }, onStatus: { onStatus(goal, $0) })
                     }
                 }
             }
@@ -116,11 +169,12 @@ private struct GoalLedgerSection: View {
 
 private struct GoalLedgerRow: View {
     let goal: Goal
-    let onToggle: () -> Void
+    let onEdit: () -> Void
+    let onStatus: (Goal.Status) -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: DesignTokens.Spacing.small) {
-            Button(action: onToggle) {
+            Button { onStatus(goal.status == .completed ? .active : .completed) } label: {
                 ZStack {
                     Circle()
                         .fill(goal.status == .completed ? DesignTokens.sage : DesignTokens.surface)
@@ -151,7 +205,74 @@ private struct GoalLedgerRow: View {
             .padding(.top, DesignTokens.Spacing.small)
             .padding(.bottom, DesignTokens.Spacing.compact)
             .frame(maxWidth: .infinity, alignment: .leading)
+            Menu {
+                Button("Edit", action: onEdit)
+                if goal.status == .paused {
+                    Button("Resume") { onStatus(.active) }
+                } else {
+                    Button("Pause") { onStatus(.paused) }
+                }
+                Button("Dismiss", role: .destructive) { onStatus(.dismissed) }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum)
+            }
+            .foregroundStyle(DesignTokens.cocoa)
         }
         .overlay(alignment: .top) { Divider().overlay(DesignTokens.hairline) }
+    }
+}
+
+private struct GoalEditorSheet: View {
+    @State var draft: GoalEditorDraft
+    @State private var isSaving = false
+    let onCancel: () -> Void
+    let onSave: (GoalEditorDraft) async -> Bool
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Goal", text: $draft.title)
+                TextField("Optional detail", text: $draft.detail, axis: .vertical)
+                Picker("Cadence", selection: $draft.cadence) {
+                    ForEach(Goal.Cadence.allCases, id: \.self) { cadence in
+                        Text(cadence.title).tag(cadence)
+                    }
+                }
+            }
+            .navigationTitle(draft.existing == nil ? "Add goal" : "Edit goal")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel", action: onCancel) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isSaving ? "Saving" : "Save") {
+                        guard !isSaving else { return }
+                        isSaving = true
+                        Task {
+                            if await onSave(draft) { onCancel() }
+                            isSaving = false
+                        }
+                    }
+                    .disabled(isSaving || draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+private extension Goal.Cadence {
+    var title: String {
+        switch self {
+        case .oneOff: "One time"
+        case .daily: "Daily"
+        case .weekly: "Weekly"
+        case .monthly: "Monthly"
+        case .ongoing: "Ongoing"
+        case .observation: "Observation"
+        case .homework: "Homework"
+        }
     }
 }

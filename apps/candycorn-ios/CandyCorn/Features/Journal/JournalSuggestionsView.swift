@@ -61,12 +61,13 @@ struct JournalSuggestionsView: View {
     @Bindable var navigation: NavigationModel
     @Bindable var state: DemoState
     @State private var retryAttempted = false
+    @State private var pendingIDs: Set<UUID> = []
 
     var body: some View {
         ScreenLayout(
             title: "Suggestions",
             subtitle: "Nothing here changes your original.",
-            backAction: { navigation.navigate(to: .journalDetail) }
+            backAction: navigation.backAction(for: .journalSuggestions)
         ) {
             if state.aiMode == .off {
                 unavailableCard(
@@ -101,9 +102,10 @@ struct JournalSuggestionsView: View {
                     provenance: point.provenance,
                     text: point.text,
                     added: state.talkingPoints.contains { $0.id == point.id },
+                    pending: pendingIDs.contains(point.id),
                     action: "Add to next appointment"
                 ) {
-                    _ = state.addTalkingPoint(point)
+                    save(point)
                 }
             }
 
@@ -112,9 +114,10 @@ struct JournalSuggestionsView: View {
                 provenance: JournalSuggestionFixtures.goal.provenance,
                 text: JournalSuggestionFixtures.goal.title,
                 added: state.goals.contains { $0.id == JournalSuggestionFixtures.goal.id },
+                pending: pendingIDs.contains(JournalSuggestionFixtures.goal.id),
                 action: "Add as a goal"
             ) {
-                _ = state.addGoal(JournalSuggestionFixtures.goal)
+                save(JournalSuggestionFixtures.goal)
             }
         }
         .padding(DesignTokens.Spacing.base)
@@ -126,6 +129,7 @@ struct JournalSuggestionsView: View {
         provenance: Provenance,
         text: String,
         added: Bool,
+        pending: Bool,
         action: String,
         onAdd: @escaping () -> Void
     ) -> some View {
@@ -138,7 +142,7 @@ struct JournalSuggestionsView: View {
             Button(action: onAdd) {
                 HStack(spacing: DesignTokens.Spacing.small) {
                     if added { Image(systemName: AppIcon.check.rawValue) }
-                    Text(added ? "Added" : action)
+                    Text(added ? "Added" : pending ? "Saving" : action)
                 }
                 .font(TypeScale.label)
                 .foregroundStyle(added ? DesignTokens.sage : DesignTokens.cocoa)
@@ -147,8 +151,24 @@ struct JournalSuggestionsView: View {
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(added ? DesignTokens.sage : DesignTokens.cocoa, lineWidth: 1))
             }
             .buttonStyle(.plain)
-            .disabled(added)
+            .disabled(added || pending)
             .accessibilityValue(added ? "Added" : "Not added")
+        }
+    }
+
+    private func save(_ point: TalkingPoint) {
+        guard pendingIDs.insert(point.id).inserted else { return }
+        Task {
+            _ = await state.saveTalkingPoint(point)
+            pendingIDs.remove(point.id)
+        }
+    }
+
+    private func save(_ goal: Goal) {
+        guard pendingIDs.insert(goal.id).inserted else { return }
+        Task {
+            _ = await state.saveGoal(goal)
+            pendingIDs.remove(goal.id)
         }
     }
 

@@ -2,10 +2,12 @@ import SwiftUI
 
 struct TMSPostSessionView: View {
     @Bindable var navigation: NavigationModel
+    @Bindable var state: DemoState
     @State private var snapshot = TMSCheckInSnapshot(mood: 6, anxiety: 5, energy: 4, distress: 5)
     @State private var providerInstructions = "Keep the usual schedule and note anything you want to discuss next time."
     @State private var nextItem = "Ask whether the head pressure is expected to stay this brief."
     @State private var saved = false
+    @State private var isSaving = false
 
     var body: some View {
         if saved { savedView } else { checkInView }
@@ -15,8 +17,7 @@ struct TMSPostSessionView: View {
         ScreenLayout(
             title: "After TMS",
             subtitle: "Record what you notice without assigning a cause.",
-            backAction: { navigation.navigate(to: .appointments) },
-            backLabel: "Back to appointments",
+            backAction: navigation.backAction(for: .tmsPost),
             bottomInset: DesignTokens.Spacing.section
         ) {
             TMSMeasuresEditor(snapshot: $snapshot)
@@ -30,8 +31,11 @@ struct TMSPostSessionView: View {
                 .padding(DesignTokens.Spacing.base)
                 .background(DesignTokens.surfaceWarm)
                 .clipShape(RoundedRectangle(cornerRadius: DesignTokens.controlRadius))
-            Button("Save post-session check-in") { saved = true }
+            Button(isSaving ? "Saving" : "Save post-session check-in") {
+                saveCheckIn()
+            }
                 .buttonStyle(PrimaryButtonStyle())
+                .disabled(isSaving)
         }
     }
 
@@ -39,8 +43,7 @@ struct TMSPostSessionView: View {
         ScreenLayout(
             title: "Post-session check-in saved",
             subtitle: "Saved on this device.",
-            backAction: { navigation.navigate(to: .appointments) },
-            backLabel: "Back to appointments",
+            backAction: navigation.backAction(for: .tmsPost),
             bottomInset: DesignTokens.Spacing.section
         ) {
             StatusNotice(
@@ -79,5 +82,26 @@ struct TMSPostSessionView: View {
                 .accessibilityLabel(title)
         }
         .foregroundStyle(DesignTokens.cocoa)
+    }
+
+    private func saveCheckIn() {
+        guard !isSaving else { return }
+        isSaving = true
+        Task {
+            let mood = MoodLog(
+                id: UUID(), createdAt: state.dependencies.now(), mood: snapshot.mood,
+                anxiety: snapshot.anxiety, energy: snapshot.energy,
+                customValues: ["distress": snapshot.distress], note: nil
+            )
+            guard await state.persistMood(mood) else {
+                isSaving = false
+                return
+            }
+            if !nextItem.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                _ = await state.createTalkingPoint(text: nextItem, source: .manual, targetAppointmentKind: .tms)
+            }
+            saved = true
+            isSaving = false
+        }
     }
 }

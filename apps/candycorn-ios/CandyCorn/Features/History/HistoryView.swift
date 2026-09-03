@@ -8,10 +8,12 @@ enum HistoryFilter: String, CaseIterable, Hashable, Sendable {
     case tms = "TMS"
 }
 
-enum HistoryDay: String, CaseIterable, Hashable, Sendable {
-    case sep5 = "Sep 5"
-    case sep3 = "Sep 3"
-    case sep2 = "Sep 2"
+struct HistoryDay: Hashable, Sendable {
+    let rawValue: String
+
+    static let sep5 = HistoryDay(rawValue: "Sep 5")
+    static let sep3 = HistoryDay(rawValue: "Sep 3")
+    static let sep2 = HistoryDay(rawValue: "Sep 2")
 }
 
 struct HistoryRecord: Identifiable, Equatable, Sendable {
@@ -22,9 +24,66 @@ struct HistoryRecord: Identifiable, Equatable, Sendable {
     let time: String
     let excerpt: String
     let destination: Route
+    let occurredAt: Date
+    let entityID: UUID?
+
+    init(
+        id: String,
+        day: HistoryDay,
+        type: HistoryFilter,
+        title: String,
+        time: String,
+        excerpt: String,
+        destination: Route,
+        occurredAt: Date = .distantPast,
+        entityID: UUID? = nil
+    ) {
+        self.id = id
+        self.day = day
+        self.type = type
+        self.title = title
+        self.time = time
+        self.excerpt = excerpt
+        self.destination = destination
+        self.occurredAt = occurredAt
+        self.entityID = entityID
+    }
 }
 
 enum HistoryModel {
+    static func records(journals: [JournalEntry], moods: [MoodLog], appointments: [Appointment]) -> [HistoryRecord] {
+        var records: [HistoryRecord] = []
+        for entry in journals.prefix(200) {
+            records.append(HistoryRecord(
+                id: "journal-\(entry.id)", day: day(for: entry.createdAt), type: .journal,
+                title: entry.title, time: entry.createdAt.formatted(date: .omitted, time: .shortened),
+                excerpt: entry.rawText.isEmpty ? "Original attachment saved on this device." : entry.rawText,
+                destination: .journalDetail, occurredAt: entry.createdAt, entityID: entry.id
+            ))
+        }
+        for mood in moods.prefix(200) {
+            records.append(HistoryRecord(
+                id: "mood-\(mood.id)", day: day(for: mood.createdAt), type: .mood,
+                title: "Mood check-in", time: mood.createdAt.formatted(date: .omitted, time: .shortened),
+                excerpt: mood.note ?? "Mood, anxiety, and energy saved.", destination: .checkIn,
+                occurredAt: mood.createdAt, entityID: mood.id
+            ))
+        }
+        for appointment in appointments.filter({ $0.status == .completed }).prefix(200) {
+            let date = appointment.startedAt ?? appointment.scheduledAt ?? .distantPast
+            records.append(HistoryRecord(
+                id: "appointment-\(appointment.id)", day: day(for: date),
+                type: appointment.kind == .tms ? .tms : .therapy,
+                title: "\(appointment.kind == .tms ? "TMS" : "Therapy") with \(appointment.providerName)",
+                time: date.formatted(date: .omitted, time: .shortened),
+                excerpt: appointment.recordingAttachmentID == nil ? "Session notes" : "Original recording and notes",
+                destination: appointment.kind == .tms ? .tmsPost : .therapySession,
+                occurredAt: date, entityID: appointment.id
+            ))
+        }
+        return records.sorted { $0.occurredAt > $1.occurredAt }
+    }
+
     static func records(mood: MoodLog?) -> [HistoryRecord] {
         var records = fixedRecords
         if let mood, mood.mood != nil || mood.anxiety != nil || mood.energy != nil {
@@ -87,6 +146,10 @@ enum HistoryModel {
             destination: .therapySession
         ),
     ]
+
+    private static func day(for date: Date) -> HistoryDay {
+        HistoryDay(rawValue: date.formatted(.dateTime.month(.abbreviated).day()))
+    }
 }
 
 struct HistoryView: View {
@@ -96,7 +159,16 @@ struct HistoryView: View {
     @State private var filter: HistoryFilter = .all
 
     private var visibleRecords: [HistoryRecord] {
-        HistoryModel.filteredRecords(HistoryModel.records(mood: state.mood), by: filter)
+        HistoryModel.filteredRecords(
+            HistoryModel.records(journals: state.journals, moods: state.moods, appointments: state.appointments),
+            by: filter
+        )
+    }
+
+    private var visibleDays: [HistoryDay] {
+        visibleRecords.reduce(into: []) { days, record in
+            if !days.contains(record.day) { days.append(record.day) }
+        }
     }
 
     var body: some View {
@@ -106,7 +178,7 @@ struct HistoryView: View {
                 emptyState
             } else {
                 LazyVStack(alignment: .leading, spacing: DesignTokens.Spacing.xLarge) {
-                    ForEach(HistoryDay.allCases, id: \.self) { day in
+                    ForEach(visibleDays, id: \.self) { day in
                         let records = visibleRecords.filter { $0.day == day }
                         if !records.isEmpty {
                             HistoryDaySection(
@@ -114,7 +186,7 @@ struct HistoryView: View {
                                 records: records,
                                 mood: state.mood,
                                 usesVerticalHeader: dynamicTypeSize.isAccessibilitySize,
-                                onOpen: navigation.navigate
+                                onOpen: open
                             )
                         }
                     }
@@ -129,7 +201,7 @@ struct HistoryView: View {
                 ForEach(HistoryFilter.allCases, id: \.self) { option in
                     Button(option.rawValue) { filter = option }
                         .font(TypeScale.provenance)
-                        .foregroundStyle(filter == option ? Color.white : DesignTokens.cocoaSoft)
+                        .foregroundStyle(filter == option ? DesignTokens.cocoa : DesignTokens.cocoaSoft)
                         .padding(.horizontal, DesignTokens.Spacing.compact)
                         .frame(minHeight: DesignTokens.controlMinimum)
                         .background(filter == option ? DesignTokens.orange : DesignTokens.surface)
@@ -161,6 +233,15 @@ struct HistoryView: View {
         .overlay(alignment: .top) { Divider().overlay(DesignTokens.hairline) }
         .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
     }
+
+    private func open(_ record: HistoryRecord) {
+        if record.type == .journal, let id = record.entityID {
+            state.selectJournal(id: id)
+        } else if record.type == .therapy, let id = record.entityID {
+            state.selectAppointment(id: id)
+        }
+        navigation.navigate(to: record.destination)
+    }
 }
 
 private struct HistoryDaySection: View {
@@ -168,7 +249,7 @@ private struct HistoryDaySection: View {
     let records: [HistoryRecord]
     let mood: MoodLog?
     let usesVerticalHeader: Bool
-    let onOpen: (Route) -> Void
+    let onOpen: (HistoryRecord) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -185,7 +266,7 @@ private struct HistoryDaySection: View {
                 }
             }
             ForEach(records) { record in
-                HistoryRow(record: record) { onOpen(record.destination) }
+                HistoryRow(record: record) { onOpen(record) }
             }
         }
     }
@@ -226,7 +307,7 @@ private struct HistoryRow: View {
                     }
                     Text(record.type.rawValue)
                         .font(TypeScale.provenance)
-                        .foregroundStyle(DesignTokens.orangePressed)
+                        .foregroundStyle(DesignTokens.cocoaSoft)
                     Text(record.excerpt)
                         .font(TypeScale.provenance)
                         .foregroundStyle(DesignTokens.cocoaSoft)

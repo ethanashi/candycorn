@@ -3,30 +3,30 @@ import SwiftUI
 struct AppointmentWaveform: View {
     private static let bars = [36, 62, 45, 78, 52, 30, 68, 84, 41, 57, 72, 35, 64, 48, 80, 39, 59, 74, 43, 67, 32, 76, 51, 88, 46, 63, 38, 70, 54, 82, 42, 61]
 
-    let phase: Int
+    let level: Float
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 5) {
-            ForEach(Array(Self.bars.enumerated()), id: \.offset) { index, height in
+            ForEach(Array(Self.bars.enumerated()), id: \.offset) { _, height in
                 Capsule()
                     .fill(DesignTokens.orange)
-                    .frame(width: 4, height: barHeight(height, at: index))
+                    .frame(width: 4, height: barHeight(height))
                     .frame(maxHeight: .infinity)
-                    .animation(DesignTokens.Motion.animation(reduceMotion: reduceMotion), value: phase)
+                    .animation(DesignTokens.Motion.animation(reduceMotion: reduceMotion), value: level)
             }
         }
         .frame(maxWidth: .infinity)
         .frame(height: 116)
         .clipped()
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Simulated appointment waveform")
+        .accessibilityLabel("Appointment waveform")
     }
 
-    private func barHeight(_ percentage: Int, at index: Int) -> CGFloat {
+    private func barHeight(_ percentage: Int) -> CGFloat {
         let bounded = min(max(percentage, 16), 100)
-        let motionScale: CGFloat = reduceMotion || (phase + index).isMultiple(of: 2) ? 0.78 : 1
-        return max(16, CGFloat(bounded) * 1.16 * motionScale)
+        let normalized = min(max(CGFloat(level), 0), 1)
+        return max(12, CGFloat(bounded) * 1.16 * (0.25 + normalized * 0.75))
     }
 }
 

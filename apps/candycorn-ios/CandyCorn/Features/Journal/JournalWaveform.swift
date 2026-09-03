@@ -8,7 +8,7 @@ struct JournalWaveform: View {
         68, 35, 63, 47, 75, 40, 57, 71,
     ]
 
-    let phase: Int
+    let level: Float
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -18,25 +18,24 @@ struct JournalWaveform: View {
             let barWidth = max(2, min(4, (proxy.size.width - spacing * (count - 1)) / count))
 
             HStack(spacing: spacing) {
-                ForEach(Array(Self.heights.enumerated()), id: \.offset) { index, height in
+                ForEach(Array(Self.heights.enumerated()), id: \.offset) { _, height in
                     Capsule(style: .continuous)
                         .fill(DesignTokens.orange)
-                        .frame(width: barWidth, height: renderedHeight(height, index: index))
+                        .frame(width: barWidth, height: renderedHeight(height))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             .clipped()
-            .animation(DesignTokens.Motion.animation(reduceMotion: reduceMotion), value: phase)
+            .animation(DesignTokens.Motion.animation(reduceMotion: reduceMotion), value: level)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 96)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Simulated audio waveform")
+        .accessibilityLabel("Audio waveform")
     }
 
-    private func renderedHeight(_ percentage: CGFloat, index: Int) -> CGFloat {
-        guard !reduceMotion else { return max(16, min(82, percentage)) }
-        let adjustment: CGFloat = (index + phase).isMultiple(of: 3) ? 6 : -2
-        return max(16, min(88, percentage + adjustment))
+    private func renderedHeight(_ percentage: CGFloat) -> CGFloat {
+        let normalized = min(max(CGFloat(level), 0), 1)
+        return max(8, min(88, percentage * (0.25 + normalized * 0.75)))
     }
 }

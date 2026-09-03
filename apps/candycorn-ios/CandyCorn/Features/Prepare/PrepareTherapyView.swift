@@ -123,6 +123,7 @@ struct TherapyBriefEditor: Equatable, Sendable {
 
 struct PrepareTherapyView: View {
     @Bindable var navigation: NavigationModel
+    @Bindable var state: DemoState
     @State private var editor = TherapyBriefEditor()
 
     var body: some View {
@@ -131,8 +132,8 @@ struct PrepareTherapyView: View {
             subtitle: editor.isEditing
                 ? "Change the wording without changing your original journals or session."
                 : "A brief for Jamie Rivera to read before therapy with Dr. Elena Park on Sep 9.",
-            backAction: { navigation.navigate(to: .today) },
-            backLabel: "Back to Today",
+            backAction: editor.isEditing ? { editor.cancel() } : navigation.backAction(for: .prepareTherapy),
+            backLabel: editor.isEditing ? "Cancel editing" : "Back",
             bottomInset: 180
         ) {
             if editor.isEditing {
@@ -145,6 +146,8 @@ struct PrepareTherapyView: View {
             actions
         }
         .background(DesignTokens.canvas)
+        .onAppear(perform: refreshBrief)
+        .onChange(of: state.loadState) { _, _ in refreshBrief() }
     }
 
     private var briefReading: some View {
@@ -200,12 +203,8 @@ struct PrepareTherapyView: View {
     private var actions: some View {
         Group {
             if editor.isEditing {
-                HStack(spacing: DesignTokens.Spacing.small) {
-                    Button("Cancel") { editor.cancel() }
-                        .buttonStyle(SecondaryButtonStyle())
-                    Button("Save brief") { _ = editor.save() }
-                        .buttonStyle(PrimaryButtonStyle())
-                }
+                Button("Save brief") { _ = editor.save() }
+                    .buttonStyle(PrimaryButtonStyle())
             } else {
                 Button(action: { editor.begin() }) {
                     Label("Edit brief", systemImage: AppIcon.pencil.rawValue)
@@ -235,5 +234,30 @@ struct PrepareTherapyView: View {
             result[range].backgroundColor = DesignTokens.surfaceWarm
         }
         return result
+    }
+
+    private func refreshBrief() {
+        guard !editor.isEditing else { return }
+        let latestJournal = state.journals.max { $0.createdAt < $1.createdAt }
+        let pinned = state.talkingPoints.first { $0.status == .open && $0.isImportant }
+            ?? state.talkingPoints.first { $0.status == .open }
+        let activeGoals = state.goals.filter { $0.status == .active }.prefix(2).map(\.title)
+        let latestSession = state.appointments.filter { $0.kind == .therapy && $0.status == .completed }
+            .max { ($0.endedAt ?? .distantPast) < ($1.endedAt ?? .distantPast) }
+        let seeded = TherapyBrief.seeded
+        let brief = TherapyBrief(
+            whereLeftOff: latestSession?.manualNotes.nilIfBlank ?? seeded.whereLeftOff,
+            whatChanged: latestJournal.map { $0.cleanedText ?? $0.rawText }?.nilIfBlank ?? seeded.whatChanged,
+            pinnedQuestion: pinned?.text.nilIfBlank ?? seeded.pinnedQuestion,
+            carryingForward: activeGoals.isEmpty ? seeded.carryingForward : activeGoals.joined(separator: " "),
+            possibleOpening: pinned.map { "I want to start with this question: \($0.text)" } ?? seeded.possibleOpening
+        )
+        editor = TherapyBriefEditor(brief: brief)
+    }
+}
+
+private extension String {
+    var nilIfBlank: String? {
+        trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self
     }
 }

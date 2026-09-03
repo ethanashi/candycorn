@@ -17,21 +17,21 @@ struct RouteDestinationView: View {
         case .capture:
             CaptureChoiceView(navigation: navigation)
         case .journalVoice:
-            VoiceJournalView(navigation: navigation)
+            VoiceJournalView(navigation: navigation, state: state)
         case .journalWrite:
-            TextJournalView(navigation: navigation)
+            TextJournalView(navigation: navigation, state: state)
         case .journalPhoto:
-            PhotoJournalView(navigation: navigation)
+            PhotoJournalView(navigation: navigation, state: state)
         case .journalDetail:
             JournalDetailView(navigation: navigation, state: state)
         case .journalSuggestions:
             JournalSuggestionsView(navigation: navigation, state: state)
         case .goals:
-            GoalsView(state: state)
+            GoalsView(navigation: navigation, state: state)
         case .bringUp:
             BringUpView(navigation: navigation, state: state)
         case .appointments:
-            AppointmentsView(navigation: navigation)
+            AppointmentsView(navigation: navigation, state: state)
         case .recordAppointment:
             RecordAppointmentView(navigation: navigation, state: state)
         case .activeAppointment:
@@ -41,9 +41,9 @@ struct RouteDestinationView: View {
         case .tmsPre:
             TMSPreSessionView(navigation: navigation, state: state)
         case .tmsPost:
-            TMSPostSessionView(navigation: navigation)
+            TMSPostSessionView(navigation: navigation, state: state)
         case .prepareTherapy:
-            PrepareTherapyView(navigation: navigation)
+            PrepareTherapyView(navigation: navigation, state: state)
         case .prepareTMS:
             PrepareTMSView(navigation: navigation, state: state)
         case .history:
@@ -51,11 +51,11 @@ struct RouteDestinationView: View {
         case .search:
             SearchMemoryView(navigation: navigation, state: state)
         case .settingsPrivacy:
-            SettingsPrivacyView(navigation: navigation)
+            SettingsPrivacyView(navigation: navigation, state: state)
         case .settingsAI:
-            SettingsAIView(navigation: navigation, state: state)
+            SettingsPrivacyView(navigation: navigation, state: state)
         case .settingsData:
-            SettingsDataView(navigation: navigation, state: state)
+            SettingsPrivacyView(navigation: navigation, state: state)
         }
     }
 }

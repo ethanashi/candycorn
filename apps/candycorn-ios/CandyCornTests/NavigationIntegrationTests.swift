@@ -80,15 +80,63 @@ struct NavigationIntegrationTests {
         let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", Route.today.rawValue])
         navigation.navigate(to: .goals)
         navigation.navigate(to: .journalDetail)
-        navigation.navigate(to: .settingsAI)
+        navigation.openSettings(.ai)
 
         #expect(navigation.todayPath == [.goals])
         #expect(navigation.journalPath == [.journalDetail])
-        #expect(navigation.settingsPath == [.settingsAI])
+        #expect(navigation.settingsPath.isEmpty)
+        #expect(navigation.selectedSettingsSection == .ai)
         navigation.select(.today)
         #expect(navigation.todayPath == [.goals])
         #expect(navigation.journalPath == [.journalDetail])
-        #expect(navigation.settingsPath == [.settingsAI])
+        #expect(navigation.settingsPath.isEmpty)
+    }
+
+    @Test("Settings sections switch in place and deep links select their section")
+    func settingsSections() {
+        let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", Route.settingsPrivacy.rawValue])
+        for section in SettingsSection.allCases {
+            navigation.openSettings(section)
+            #expect(navigation.settingsPath.isEmpty)
+            #expect(navigation.presentedFlow == nil)
+            #expect(navigation.selectedSettingsSection == section)
+        }
+        #expect(NavigationModel(arguments: ["CandyCorn", "-screen", Route.settingsAI.rawValue]).selectedSettingsSection == .ai)
+        #expect(NavigationModel(arguments: ["CandyCorn", "-screen", Route.settingsData.rawValue]).selectedSettingsSection == .data)
+    }
+
+    @Test("Back behavior covers every root, pushed route, and full-screen flow")
+    func backBehavior() {
+        for root in Route.allCases where root.presentation == .root {
+            let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", root.rawValue])
+            let selectedTab = navigation.selectedTab
+            navigation.goBack(from: root)
+            #expect(!navigation.canGoBack(from: root))
+            #expect(navigation.selectedTab == selectedTab)
+            #expect(navigation.presentedFlow == nil)
+        }
+
+        for route in Route.allCases where route.presentation == .pushed {
+            let tab = route.tab!
+            let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", tab.rootRoute.rawValue])
+            navigation.navigate(to: route)
+            #expect(navigation.canGoBack(from: route))
+            #expect(navigation.backAction(for: route) != nil)
+            navigation.goBack(from: route)
+            #expect(!navigation.canGoBack(from: route))
+            #expect(navigation.presentedFlow == nil)
+        }
+
+        for route in Route.allCases where route.presentation == .fullScreen {
+            let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", Route.today.rawValue])
+            navigation.navigate(to: route)
+            #expect(navigation.presentedFlow == route)
+            #expect(navigation.canGoBack(from: route))
+            #expect(navigation.backAction(for: route) != nil)
+            navigation.goBack(from: route)
+            #expect(navigation.presentedFlow == nil)
+            #expect(!navigation.canGoBack(from: route))
+        }
     }
 
     @Test("Completing onboarding opens Today")
@@ -140,6 +188,7 @@ struct NavigationIntegrationTests {
             #expect(navigation.onboardingComplete == (route != .welcome))
             if route != .welcome {
                 #expect(navigation.presentedFlow == route || navigation.selectedTab == route.tab)
+                if !route.isPresentedFlow { #expect(!navigation.canGoBack(from: route)) }
             }
         }
     }

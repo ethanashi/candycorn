@@ -5,98 +5,102 @@ import Testing
 @Suite("Journal feature")
 @MainActor
 struct JournalFeatureTests {
-    @Test("Timer formatting and stop state are deterministic")
+    @Test("Voice timer formatting is deterministic")
     func recordingTimer() {
-        var recording = JournalRecordingState()
-        #expect(recording.elapsedSeconds == 137)
-        #expect(JournalRecordingState.format(seconds: recording.elapsedSeconds) == "02:17")
-        recording.tick()
-        #expect(JournalRecordingState.format(seconds: recording.elapsedSeconds) == "02:18")
-        let firstStop = recording.stop()
-        let secondStop = recording.stop()
-        #expect(firstStop)
-        #expect(!secondStop)
-        recording.tick()
-        #expect(recording.elapsedSeconds == 138)
-        #expect(JournalRecordingState.format(seconds: -1) == "00:00")
+        #expect(VoiceJournalView.format(milliseconds: 137_000) == "02:17")
+        #expect(VoiceJournalView.format(milliseconds: -1) == "00:00")
     }
 
-    @Test("Whitespace cannot be saved and exact original saves once")
+    @Test("Whitespace cannot save and exact original saves once")
     func originalValidation() {
         var blank = JournalDraftState(text: " \n\t ")
-        #expect(!blank.canSave)
-        let blankSaved = blank.saveOriginal()
-        #expect(!blankSaved)
-        #expect(blank.savedOriginal == nil)
+        #expect(blank.beginSave() == nil)
 
         let exact = "  My exact words.\nSecond line.  "
         var draft = JournalDraftState(text: exact)
+        #expect(draft.beginSave() == exact)
+        #expect(draft.beginSave() == nil)
+        draft.retry()
         #expect(draft.canSave)
-        let firstSave = draft.saveOriginal()
-        #expect(firstSave)
-        #expect(draft.savedOriginal == exact)
-        draft.text = "A later edit"
-        let secondSave = draft.saveOriginal()
-        #expect(!secondSave)
-        #expect(draft.savedOriginal == exact)
     }
 
-    @Test("Rewrite, summary, and photo extraction preserve their sources")
-    func sourcePreservation() {
-        let source = SeededData.journalEntries.first { $0.id == SeededData.footballJournalID }
-        #expect(source != nil)
-        let original = source?.rawText
+    @Test("Repository-backed journal CRUD preserves source and derived fields")
+    func journalCRUD() async throws {
+        let store = InMemoryCareStore(snapshot: SeededData.careSnapshot)
+        let state = DemoState(dependencies: dependencies(store: store))
+        await state.load()
+        let exact = "  My exact words.\nSecond line.  "
+        let created = try #require(await state.createJournal(rawText: exact))
+        #expect(created.rawText == exact)
+        #expect(created.cleanedText == nil)
+        #expect(created.summaryItems.isEmpty)
 
-        var draft = JournalDraftState(text: original ?? "Fallback")
-        let saved = draft.saveOriginal()
-        #expect(saved)
-        draft.show(.rewrite)
-        #expect(draft.result == .rewrite)
-        #expect(draft.savedOriginal == original)
-        draft.show(.summary)
-        #expect(draft.result == .summary)
-        #expect(draft.savedOriginal == original)
-
-        var photo = PhotoJournalState()
-        let immutablePage = PhotoJournalState.originalPageText
-        photo.capture()
-        photo.extractedText = "Corrected extracted words"
-        #expect(PhotoJournalState.originalPageText == immutablePage)
-        #expect(photo.extractedText == "Corrected extracted words")
-        photo.retake()
-        #expect(!photo.captured)
-        #expect(photo.extractedText == PhotoJournalState.defaultExtraction)
+        let seeded = try #require(state.journals.first { $0.cleanedText != nil })
+        let cleaned = seeded.cleanedText
+        let summary = seeded.summaryItems
+        let attachment = seeded.audioAttachmentID
+        #expect(await state.editJournal(id: seeded.id, rawText: "Updated exact source"))
+        let edited = try #require(state.journals.first { $0.id == seeded.id })
+        #expect(edited.rawText == "Updated exact source")
+        #expect(edited.cleanedText == cleaned)
+        #expect(edited.summaryItems == summary)
+        #expect(edited.audioAttachmentID == attachment)
+        #expect(await state.deleteJournal(id: created.id))
+        #expect(!state.journals.contains { $0.id == created.id })
     }
 
-    @Test("Journal suggestions add once and never alter the source")
-    func suggestionIdempotence() {
-        let state = DemoState()
-        let sourceBefore = SeededData.journalEntries.first { $0.id == SeededData.footballJournalID }
-        let pointsBefore = state.talkingPoints.count
-        let goalsBefore = state.goals.count
-
-        #expect(state.addTalkingPoint(JournalSuggestionFixtures.proofPoint))
-        #expect(!state.addTalkingPoint(JournalSuggestionFixtures.proofPoint))
-        #expect(state.talkingPoints.count == pointsBefore + 1)
-        #expect(state.addGoal(JournalSuggestionFixtures.goal))
-        #expect(!state.addGoal(JournalSuggestionFixtures.goal))
-        #expect(state.goals.count == goalsBefore + 1)
-        #expect(SeededData.journalEntries.first { $0.id == SeededData.footballJournalID } == sourceBefore)
+    @Test("Denied recording preserves existing journals")
+    func deniedRecording() async {
+        let store = InMemoryCareStore(snapshot: SeededData.careSnapshot)
+        let attachments = InMemoryAttachmentStore()
+        let recorder = FakeRecordingService(authorization: .denied, attachments: attachments)
+        let state = DemoState(dependencies: dependencies(store: store, attachments: attachments, recorder: recorder))
+        let before = state.journals
+        #expect(await state.startRecording(kind: .journal) == false)
+        #expect(state.journals == before)
     }
 
-    @Test("AI unavailability leaves state and source untouched")
-    func unavailableStates() {
-        let state = DemoState()
-        let sourceBefore = SeededData.journalEntries
-        let pointsBefore = state.talkingPoints
-        let goalsBefore = state.goals
+    @Test("Interruption finalizes and retains the source attachment")
+    func interruptedRecording() async throws {
+        let store = InMemoryCareStore(snapshot: SeededData.careSnapshot)
+        let state = DemoState(dependencies: dependencies(store: store))
+        #expect(await state.startRecording(kind: .journal))
+        let recording = try #require(await state.stopRecording(reason: .interruption))
+        #expect(await state.stopRecording(reason: .interruption) == nil)
+        #expect(recording.stopReason == .interruption)
+        #expect(recording.attachment.byteCount > 0)
+        #expect(state.attachments.contains { $0.id == recording.attachment.id })
+        let entry = await state.createJournal(rawText: "", inputType: .voice, attachmentID: recording.attachment.id)
+        #expect(entry?.audioAttachmentID == recording.attachment.id)
+        #expect(entry?.cleanedText == nil)
+    }
 
-        state.setAIMode(.off)
-        state.routerAvailable = false
-        #expect(state.aiMode == .off)
-        #expect(state.aiProvider == .off)
-        #expect(state.talkingPoints == pointsBefore)
-        #expect(state.goals == goalsBefore)
-        #expect(SeededData.journalEntries == sourceBefore)
+    @Test("Photo source is saved before its journal entry")
+    func photoSource() async throws {
+        let store = InMemoryCareStore(snapshot: SeededData.emptySnapshot)
+        let state = DemoState(dependencies: dependencies(store: store))
+        await state.load()
+        let attachment = try #require(await state.savePhotoJPEG(Data([0xff, 0xd8, 0xff]), pixelWidth: 12, pixelHeight: 8))
+        let entry = try #require(await state.createJournal(rawText: "", inputType: .photo, attachmentID: attachment.id))
+        #expect(state.attachments.contains { $0.id == attachment.id })
+        #expect(entry.originalAttachmentID == attachment.id)
+        #expect(entry.rawText.isEmpty)
+        #expect(entry.cleanedText == nil)
+        #expect(entry.summaryItems.isEmpty)
+    }
+
+    private func dependencies(
+        store: InMemoryCareStore,
+        attachments: InMemoryAttachmentStore = InMemoryAttachmentStore(),
+        recorder: FakeRecordingService? = nil
+    ) -> AppDependencies {
+        AppDependencies(
+            careStore: store, maintenance: store, attachments: attachments,
+            recording: recorder ?? FakeRecordingService(attachments: attachments),
+            playback: FakeAudioPlaybackService(), photos: FakePhotoAttachmentService(),
+            exporter: FakeVaultExporter(store: store, attachments: attachments),
+            logger: NoOpEventLogger(), screenshotMode: false,
+            now: { Date(timeIntervalSince1970: 1_800_000_000) }
+        )
     }
 }
