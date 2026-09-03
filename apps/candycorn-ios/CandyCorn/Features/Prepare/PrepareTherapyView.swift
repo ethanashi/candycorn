@@ -131,6 +131,7 @@ struct PrepareTherapyView: View {
     @State private var sendTask: Task<Void, Never>?
     @State private var actionError: String?
     @State private var isSavingGenerated = false
+    @State private var openedScreenshotSheet = false
 
     var body: some View {
         ScreenLayout(
@@ -185,6 +186,7 @@ struct PrepareTherapyView: View {
             refreshGeneratedBrief()
         }
         .onChange(of: state.artifacts) { _, _ in refreshGeneratedBrief() }
+        .task { openScreenshotDisclosureIfNeeded() }
         .sheet(item: $pendingSend, onDismiss: cancelSend) { pending in
             WhatLeavesDeviceSheet(
                 pending: pending,
@@ -457,6 +459,17 @@ struct PrepareTherapyView: View {
         sendTask?.cancel()
         sendTask = nil
         pendingSend = nil
+    }
+
+    private func openScreenshotDisclosureIfNeeded() {
+        guard !openedScreenshotSheet,
+              state.dependencies.screenshotScenario == .prepareSend else {
+            return
+        }
+        openedScreenshotSheet = true
+        state.setAIMode(.organizer)
+        state.setAIProvider(.router)
+        prepareGeneration()
     }
 
     private func saveGeneratedBrief() {

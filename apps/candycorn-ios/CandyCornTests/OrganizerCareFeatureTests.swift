@@ -5,21 +5,76 @@ import Testing
 @Suite("Organizer care surfaces")
 @MainActor
 struct OrganizerCareFeatureTests {
+    @Test("Screenshot scenarios map to their consent actions")
+    func screenshotScenarioMappings() {
+        #expect(ScreenshotScenario.sessionSend.sendAction == .summarizeSession(SeededData.therapySessionID))
+        #expect(ScreenshotScenario.prepareSend.sendAction == .generateAppointmentBrief(.therapy))
+        #expect(ScreenshotScenario.openRouterKey.sendAction == nil)
+    }
+
     @Test("Session disclosure contains manual notes only")
-    func sessionDisclosureUsesOnlyManualNotes() throws {
-        let state = DemoState(arguments: ["CandyCorn"])
-        let appointment = try #require(state.appointments.first { !$0.manualNotes.isEmpty })
+    func sessionDisclosureUsesOnlyManualNotes() async throws {
+        let dependencies = PreviewDependencies.make(screenshotMode: true, scenario: .sessionSend)
+        let state = DemoState(dependencies: dependencies, arguments: ["CandyCorn"])
+        await state.load()
+        state.setAIMode(.organizer)
+        state.setAIProvider(.router)
+        let appointment = try #require(state.appointments.first { $0.id == SeededData.therapySessionID })
         let transcriptBefore = state.transcript
-        let recordingBefore = appointment.recordingAttachmentID
+        let snapshotBefore = try await dependencies.careStore.snapshot()
 
         let pending = try state.prepareAISend(.summarizeSession(appointment.id))
 
+        #expect(pending.action == .summarizeSession(SeededData.therapySessionID))
+        #expect(pending.disclosure.purpose == "Organize these manual session notes")
+        #expect(pending.disclosure.destination == "OpenRouter")
         #expect(pending.disclosure.sources.count == 1)
         #expect(pending.disclosure.sources[0].id == appointment.id)
+        #expect(pending.disclosure.sources[0].kind == .text)
         #expect(pending.disclosure.sources[0].characterCount == appointment.manualNotes.count)
+        #expect(pending.disclosure.sources[0].imageCount == 0)
+        #expect(pending.disclosure.totalCharacterCount == appointment.manualNotes.count)
         #expect(pending.disclosure.totalImageCount == 0)
+        #expect(pending.disclosure.omittedSourceCount == 0)
+        #expect(!transcriptBefore.map(\.id).contains(pending.disclosure.sources[0].id))
+        #expect(pending.disclosure.sources[0].id != appointment.recordingAttachmentID)
         #expect(state.transcript == transcriptBefore)
-        #expect(state.appointments.first { $0.id == appointment.id }?.recordingAttachmentID == recordingBefore)
+        #expect(try await dependencies.careStore.snapshot() == snapshotBefore)
+    }
+
+    @Test("Therapy brief disclosure reports the bounded seeded context without sending")
+    func therapyBriefDisclosureIsExact() async throws {
+        let dependencies = PreviewDependencies.make(screenshotMode: true, scenario: .prepareSend)
+        let state = DemoState(dependencies: dependencies, arguments: ["CandyCorn"])
+        await state.load()
+        state.setAIMode(.organizer)
+        state.setAIProvider(.router)
+        let snapshotBefore = try await dependencies.careStore.snapshot()
+        let expectedSourceIDs = [
+            SeededData.therapySessionID,
+            SeededData.goals[2].id,
+            SeededData.goals[0].id,
+            SeededData.goals[1].id,
+            SeededData.goals[3].id,
+            SeededData.talkingPoints[0].id,
+            SeededData.talkingPoints[1].id,
+            SeededData.talkingPoints[2].id,
+            SeededData.currentMoodID,
+            SeededData.footballJournalID,
+            SeededData.timelineJournalID,
+        ]
+
+        let pending = try state.prepareAISend(.generateAppointmentBrief(.therapy))
+
+        #expect(pending.action == .generateAppointmentBrief(.therapy))
+        #expect(pending.disclosure.purpose == "Prepare for therapy")
+        #expect(pending.disclosure.destination == "OpenRouter")
+        #expect(pending.disclosure.sources.map(\.id) == expectedSourceIDs)
+        #expect(pending.disclosure.sources.allSatisfy { $0.kind == .text && $0.imageCount == 0 })
+        #expect(pending.disclosure.totalCharacterCount == 1_012)
+        #expect(pending.disclosure.totalImageCount == 0)
+        #expect(pending.disclosure.omittedSourceCount == 0)
+        #expect(try await dependencies.careStore.snapshot() == snapshotBefore)
     }
 
     @Test("Blank manual notes cannot prepare a summary")
