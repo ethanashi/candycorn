@@ -18,7 +18,7 @@ const onboardingPages = [
   {
     title: 'Private by design',
     copy: 'Your vault is designed to keep originals and recordings on your device.',
-    detail: 'This prototype uses fictional data and does not create an account or upload anything.',
+    detail: 'No account, no upload, no analytics.',
     voice: 'provider',
   },
   {

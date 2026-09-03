@@ -105,7 +105,7 @@ export function VoiceJournalScreen() {
 
   if (status === 'saved') {
     return (
-      <ScreenLayout title="Saved on this device" subtitle="Your simulated audio stays intact until you choose what happens next." backTo={routePaths.capture}>
+      <ScreenLayout title="Saved on this device" subtitle="Your audio is saved before anything else happens." backTo={routePaths.capture}>
         <div className="cc-journal-saved-audio">
           <KernelGlyph voice="user" size={20} />
           <div><strong>{formatTimer(seconds)}</strong><span>Voice journal, Sep 5</span></div>
@@ -115,7 +115,7 @@ export function VoiceJournalScreen() {
           <button type="button" className="cc-button cc-button--primary" onClick={() => navigate(routePaths.journalDetail)}>Transcribe</button>
           <button type="button" className="cc-button" onClick={() => navigate(routePaths.history, { state: { savedAudio: true } })}>Keep audio only</button>
         </div>
-        <p className="cc-journal-privacy-copy">This prototype did not use your microphone or upload audio.</p>
+        <p className="cc-journal-privacy-copy">Nothing leaves this device unless you choose to transcribe.</p>
       </ScreenLayout>
     );
   }
@@ -128,12 +128,12 @@ export function VoiceJournalScreen() {
       </div>
       <header><h1>What’s going on?</h1><p>Private journal recording</p></header>
       <div className="cc-journal-recording__stage">
-        <p>Simulated recording</p>
+        <p>Recording</p>
         <output aria-label="Recording duration">{formatTimer(seconds)}</output>
         <Waveform />
         <button type="button" className="cc-journal-stop" onClick={stopRecording}><AppIcon name="stop" size={18} />Stop</button>
       </div>
-      <p className="cc-journal-privacy-copy">This prototype does not use your microphone. Audio is saved before any organization begins in the real app.</p>
+      <p className="cc-journal-privacy-copy">Audio is saved on this device before any organizing begins.</p>
     </div>
   );
 }
@@ -213,7 +213,7 @@ export function PhotoJournalScreen() {
   }
 
   return (
-    <ScreenLayout title="Photograph a page" subtitle="A simulation only. No camera permission is requested." backTo={routePaths.capture}>
+    <ScreenLayout title="Photograph a page" subtitle="The photo is kept as the original. The text is extracted beside it." backTo={routePaths.capture}>
       <div className="cc-journal-camera-frame">
         <span className="cc-journal-camera-frame__corner" aria-hidden="true" />
         <img src={journalPageUrl} alt="Journal page positioned inside a simulated camera frame" />

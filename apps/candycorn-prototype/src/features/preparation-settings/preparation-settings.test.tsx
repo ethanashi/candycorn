@@ -153,7 +153,7 @@ describe('SettingsDataScreen', () => {
     expect(screen.getByRole('radio', { name: /Ask every time/ })).toBeChecked();
     await user.click(screen.getByRole('radio', { name: /Delete after transcript verification/ }));
     expect(screen.getByRole('radio', { name: /Delete after transcript verification/ })).toBeChecked();
-    expect(screen.getByText('Export is not active in this prototype. No file will be created or downloaded.')).toBeInTheDocument();
+    expect(screen.getByText('Export builds a readable archive of your originals and notes.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Preview archive contents' }));
     expect(screen.getByText('Original journals and organized copies')).toBeInTheDocument();
     expect(setItem).not.toHaveBeenCalled();

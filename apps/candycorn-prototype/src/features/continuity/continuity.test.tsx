@@ -108,7 +108,7 @@ describe('SearchScreen', () => {
   it('matches football across journal, therapy, and talking points without fetching', async () => {
     const user = userEvent.setup();
     renderScreen(<SearchScreen />);
-    expect(screen.getByText('No request leaves this prototype.')).toBeInTheDocument();
+    expect(screen.getByText('Search runs on this device.')).toBeInTheDocument();
     await user.type(screen.getByRole('searchbox', { name: 'Search your thread' }), 'football');
     expect(screen.getByRole('link', { name: /Football and feeling guilty/ })).toHaveAttribute('href', routePaths.journalDetail);
     expect(screen.getByRole('link', { name: /Senior-year football in therapy/ })).toHaveAttribute('href', routePaths.therapySession);
@@ -121,7 +121,7 @@ describe('SearchScreen', () => {
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'watermelon satellite' } });
     expect(screen.getByRole('heading', { name: 'No seeded memories match “watermelon satellite”' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
-    expect(screen.getByText('No request leaves this prototype.')).toBeInTheDocument();
+    expect(screen.getByText('Search runs on this device.')).toBeInTheDocument();
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });

@@ -269,9 +269,9 @@ export function SearchScreen() {
   const results = normalizedQuery.length === 0 ? [] : records.filter((record) => `${record.title} ${record.excerpt} ${record.searchable}`.toLowerCase().includes(normalizedQuery));
 
   return (
-    <ScreenLayout title="Search memory" subtitle="A Phase 0 local demonstration using only seeded fictional memories." className="cc-memory-search">
+    <ScreenLayout title="Search memory" subtitle="Search across journals, sessions, goals, and pinned items." className="cc-memory-search">
       <label className="cc-search-field" htmlFor="memory-search"><span>Search your thread</span><span className="cc-search-field__control"><AppIcon name="search" size={20} /><input id="memory-search" type="search" maxLength={120} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Try football" />{query ? <button type="button" onClick={() => setQuery('')} aria-label="Clear memory search"><AppIcon name="close" size={18} /></button> : null}</span></label>
-      {normalizedQuery.length === 0 ? <div className="cc-search-prompt"><KernelGlyph voice="candy-corn" size={18} decorative /><p>Try “football” to find where that thread appeared in a journal, therapy, and your appointment inbox.</p><span>No request leaves this prototype.</span></div> : null}
+      {normalizedQuery.length === 0 ? <div className="cc-search-prompt"><KernelGlyph voice="candy-corn" size={18} decorative /><p>Try “football” to find where that thread appeared in a journal, therapy, and your appointment inbox.</p><span>Search runs on this device.</span></div> : null}
       {normalizedQuery.length > 0 && results.length > 0 ? <section className="cc-search-results" aria-labelledby="cc-search-results-heading"><h2 id="cc-search-results-heading">{results.length} {results.length === 1 ? 'result' : 'results'}</h2><ul>{results.map((record) => <SearchResult key={record.id} record={record} />)}</ul></section> : null}
       {normalizedQuery.length > 0 && results.length === 0 ? <div className="cc-continuity-empty"><KernelGlyph voice="candy-corn" size={20} decorative /><h2>No seeded memories match “{query.trim()}”</h2><p>Try another word or clear the search. Nothing was sent anywhere.</p><button type="button" onClick={() => setQuery('')}>Clear search</button></div> : null}
     </ScreenLayout>

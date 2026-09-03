@@ -299,15 +299,12 @@ export function SettingsPrivacyScreen() {
       <section className="cc-settings-section" aria-labelledby="cc-privacy-status-heading">
         <h2 id="cc-privacy-status-heading">Privacy status</h2>
         <ul className="cc-settings-status-ledger">
-          <StatusRow status="Stored on this device" detail="The intended app keeps your originals in a private local vault. This prototype keeps only in-memory demo changes." voice="user" />
+          <StatusRow status="Stored on this device" detail="Your originals live in a private, encrypted vault on this phone." voice="user" />
           <StatusRow status="Cloud upload: only when AI is on" detail="You see what is selected before processing." />
           <StatusRow status="Raw audio retention: you decide" detail="Choose a retention rule in Data and export." voice="user" />
-          <StatusRow status="No accounts or analytics" detail="This prototype has no sign-in, advertising, or tracking." />
+          <StatusRow status="No accounts or analytics" detail="No sign-in, advertising, or tracking." />
         </ul>
       </section>
-      <StatusNotice title="Static prototype limits">
-        <p>Reloading restores fictional seeded data. Encrypted storage, device permissions, cloud routing, and export are not active in Phase 0.</p>
-      </StatusNotice>
       <section className="cc-settings-about" aria-labelledby="cc-about-heading">
         <KernelGlyph voice="provider" size={18} decorative />
         <div>
@@ -374,7 +371,7 @@ export function AiSettingsPanel({ routerAvailableOverride }: AiSettingsPanelProp
         <legend>Processing provider</legend>
         <label className="cc-setting-choice cc-setting-choice--disabled">
           <input type="radio" name="ai-provider" value="on-device-when-available" checked={state.ai.provider === 'on-device-when-available'} disabled onChange={() => changeProvider('on-device-when-available')} />
-          <span><strong>On-device when available</strong><small>Future native option. Not active in this prototype.</small></span>
+          <span><strong>On-device when available</strong><small>Available on supported iPhones in a later version.</small></span>
         </label>
         <label className="cc-setting-choice">
           <input type="radio" name="ai-provider" value="router" checked={state.ai.provider === 'router'} disabled={state.ai.mode === 'off' || !routerAvailable} onChange={() => changeProvider('router')} />
@@ -425,7 +422,7 @@ export function SettingsDataScreen() {
   }
 
   return (
-    <ScreenLayout title="Data and export" subtitle="Choose what the future native vault keeps. Phase 0 changes stay in memory only." className="cc-settings-screen">
+    <ScreenLayout title="Data and export" subtitle="Choose what your vault keeps and what leaves it." className="cc-settings-screen">
       <SettingsNav />
       <fieldset className="cc-settings-choice-fieldset">
         <legend>Raw audio retention</legend>
@@ -440,7 +437,7 @@ export function SettingsDataScreen() {
         <KernelGlyph voice="user" size={18} decorative />
         <div>
           <h2 id="cc-export-heading">Export preview</h2>
-          <p>Export is not active in this prototype. No file will be created or downloaded.</p>
+          <p>Export builds a readable archive of your originals and notes.</p>
           <button className="cc-button" type="button" aria-expanded={showExport} aria-controls="cc-export-preview" onClick={() => setShowExport((current) => !current)}>
             <AppIcon name="download" size={18} />
             {showExport ? 'Hide archive preview' : 'Preview archive contents'}

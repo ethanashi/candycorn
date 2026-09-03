@@ -179,7 +179,7 @@ export function RecordAppointmentScreen() {
           Start recording
         </button>
       </section>
-      <p className="cc-care-local-note">This prototype does not request microphone access. The real app will save the original audio before processing.</p>
+      <p className="cc-care-local-note">The original audio is saved on this device before any processing.</p>
     </ScreenLayout>
   );
 }
@@ -207,7 +207,7 @@ function SavedAppointment({ appointmentType }: { appointmentType: AppointmentTyp
   return (
     <div className="cc-care-saved-recording">
       <StatusNotice title="Saved on this device" voice="user">
-        <p>The simulated original is preserved. No microphone or network service was used.</p>
+        <p>The original recording is preserved. Nothing was sent anywhere.</p>
       </StatusNotice>
       <Link className="cc-button cc-button--primary" to={destination}>{actionLabel}</Link>
     </div>
@@ -236,7 +236,7 @@ export function ActiveAppointmentScreen() {
 
   if (routeState === null || !state.consentAcknowledged) {
     return (
-      <ScreenLayout title="Recording is not active" subtitle="This direct link is safe in the simulated prototype." backTo={routePaths.appointments}>
+      <ScreenLayout title="Recording is not active" subtitle="Confirm permission before a recording can start." backTo={routePaths.appointments}>
         <StatusNotice
           title="Permission has not been confirmed"
           action={<Link className="cc-button" to={routePaths.recordAppointment}>Review recording permission</Link>}
@@ -263,7 +263,7 @@ export function ActiveAppointmentScreen() {
           <AppIcon name="stop" size={19} />Finish
         </button>
       </div>
-      <p className="cc-care-local-note">Simulated recording only. This prototype does not use your microphone.</p>
+      <p className="cc-care-local-note">Recording continues while your phone is locked.</p>
     </div>
   );
 }
@@ -472,7 +472,7 @@ export function TmsPostSessionScreen() {
 
   if (saved) {
     return (
-      <ScreenLayout title="Post-session check-in saved" subtitle="Saved locally in this prototype." backTo={routePaths.appointments}>
+      <ScreenLayout title="Post-session check-in saved" subtitle="Saved on this device." backTo={routePaths.appointments}>
         <StatusNotice title="Saved on this device" voice="user"><p>Your notes are recorded without claiming what caused a change.</p></StatusNotice>
         <div className="cc-care-post-actions">
           <Link className="cc-button cc-button--primary" to={routePaths.history}>Open History</Link>
