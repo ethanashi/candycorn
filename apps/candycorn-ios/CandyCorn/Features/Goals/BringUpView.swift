@@ -103,7 +103,7 @@ struct BringUpView: View {
         ScreenLayout(
             title: "Bring up next time",
             subtitle: "A short inbox for the conversations you do not want to lose.",
-            backAction: { navigation.navigate(to: .today) }
+            backAction: navigation.backAction(for: .bringUp)
         ) {
             if openItems.isEmpty {
                 emptyState
@@ -131,10 +131,6 @@ struct BringUpView: View {
             Text("You can return here whenever something comes up.")
                 .font(TypeScale.label)
                 .foregroundStyle(DesignTokens.cocoaSoft)
-            Button("Back to Today") { navigation.navigate(to: .today) }
-                .font(TypeScale.bodyMedium)
-                .foregroundStyle(DesignTokens.orangePressed)
-                .frame(minHeight: DesignTokens.controlMinimum)
         }
         .foregroundStyle(DesignTokens.cocoa)
         .padding(.vertical, DesignTokens.Spacing.large)

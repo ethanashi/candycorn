@@ -32,6 +32,7 @@ enum GoalLedgerModel {
 }
 
 struct GoalsView: View {
+    @Bindable var navigation: NavigationModel
     @Bindable var state: DemoState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var expanded = Set(GoalLedgerCadence.allCases)
@@ -39,7 +40,8 @@ struct GoalsView: View {
     var body: some View {
         ScreenLayout(
             title: "Goals",
-            subtitle: "What you chose, what was assigned, and what still needs your approval."
+            subtitle: "What you chose, what was assigned, and what still needs your approval.",
+            backAction: navigation.backAction(for: .goals)
         ) {
             LazyVStack(alignment: .leading, spacing: 0) {
                 Divider().overlay(DesignTokens.hairline)

@@ -56,7 +56,7 @@ struct PhotoJournalView: View {
             }
             .frame(minHeight: 474)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Journal page positioned inside a simulated camera frame")
+            .accessibilityLabel("Journal page positioned inside the camera frame")
 
             Button {
                 photo.capture()

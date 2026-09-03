@@ -109,7 +109,8 @@ struct SearchMemoryView: View {
     var body: some View {
         ScreenLayout(
             title: "Search memory",
-            subtitle: "Search across journals, sessions, goals, and pinned items."
+            subtitle: "Search across journals, sessions, goals, and pinned items.",
+            backAction: navigation.backAction(for: .search)
         ) {
             searchField
             if trimmedQuery.isEmpty {

@@ -54,8 +54,7 @@ struct TMSPreSessionView: View {
         ScreenLayout(
             title: "Before TMS",
             subtitle: "A short check-in for Jamie’s next visit.",
-            backAction: { navigation.navigate(to: .appointments) },
-            backLabel: "Back to appointments",
+            backAction: navigation.backAction(for: .tmsPre),
             bottomInset: DesignTokens.Spacing.section
         ) {
             TMSMeasuresEditor(snapshot: $snapshot)

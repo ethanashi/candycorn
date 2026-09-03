@@ -29,7 +29,7 @@ struct RecordAppointmentView: View {
                 title: { $0.displayName }
             )
             consentCard
-            Text("The original audio stays on this device before any processing. Recording is simulated in this version.")
+            Text("The original audio stays on this device before any processing.")
                 .font(TypeScale.provenance)
                 .foregroundStyle(DesignTokens.cocoaSoft)
                 .multilineTextAlignment(.center)
@@ -95,7 +95,7 @@ struct RecordAppointmentView: View {
             .buttonStyle(PrimaryButtonStyle())
             .disabled(!state.consentAcknowledged || state.appointmentRecording != .idle)
             .opacity(state.consentAcknowledged ? 1 : 0.48)
-            .accessibilityHint(state.consentAcknowledged ? "Starts a simulated recording" : consentReason)
+            .accessibilityHint(state.consentAcknowledged ? "Starts recording" : consentReason)
     }
 
     private var appointmentKind: Binding<Appointment.Kind> {

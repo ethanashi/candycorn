@@ -27,7 +27,7 @@ struct RouteDestinationView: View {
         case .journalSuggestions:
             JournalSuggestionsView(navigation: navigation, state: state)
         case .goals:
-            GoalsView(state: state)
+            GoalsView(navigation: navigation, state: state)
         case .bringUp:
             BringUpView(navigation: navigation, state: state)
         case .appointments:
@@ -51,11 +51,11 @@ struct RouteDestinationView: View {
         case .search:
             SearchMemoryView(navigation: navigation, state: state)
         case .settingsPrivacy:
-            SettingsPrivacyView(navigation: navigation)
+            SettingsPrivacyView(navigation: navigation, state: state)
         case .settingsAI:
-            SettingsAIView(navigation: navigation, state: state)
+            SettingsPrivacyView(navigation: navigation, state: state)
         case .settingsData:
-            SettingsDataView(navigation: navigation, state: state)
+            SettingsPrivacyView(navigation: navigation, state: state)
         }
     }
 }

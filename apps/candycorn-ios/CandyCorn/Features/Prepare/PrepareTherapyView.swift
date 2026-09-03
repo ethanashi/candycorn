@@ -131,8 +131,7 @@ struct PrepareTherapyView: View {
             subtitle: editor.isEditing
                 ? "Change the wording without changing your original journals or session."
                 : "A brief for Jamie Rivera to read before therapy with Dr. Elena Park on Sep 9.",
-            backAction: { navigation.navigate(to: .today) },
-            backLabel: "Back to Today",
+            backAction: navigation.backAction(for: .prepareTherapy),
             bottomInset: 180
         ) {
             if editor.isEditing {

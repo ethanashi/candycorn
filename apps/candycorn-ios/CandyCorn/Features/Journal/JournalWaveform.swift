@@ -31,7 +31,7 @@ struct JournalWaveform: View {
         .frame(maxWidth: .infinity)
         .frame(height: 96)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Simulated audio waveform")
+        .accessibilityLabel("Audio waveform")
     }
 
     private func renderedHeight(_ percentage: CGFloat, index: Int) -> CGFloat {

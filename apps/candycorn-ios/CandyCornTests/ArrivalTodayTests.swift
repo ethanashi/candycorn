@@ -32,13 +32,13 @@ struct ArrivalTodayTests {
         #expect(navigation.presentedFlow == nil)
     }
 
-    @Test("Check-in draft wraps values and caps notes")
+    @Test("Check-in draft sets absolute values and caps notes")
     func checkInDraftEditing() {
         let source = MoodLog(id: UUID(), createdAt: Date(timeIntervalSince1970: 1), mood: 10, anxiety: nil, energy: 4, customValues: [:], note: nil)
         var draft = CheckInDraft(mood: source)
-        draft.advance(.mood)
-        draft.advance(.anxiety)
-        draft.advance(.energy)
+        draft.set(.mood, to: 1)
+        draft.set(.anxiety, to: 8)
+        draft.set(.energy, to: 5)
         draft.updateNote(String(repeating: "x", count: 181))
         #expect(draft.values.mood == 1)
         #expect(draft.values.anxiety == 1)
@@ -51,7 +51,7 @@ struct ArrivalTodayTests {
         let state = DemoState()
         let original = state.mood
         var draft = CheckInDraft(mood: state.mood)
-        draft.advance(.mood)
+        draft.set(.mood, to: 9)
         draft.updateNote("Changed only in the draft")
         #expect(state.mood == original)
         #expect(draft.values.mood != original?.mood)
@@ -61,7 +61,7 @@ struct ArrivalTodayTests {
     func checkInSaveOnce() {
         let state = DemoState()
         var draft = CheckInDraft(mood: state.mood)
-        draft.advance(.anxiety)
+        draft.set(.anxiety, to: 8)
         draft.updateNote("  A short note  ")
         let first = draft.beginSave()
         let second = draft.beginSave()

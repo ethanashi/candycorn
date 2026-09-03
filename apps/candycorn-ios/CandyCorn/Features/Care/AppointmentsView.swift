@@ -7,8 +7,7 @@ struct AppointmentsView: View {
         ScreenLayout(
             title: "Appointments",
             subtitle: "Upcoming care and the source record from completed visits.",
-            backAction: { navigation.navigate(to: .today) },
-            backLabel: "Back to Today"
+            backAction: navigation.backAction(for: .appointments)
         ) {
             Button {
                 navigation.navigate(to: .recordAppointment)

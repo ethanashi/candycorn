@@ -17,21 +17,20 @@ enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
 }
 
 struct SettingsSectionPicker: View {
-    let current: SettingsSection
     @Bindable var navigation: NavigationModel
 
     var body: some View {
         HStack(spacing: 0) {
             ForEach(SettingsSection.allCases) { section in
                 Button {
-                    navigation.navigate(to: section.route)
+                    navigation.openSettings(section)
                 } label: {
                     VStack(spacing: DesignTokens.Spacing.small) {
                         Text(section.rawValue)
-                            .font(section == current ? TypeScale.bodyMedium : TypeScale.label)
-                            .foregroundStyle(section == current ? DesignTokens.cocoa : DesignTokens.cocoaSoft)
+                            .font(section == navigation.selectedSettingsSection ? TypeScale.bodyMedium : TypeScale.label)
+                            .foregroundStyle(section == navigation.selectedSettingsSection ? DesignTokens.cocoa : DesignTokens.cocoaSoft)
                         Rectangle()
-                            .fill(section == current ? DesignTokens.orange : Color.clear)
+                            .fill(section == navigation.selectedSettingsSection ? DesignTokens.orange : Color.clear)
                             .frame(width: 86, height: 3)
                     }
                     .frame(maxWidth: .infinity, minHeight: 48)
@@ -39,7 +38,7 @@ struct SettingsSectionPicker: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(section.rawValue) settings")
-                .accessibilityAddTraits(section == current ? .isSelected : [])
+                .accessibilityAddTraits(section == navigation.selectedSettingsSection ? .isSelected : [])
             }
         }
         .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }

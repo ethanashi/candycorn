@@ -9,7 +9,9 @@ enum TypeScale {
     static let body = Font.custom("AvenirNext-Regular", size: 16, relativeTo: .body)
     static let bodyMedium = Font.custom("AvenirNext-Medium", size: 16, relativeTo: .body)
     static let label = Font.custom("AvenirNext-Medium", size: 14, relativeTo: .subheadline)
-    static let provenance = Font.custom("AvenirNext-Regular", size: 13, relativeTo: .caption)
+    static let provenancePointSize: CGFloat = 13
+    static let provenanceWeight = 500
+    static let provenance = Font.custom("AvenirNext-Medium", size: provenancePointSize, relativeTo: .caption)
     static let button = Font.custom("AvenirNext-DemiBold", size: 17, relativeTo: .headline)
     static let timer = Font.custom("AvenirNext-DemiBold", size: 64, relativeTo: .largeTitle).monospacedDigit()
 }

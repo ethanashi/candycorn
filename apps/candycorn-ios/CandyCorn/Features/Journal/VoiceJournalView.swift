@@ -59,9 +59,8 @@ struct VoiceJournalView: View {
     private var recordingView: some View {
         VStack(spacing: 0) {
             HStack {
-                cancelButton(iconOnly: true)
+                cancelButton
                 Spacer()
-                cancelButton(iconOnly: false)
             }
 
             VStack(spacing: DesignTokens.Spacing.small) {
@@ -77,7 +76,7 @@ struct VoiceJournalView: View {
             Spacer(minLength: DesignTokens.Spacing.generous)
 
             VStack(spacing: DesignTokens.Spacing.compact) {
-                Text("Simulated recording")
+                Text("Recording")
                     .font(TypeScale.bodyMedium)
                 Text(JournalRecordingState.format(seconds: recording.elapsedSeconds))
                     .font(TypeScale.timer)
@@ -104,7 +103,7 @@ struct VoiceJournalView: View {
 
             Spacer(minLength: DesignTokens.Spacing.generous)
 
-            Text("No microphone is used. This recording is simulated on this device.")
+            Text("Your recording is saved on this device before anything else happens.")
                 .font(TypeScale.provenance)
                 .foregroundStyle(DesignTokens.cocoaSoft)
                 .multilineTextAlignment(.center)
@@ -120,7 +119,7 @@ struct VoiceJournalView: View {
     private var savedView: some View {
         ScreenLayout(
             title: "Saved on this device",
-            subtitle: "This is a simulated journal. No audio was recorded.",
+            subtitle: "Your original audio stays on this device.",
             backAction: cancel,
             bottomInset: DesignTokens.Spacing.section
         ) {
@@ -138,19 +137,15 @@ struct VoiceJournalView: View {
                 Image(systemName: AppIcon.play.rawValue)
                     .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum)
                     .overlay(Circle().stroke(DesignTokens.hairline, lineWidth: 1))
-                    .accessibilityLabel("Play simulated audio")
+                    .accessibilityLabel("Play audio")
             }
             .padding(DesignTokens.Spacing.base)
             .overlay(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous).stroke(DesignTokens.hairline, lineWidth: 1))
 
-            VStack(spacing: DesignTokens.Spacing.compact) {
-                Button("Transcribe") { open(.journalDetail) }
-                    .buttonStyle(PrimaryButtonStyle())
-                Button("Keep audio only") { open(.history) }
-                    .buttonStyle(SecondaryButtonStyle())
-            }
+            Button("View in history") { open(.history) }
+                .buttonStyle(PrimaryButtonStyle())
 
-            Text("Nothing is sent anywhere. Later phases can connect this choice to on-device recording.")
+            Text("Nothing was sent anywhere.")
                 .font(TypeScale.provenance)
                 .foregroundStyle(DesignTokens.cocoaSoft)
                 .multilineTextAlignment(.center)
@@ -158,17 +153,10 @@ struct VoiceJournalView: View {
         }
     }
 
-    @ViewBuilder
-    private func cancelButton(iconOnly: Bool) -> some View {
+    private var cancelButton: some View {
         Button(action: cancel) {
-            if iconOnly {
-                Image(systemName: AppIcon.close.rawValue)
-                    .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum)
-            } else {
-                Text("Cancel")
-                    .font(TypeScale.bodyMedium)
-                    .frame(minWidth: DesignTokens.controlMinimum, minHeight: DesignTokens.controlMinimum)
-            }
+            Image(systemName: AppIcon.close.rawValue)
+                .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Cancel recording")

@@ -9,7 +9,7 @@ enum DesignTokens {
     static let yellowHex = "#F4C95D"
     static let yellowDeepHex = "#E0AE3A"
     static let cocoaHex = "#2D2825"
-    static let cocoaSoftHex = "#766D67"
+    static let cocoaSoftHex = "#5E564F"
     static let hairlineHex = "#EBE2D8"
     static let sageHex = "#8FA58B"
     static let roseHex = "#C9877C"
@@ -31,6 +31,7 @@ enum DesignTokens {
 
     static let cardRadius: CGFloat = 20
     static let controlRadius: CGFloat = 16
+    static let moodBandRadius: CGFloat = 12
     static let controlMinimum: CGFloat = 44
     static let primaryButtonHeight: CGFloat = 56
     static let screenInset: CGFloat = 16

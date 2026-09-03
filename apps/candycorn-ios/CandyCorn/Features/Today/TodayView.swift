@@ -1,5 +1,20 @@
 import SwiftUI
 
+enum TodaySectionKind: Equatable, Sendable {
+    case appointment
+    case talkingPoint(UUID)
+    case currentGoal(UUID)
+}
+
+enum TodayOrderingModel {
+    static func sections(talkingPoints: [TalkingPoint], currentGoal: Goal?) -> [TodaySectionKind] {
+        var result: [TodaySectionKind] = [.appointment]
+        result.append(contentsOf: talkingPoints.filter { $0.status == .open }.prefix(3).map { .talkingPoint($0.id) })
+        if let currentGoal { result.append(.currentGoal(currentGoal.id)) }
+        return result
+    }
+}
+
 struct TodayView: View {
     @Bindable var navigation: NavigationModel
     @Bindable var state: DemoState
@@ -20,7 +35,7 @@ struct TodayView: View {
                 appointment
                     .padding(.top, DesignTokens.Spacing.large)
                 ledger
-                    .padding(.top, 112)
+                    .padding(.top, DesignTokens.Spacing.large)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, DesignTokens.screenInset)
@@ -120,14 +135,15 @@ struct TodayView: View {
 
     private var ledger: some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.section) {
+            let openPoints = Array(state.talkingPoints.filter { $0.status == .open }.prefix(3))
+            if !openPoints.isEmpty {
+                TalkingPointLedgerSection(points: openPoints) {
+                    navigation.navigate(to: .bringUp)
+                }
+            }
             if let goal = currentGoal {
                 LedgerSection(title: "Current goal", actionTitle: "See goals", itemTitle: goal.title, provenance: goal.provenance) {
                     navigation.navigate(to: .goals)
-                }
-            }
-            if let point = currentTalkingPoint {
-                LedgerSection(title: "Bring up next time", actionTitle: "Open inbox", itemTitle: point.text, provenance: point.provenance) {
-                    navigation.navigate(to: .bringUp)
                 }
             }
             if let journal = SeededData.journalEntries.first {
@@ -154,10 +170,6 @@ struct TodayView: View {
 
     private var currentGoal: Goal? {
         state.goals.first { $0.cadence == .daily && $0.status != .completed } ?? state.goals.first
-    }
-
-    private var currentTalkingPoint: TalkingPoint? {
-        state.talkingPoints.first { $0.status == .open } ?? state.talkingPoints.first
     }
 
     private var cardBorder: some View {
@@ -224,9 +236,16 @@ private struct LedgerSection: View {
                 Text(title).font(TypeScale.sectionCompact)
                 Spacer()
                 if let actionTitle {
-                    Button(actionTitle, action: action)
+                    Button(action: action) {
+                        HStack(spacing: DesignTokens.Spacing.xSmall) {
+                            Text(actionTitle)
+                            Image(systemName: "chevron.right")
+                        }
                         .font(TypeScale.provenance)
+                        .foregroundStyle(DesignTokens.cocoa)
                         .frame(minHeight: DesignTokens.controlMinimum)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             Button(action: action) {
@@ -243,6 +262,44 @@ private struct LedgerSection: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("\(itemTitle). \(provenance.label). \(provenance.detail)")
+        }
+    }
+}
+
+private struct TalkingPointLedgerSection: View {
+    let points: [TalkingPoint]
+    let action: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Bring up next time").font(TypeScale.sectionCompact)
+                Spacer()
+                Button(action: action) {
+                    HStack(spacing: DesignTokens.Spacing.xSmall) {
+                        Text("Open inbox")
+                        Image(systemName: "chevron.right")
+                    }
+                    .font(TypeScale.provenance)
+                    .foregroundStyle(DesignTokens.cocoa)
+                    .frame(minHeight: DesignTokens.controlMinimum)
+                }
+                .buttonStyle(.plain)
+            }
+            ForEach(points) { point in
+                Button(action: action) {
+                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+                        Text(point.text)
+                            .font(TypeScale.bodyMedium)
+                            .foregroundStyle(DesignTokens.cocoa)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        ProvenanceLine(provenance: point.provenance, compact: true)
+                    }
+                    .padding(.vertical, DesignTokens.Spacing.compact)
+                    .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 }

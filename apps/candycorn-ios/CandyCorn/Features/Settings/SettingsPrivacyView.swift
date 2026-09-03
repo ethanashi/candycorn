@@ -2,13 +2,47 @@ import SwiftUI
 
 struct SettingsPrivacyView: View {
     @Bindable var navigation: NavigationModel
+    @Bindable var state: DemoState
 
     var body: some View {
         ScreenLayout(
-            title: "Privacy",
-            subtitle: "Your private record should stay understandable and under your control."
+            title: title,
+            subtitle: subtitle
         ) {
-            SettingsSectionPicker(current: .privacy, navigation: navigation)
+            SettingsSectionPicker(navigation: navigation)
+            sectionContent
+        }
+    }
+
+    @ViewBuilder private var sectionContent: some View {
+        switch navigation.selectedSettingsSection {
+        case .privacy:
+            privacyContent
+        case .ai:
+            SettingsAIView(navigation: navigation, state: state, embedded: true)
+        case .data:
+            SettingsDataView(navigation: navigation, state: state, embedded: true)
+        }
+    }
+
+    private var title: String {
+        switch navigation.selectedSettingsSection {
+        case .privacy: "Privacy"
+        case .ai: "AI and processing"
+        case .data: "Data and export"
+        }
+    }
+
+    private var subtitle: String {
+        switch navigation.selectedSettingsSection {
+        case .privacy: "Your private record stays understandable and under your control."
+        case .ai: "AI is off by default. Your local journal works without it."
+        case .data: "Choose what stays on this phone and export a readable copy."
+        }
+    }
+
+    private var privacyContent: some View {
+        Group {
             VStack(alignment: .leading, spacing: 0) {
                 Text("Privacy status")
                     .font(TypeScale.sectionCompact)
@@ -17,12 +51,12 @@ struct SettingsPrivacyView: View {
                 Divider().overlay(DesignTokens.hairline)
                 SettingsStatusRow(
                     status: "Stored on this device",
-                    detail: "The native app is designed to keep originals in an encrypted local vault. This shell keeps only in-memory changes.",
+                    detail: "Originals and notes stay in your encrypted local care vault.",
                     voice: .user
                 )
                 SettingsStatusRow(
                     status: "Cloud upload: only when AI is on",
-                    detail: "Nothing uploads in this shell. Later processing will show what is selected before a request."
+                    detail: "Nothing uploads while AI is off. You choose what is sent when processing is enabled."
                 )
                 SettingsStatusRow(
                     status: "Raw audio retention: you decide",
@@ -36,7 +70,7 @@ struct SettingsPrivacyView: View {
             }
             limitations
             Button {
-                navigation.navigate(to: .settingsAI)
+                navigation.openSettings(.ai)
             } label: {
                 HStack(spacing: DesignTokens.Spacing.compact) {
                     Text("Review AI and processing")

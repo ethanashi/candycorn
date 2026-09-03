@@ -62,17 +62,26 @@ enum AISettingsLogic {
 struct SettingsAIView: View {
     @Bindable var navigation: NavigationModel
     @Bindable var state: DemoState
+    var embedded = false
 
     private var status: AIProcessingStatus {
         AISettingsLogic.processingStatus(mode: state.aiMode, provider: state.aiProvider)
     }
 
     var body: some View {
-        ScreenLayout(
-            title: "AI and processing",
-            subtitle: "The first version plans to use a cloud router when AI is on. No request is sent in this shell."
-        ) {
-            SettingsSectionPicker(current: .ai, navigation: navigation)
+        Group {
+            if embedded {
+                content
+            } else {
+                ScreenLayout(title: "AI and processing", subtitle: "AI is off by default. Your local journal works without it.") {
+                    SettingsSectionPicker(navigation: navigation)
+                    content
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var content: some View {
             processingLedger
             if !state.routerAvailable {
                 unavailableRouter
@@ -84,7 +93,6 @@ struct SettingsAIView: View {
                 detail: AISettingsLogic.leavesDeviceCopy(mode: state.aiMode, provider: state.aiProvider),
                 kind: state.aiMode == .off || state.aiProvider == .off ? .saved : .information
             )
-        }
     }
 
     private var processingLedger: some View {

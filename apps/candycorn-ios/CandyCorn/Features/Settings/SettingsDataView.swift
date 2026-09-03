@@ -67,17 +67,25 @@ struct SettingsDataView: View {
     @Bindable var navigation: NavigationModel
     @Bindable var state: DemoState
     @State private var local = SettingsDataInteractionState()
+    var embedded = false
 
     var body: some View {
-        ScreenLayout(
-            title: "Data and export",
-            subtitle: "Choose what stays on this phone and review what a future archive would include."
-        ) {
-            SettingsSectionPicker(current: .data, navigation: navigation)
-            retentionChoices
-            exportPreview
-            resetDemo
+        Group {
+            if embedded {
+                content
+            } else {
+                ScreenLayout(title: "Data and export", subtitle: "Choose what stays on this phone and export a readable copy.") {
+                    SettingsSectionPicker(navigation: navigation)
+                    content
+                }
+            }
         }
+    }
+
+    @ViewBuilder private var content: some View {
+        retentionChoices
+        exportPreview
+        resetDemo
     }
 
     private var retentionChoices: some View {

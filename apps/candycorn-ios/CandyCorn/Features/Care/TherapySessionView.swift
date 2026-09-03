@@ -286,7 +286,7 @@ private struct PlaybackScrubber: View {
             Slider(value: $position, in: 0...3126)
                 .tint(DesignTokens.orange)
                 .frame(minHeight: DesignTokens.controlMinimum)
-                .accessibilityLabel("Simulated playback position")
+                .accessibilityLabel("Playback position")
             Text("Playing from the saved transcript")
                 .font(TypeScale.bodyMedium)
         }
@@ -296,6 +296,6 @@ private struct PlaybackScrubber: View {
         .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
         .shadow(color: DesignTokens.cocoa.opacity(0.06), radius: 8, y: 2)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Simulated transcript playback")
+        .accessibilityLabel("Transcript playback")
     }
 }

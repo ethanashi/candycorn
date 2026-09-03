@@ -20,7 +20,7 @@ struct AppointmentWaveform: View {
         .frame(height: 116)
         .clipped()
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Simulated appointment waveform")
+        .accessibilityLabel("Appointment waveform")
     }
 
     private func barHeight(_ percentage: Int, at index: Int) -> CGFloat {

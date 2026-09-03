@@ -38,7 +38,7 @@ struct AppRootView: View {
 
     private func tabStack(_ tab: AppTab, path: Binding<[Route]>) -> some View {
         NavigationStack(path: path) {
-            RouteDestinationView(route: tab.rootRoute, navigation: navigation, state: state)
+            RouteDestinationView(route: rootRoute(for: tab), navigation: navigation, state: state)
                 .navigationDestination(for: Route.self) { route in
                     RouteDestinationView(route: route, navigation: navigation, state: state)
                 }
@@ -51,7 +51,14 @@ struct AppRootView: View {
 
     private var visibleRoute: Route {
         let path = path(for: navigation.selectedTab)
-        return path.last ?? navigation.selectedTab.rootRoute
+        return path.last ?? rootRoute(for: navigation.selectedTab)
+    }
+
+    private func rootRoute(for tab: AppTab) -> Route {
+        guard let launchRoute = navigation.launchRoute, launchRoute.tab == tab, !launchRoute.isPresentedFlow else {
+            return tab.rootRoute
+        }
+        return launchRoute
     }
 
     private func path(for tab: AppTab) -> [Route] {

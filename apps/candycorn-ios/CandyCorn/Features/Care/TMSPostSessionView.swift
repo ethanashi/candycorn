@@ -15,8 +15,7 @@ struct TMSPostSessionView: View {
         ScreenLayout(
             title: "After TMS",
             subtitle: "Record what you notice without assigning a cause.",
-            backAction: { navigation.navigate(to: .appointments) },
-            backLabel: "Back to appointments",
+            backAction: navigation.backAction(for: .tmsPost),
             bottomInset: DesignTokens.Spacing.section
         ) {
             TMSMeasuresEditor(snapshot: $snapshot)
@@ -39,8 +38,7 @@ struct TMSPostSessionView: View {
         ScreenLayout(
             title: "Post-session check-in saved",
             subtitle: "Saved on this device.",
-            backAction: { navigation.navigate(to: .appointments) },
-            backLabel: "Back to appointments",
+            backAction: navigation.backAction(for: .tmsPost),
             bottomInset: DesignTokens.Spacing.section
         ) {
             StatusNotice(

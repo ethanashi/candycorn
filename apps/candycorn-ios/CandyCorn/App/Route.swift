@@ -1,5 +1,11 @@
 import Foundation
 
+enum RoutePresentation: Sendable, Equatable {
+    case root
+    case pushed
+    case fullScreen
+}
+
 enum Route: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
     case welcome = "/welcome"
     case today = "/today"
@@ -52,6 +58,20 @@ enum Route: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
         case .settingsPrivacy, .settingsAI, .settingsData: .settings
         }
     }
+
+    var presentation: RoutePresentation {
+        switch self {
+        case .welcome, .today, .settingsPrivacy, .settingsAI, .settingsData:
+            .root
+        case .checkIn, .capture, .journalVoice, .journalWrite, .journalPhoto,
+             .recordAppointment, .activeAppointment:
+            .fullScreen
+        default:
+            .pushed
+        }
+    }
+
+    var isPresentedFlow: Bool { presentation == .fullScreen }
 
     var showsFloatingTabBar: Bool {
         switch self {

@@ -22,77 +22,95 @@ struct MoodValues: Equatable, Sendable {
     }
 }
 
+enum MoodBandSelection {
+    static func value(at x: CGFloat, width: CGFloat) -> Int {
+        guard width > 0 else { return 1 }
+        let bounded = min(max(x, 0), width)
+        if bounded >= width { return 10 }
+        return min(max(Int(bounded / width * 10) + 1, 1), 10)
+    }
+
+    static func adjusted(_ value: Int?, by delta: Int) -> Int {
+        min(max((value ?? 5) + delta, 1), 10)
+    }
+}
+
 struct MoodBands: View {
     let values: MoodValues
-    var compact: Bool = false
+    var compact = false
     var onChange: ((MoodDimension, Int) -> Void)?
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: DesignTokens.Spacing.xSmall) {
             band(.anxiety, color: DesignTokens.yellow)
             band(.mood, color: DesignTokens.orange)
             band(.energy, color: DesignTokens.surfaceWarm)
         }
         .frame(maxWidth: .infinity)
         .frame(height: compact && onChange == nil ? 84 : 168)
-        .background(DesignTokens.surface)
-        .clipShape(SidewaysKernelShape())
-        .overlay(SidewaysKernelShape().stroke(DesignTokens.hairline, lineWidth: 1))
         .accessibilityElement(children: .contain)
     }
 
     private func band(_ dimension: MoodDimension, color: Color) -> some View {
         let value = values.value(for: dimension)
-        return GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                DesignTokens.surface
-                color.frame(width: geometry.size.width * CGFloat(value ?? 0) / 10)
-                HStack(spacing: DesignTokens.Spacing.small) {
-                    Text(dimension.title)
-                    Spacer(minLength: DesignTokens.Spacing.small)
-                    Text(value.map(String.init) ?? "Not logged")
-                        .monospacedDigit()
-                }
-                .font(compact ? TypeScale.provenance : TypeScale.bodyMedium)
-                .foregroundStyle(DesignTokens.cocoa)
-                .padding(.horizontal, compact ? 12 : 20)
+        return HStack(spacing: DesignTokens.Spacing.xSmall) {
+            if onChange != nil {
+                adjustmentButton(dimension, delta: -1, icon: "minus")
             }
-            .contentShape(Rectangle())
-            .gesture(
-                SpatialTapGesture().onEnded { event in
-                    guard let onChange, geometry.size.width > 0 else { return }
-                    let selected = Int((event.location.x / geometry.size.width * 10).rounded(.up))
-                    onChange(dimension, min(max(selected, 1), 10))
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: DesignTokens.moodBandRadius, style: .continuous)
+                        .fill(DesignTokens.surface)
+                    Rectangle()
+                        .fill(color)
+                        .frame(width: geometry.size.width * CGFloat(value ?? 0) / 10)
+                    HStack(spacing: DesignTokens.Spacing.small) {
+                        Text(dimension.title)
+                        Spacer(minLength: DesignTokens.Spacing.small)
+                        Text(value.map(String.init) ?? "Not logged")
+                            .monospacedDigit()
+                            .frame(minWidth: 22, alignment: .trailing)
+                    }
+                    .font(compact ? TypeScale.provenance : TypeScale.bodyMedium)
+                    .foregroundStyle(DesignTokens.cocoa)
+                    .padding(.horizontal, compact ? 12 : 16)
                 }
-            )
+                .clipShape(RoundedRectangle(cornerRadius: DesignTokens.moodBandRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignTokens.moodBandRadius, style: .continuous)
+                        .stroke(DesignTokens.hairline, lineWidth: 1)
+                )
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { event in
+                            onChange?(dimension, MoodBandSelection.value(at: event.location.x, width: geometry.size.width))
+                        }
+                )
+            }
+            if onChange != nil {
+                adjustmentButton(dimension, delta: 1, icon: "plus")
+            }
         }
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: onChange == nil ? .ignore : .contain)
         .accessibilityLabel(dimension.title)
         .accessibilityValue(value.map { "\($0) out of 10" } ?? "Not logged")
         .accessibilityAdjustableAction { direction in
             guard let onChange else { return }
-            let current = value ?? 5
-            switch direction {
-            case .increment: onChange(dimension, min(current + 1, 10))
-            case .decrement: onChange(dimension, max(current - 1, 1))
-            @unknown default: break
-            }
+            let delta = direction == .increment ? 1 : -1
+            onChange(dimension, MoodBandSelection.adjusted(value, by: delta))
         }
     }
-}
 
-private struct SidewaysKernelShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let tipX = rect.maxX
-        path.move(to: CGPoint(x: rect.minX + rect.height * 0.18, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX - rect.height * 0.26, y: rect.minY))
-        path.addCurve(to: CGPoint(x: tipX, y: rect.midY), control1: CGPoint(x: rect.maxX - rect.height * 0.1, y: rect.minY), control2: CGPoint(x: tipX, y: rect.height * 0.32))
-        path.addCurve(to: CGPoint(x: rect.maxX - rect.height * 0.26, y: rect.maxY), control1: CGPoint(x: tipX, y: rect.height * 0.68), control2: CGPoint(x: rect.maxX - rect.height * 0.1, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX + rect.height * 0.18, y: rect.maxY))
-        path.addCurve(to: CGPoint(x: rect.minX, y: rect.midY), control1: CGPoint(x: rect.minX, y: rect.maxY), control2: CGPoint(x: rect.minX, y: rect.height * 0.68))
-        path.addCurve(to: CGPoint(x: rect.minX + rect.height * 0.18, y: rect.minY), control1: CGPoint(x: rect.minX, y: rect.height * 0.32), control2: CGPoint(x: rect.minX, y: rect.minY))
-        path.closeSubpath()
-        return path
+    private func adjustmentButton(_ dimension: MoodDimension, delta: Int, icon: String) -> some View {
+        Button {
+            onChange?(dimension, MoodBandSelection.adjusted(values.value(for: dimension), by: delta))
+        } label: {
+            Image(systemName: icon)
+                .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(DesignTokens.cocoa)
+        .accessibilityLabel("\(delta < 0 ? "Decrease" : "Increase") \(dimension.title.lowercased())")
     }
 }

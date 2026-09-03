@@ -75,17 +75,13 @@ struct TextJournalView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            HStack(spacing: DesignTokens.Spacing.compact) {
-                Button("Cancel", action: dismiss)
-                    .buttonStyle(SecondaryButtonStyle())
-                Button("Save original") {
-                    editorFocused = false
-                    _ = draft.saveOriginal()
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(!draft.canSave)
-                .opacity(draft.canSave ? 1 : 0.45)
+            Button("Save original") {
+                editorFocused = false
+                _ = draft.saveOriginal()
             }
+            .buttonStyle(PrimaryButtonStyle())
+            .disabled(!draft.canSave)
+            .opacity(draft.canSave ? 1 : 0.45)
         }
         .onAppear { editorFocused = true }
     }

@@ -66,7 +66,7 @@ struct JournalSuggestionsView: View {
         ScreenLayout(
             title: "Suggestions",
             subtitle: "Nothing here changes your original.",
-            backAction: { navigation.navigate(to: .journalDetail) }
+            backAction: navigation.backAction(for: .journalSuggestions)
         ) {
             if state.aiMode == .off {
                 unavailableCard(

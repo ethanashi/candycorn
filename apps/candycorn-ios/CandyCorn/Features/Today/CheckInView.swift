@@ -18,8 +18,8 @@ struct CheckInDraft: Equatable, Sendable {
         note = String((mood?.note ?? "").prefix(180))
     }
 
-    mutating func advance(_ dimension: MoodDimension) {
-        let next = ((values.value(for: dimension) ?? 0) % 10) + 1
+    mutating func set(_ dimension: MoodDimension, to value: Int) {
+        let next = min(max(value, 1), 10)
         switch dimension {
         case .anxiety: values.anxiety = next
         case .mood: values.mood = next
@@ -61,7 +61,7 @@ struct CheckInView: View {
     var body: some View {
         ScreenLayout(
             title: "How are you doing?",
-            subtitle: "Tap each band to choose a value from 1 to 10.",
+            subtitle: "Tap or drag each band to choose a value from 1 to 10.",
             backAction: cancel,
             backLabel: "Cancel check-in",
             bottomInset: DesignTokens.Spacing.large
@@ -73,7 +73,7 @@ struct CheckInView: View {
                         .foregroundStyle(DesignTokens.cocoaSoft)
                 }
                 moodEditor
-                Text("Each tap moves the selected band up by one. After 10, it returns to 1.")
+                Text("Drag across a band or use its minus and plus controls.")
                     .font(TypeScale.provenance)
                     .foregroundStyle(DesignTokens.cocoaSoft)
                 noteEditor
@@ -84,21 +84,8 @@ struct CheckInView: View {
     }
 
     private var moodEditor: some View {
-        ZStack {
-            MoodBands(values: draft.values)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-            VStack(spacing: 0) {
-                ForEach(MoodDimension.allCases, id: \.self) { dimension in
-                    Button { draft.advance(dimension) } label: {
-                        Color.clear.frame(maxWidth: .infinity, minHeight: 56)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(dimension.title)
-                    .accessibilityValue(draft.values.value(for: dimension).map { "\($0) out of 10" } ?? "Not logged")
-                    .accessibilityHint("Increases by one. After 10, returns to 1")
-                }
-            }
+        MoodBands(values: draft.values) { dimension, value in
+            draft.set(dimension, to: value)
         }
     }
 
@@ -127,14 +114,10 @@ struct CheckInView: View {
     private var actionButtons: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: DesignTokens.Spacing.compact) {
-                Button("Cancel", action: cancel)
-                    .buttonStyle(SecondaryButtonStyle())
-                    .frame(maxWidth: 116)
                 saveButton
             }
             VStack(spacing: DesignTokens.Spacing.compact) {
                 saveButton
-                Button("Cancel", action: cancel).buttonStyle(SecondaryButtonStyle())
             }
         }
         .padding(.top, DesignTokens.Spacing.xSmall)

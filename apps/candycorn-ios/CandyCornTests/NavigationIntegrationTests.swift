@@ -80,15 +80,50 @@ struct NavigationIntegrationTests {
         let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", Route.today.rawValue])
         navigation.navigate(to: .goals)
         navigation.navigate(to: .journalDetail)
-        navigation.navigate(to: .settingsAI)
+        navigation.openSettings(.ai)
 
         #expect(navigation.todayPath == [.goals])
         #expect(navigation.journalPath == [.journalDetail])
-        #expect(navigation.settingsPath == [.settingsAI])
+        #expect(navigation.settingsPath.isEmpty)
+        #expect(navigation.selectedSettingsSection == .ai)
         navigation.select(.today)
         #expect(navigation.todayPath == [.goals])
         #expect(navigation.journalPath == [.journalDetail])
-        #expect(navigation.settingsPath == [.settingsAI])
+        #expect(navigation.settingsPath.isEmpty)
+    }
+
+    @Test("Settings sections switch in place and deep links select their section")
+    func settingsSections() {
+        let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", Route.settingsPrivacy.rawValue])
+        for section in SettingsSection.allCases {
+            navigation.openSettings(section)
+            #expect(navigation.settingsPath.isEmpty)
+            #expect(navigation.presentedFlow == nil)
+            #expect(navigation.selectedSettingsSection == section)
+        }
+        #expect(NavigationModel(arguments: ["CandyCorn", "-screen", Route.settingsAI.rawValue]).selectedSettingsSection == .ai)
+        #expect(NavigationModel(arguments: ["CandyCorn", "-screen", Route.settingsData.rawValue]).selectedSettingsSection == .data)
+    }
+
+    @Test("Back behavior covers roots, pushes, and full-screen flows")
+    func backBehavior() {
+        for root in AppTab.allCases.map(\.rootRoute) {
+            let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", root.rawValue])
+            navigation.goBack(from: root)
+            #expect(!navigation.canGoBack(from: root))
+        }
+
+        let pushed = NavigationModel(arguments: ["CandyCorn", "-screen", Route.today.rawValue])
+        pushed.navigate(to: .goals)
+        #expect(pushed.canGoBack(from: .goals))
+        pushed.goBack(from: .goals)
+        #expect(pushed.todayPath.isEmpty)
+
+        let flow = NavigationModel(arguments: ["CandyCorn", "-screen", Route.today.rawValue])
+        flow.navigate(to: .checkIn)
+        #expect(flow.canGoBack(from: .checkIn))
+        flow.goBack(from: .checkIn)
+        #expect(flow.presentedFlow == nil)
     }
 
     @Test("Completing onboarding opens Today")
@@ -140,6 +175,7 @@ struct NavigationIntegrationTests {
             #expect(navigation.onboardingComplete == (route != .welcome))
             if route != .welcome {
                 #expect(navigation.presentedFlow == route || navigation.selectedTab == route.tab)
+                if !route.isPresentedFlow { #expect(!navigation.canGoBack(from: route)) }
             }
         }
     }

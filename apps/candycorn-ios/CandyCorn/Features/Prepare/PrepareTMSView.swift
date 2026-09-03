@@ -8,8 +8,7 @@ struct PrepareTMSView: View {
         ScreenLayout(
             title: "Prepare for TMS",
             subtitle: "Saved observations for the next Riverbend TMS visit.",
-            backAction: { navigation.navigate(to: .today) },
-            backLabel: "Back to Today"
+            backAction: navigation.backAction(for: .prepareTMS)
         ) {
             currentMood
             VStack(alignment: .leading, spacing: 0) {

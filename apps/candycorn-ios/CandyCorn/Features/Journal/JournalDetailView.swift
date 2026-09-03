@@ -18,8 +18,7 @@ struct JournalDetailView: View {
     var body: some View {
         ScreenLayout(
             title: "Football and guilt",
-            backAction: { navigation.navigate(to: .history) },
-            backLabel: "Back to history",
+            backAction: navigation.backAction(for: .journalDetail),
             trailing: AnyView(
                 Button("More") { navigation.navigate(to: .journalSuggestions) }
                     .font(TypeScale.bodyMedium)

@@ -75,7 +75,7 @@ struct ActiveAppointmentView: View {
             }
 
             Spacer(minLength: DesignTokens.Spacing.generous)
-            Text("Simulated recording")
+            Text("Recording")
                 .font(TypeScale.bodyMedium)
             Text(AppointmentRecordingClock.format(seconds: clock.elapsedSeconds))
                 .font(TypeScale.timer)
@@ -95,7 +95,7 @@ struct ActiveAppointmentView: View {
             .frame(maxWidth: 180)
 
             Spacer(minLength: DesignTokens.Spacing.generous)
-            Text("This is a simulated recording. No microphone or background recording is active.")
+            Text("The original audio stays on this device.")
                 .font(TypeScale.provenance)
                 .foregroundStyle(DesignTokens.cocoaSoft)
                 .multilineTextAlignment(.center)
@@ -111,14 +111,14 @@ struct ActiveAppointmentView: View {
     private var savedRecording: some View {
         ScreenLayout(
             title: "Saved on this device",
-            subtitle: "The simulated recording is preserved locally. Nothing was sent anywhere.",
+            subtitle: "The recording is preserved locally. Nothing was sent anywhere.",
             backAction: close,
             backLabel: "Back to appointments",
             bottomInset: DesignTokens.Spacing.section
         ) {
             StatusNotice(
                 title: "Saved on this device",
-                detail: "No audio was recorded. This recording was simulated.",
+                detail: "The original audio is available for playback.",
                 kind: .saved
             )
             Button(savedActionTitle, action: openSavedDestination)
