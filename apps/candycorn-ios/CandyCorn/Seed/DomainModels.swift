@@ -1,0 +1,148 @@
+import Foundation
+
+enum ProvenanceVoice: String, Codable, CaseIterable, Sendable {
+    case user
+    case provider
+    case candyCorn = "candy-corn"
+}
+
+struct Provenance: Codable, Equatable, Sendable {
+    var voice: ProvenanceVoice
+    var label: String
+    var detail: String
+    var occurredAt: Date?
+    var sourceRoute: Route?
+}
+
+struct JournalEntry: Identifiable, Codable, Equatable, Sendable {
+    enum InputType: String, Codable, Sendable { case text, voice, photo }
+    enum ProcessingStatus: String, Codable, Sendable { case unprocessed, processing, processed, failed }
+
+    let id: UUID
+    let createdAt: Date
+    var updatedAt: Date
+    let inputType: InputType
+    var title: String
+    var rawText: String
+    var cleanedText: String?
+    var summaryItems: [String]
+    var originalAttachmentID: UUID?
+    var audioAttachmentID: UUID?
+    var moodLogID: UUID?
+    var pinnedForNextAppointment: Bool
+    var processingStatus: ProcessingStatus
+    var provenance: Provenance
+}
+
+struct MoodLog: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    let createdAt: Date
+    var mood: Int?
+    var anxiety: Int?
+    var energy: Int?
+    var customValues: [String: Int]
+    var note: String?
+
+    func normalized() -> MoodLog {
+        var copy = self
+        copy.mood = Self.clamp(mood)
+        copy.anxiety = Self.clamp(anxiety)
+        copy.energy = Self.clamp(energy)
+        copy.customValues = customValues.mapValues { min(max($0, 1), 10) }
+        return copy
+    }
+
+    private static func clamp(_ value: Int?) -> Int? {
+        value.map { min(max($0, 1), 10) }
+    }
+}
+
+struct Appointment: Identifiable, Codable, Equatable, Sendable {
+    enum Kind: String, Codable, CaseIterable, Sendable { case therapy, tms, psychiatry, other }
+    enum Status: String, Codable, Sendable { case planned, recording, processing, completed }
+
+    let id: UUID
+    var kind: Kind
+    var scheduledAt: Date?
+    var startedAt: Date?
+    var endedAt: Date?
+    var providerID: UUID?
+    var providerName: String
+    var recordingAttachmentID: UUID?
+    var transcriptID: UUID?
+    var summaryID: UUID?
+    var status: Status
+}
+
+struct Goal: Identifiable, Codable, Equatable, Sendable {
+    enum Cadence: String, Codable, CaseIterable, Sendable {
+        case oneOff
+        case daily
+        case weekly
+        case monthly
+        case ongoing
+        case observation
+        case homework
+    }
+    enum Source: String, Codable, Sendable { case userExplicit, providerExplicit, aiSuggested }
+    enum Status: String, Codable, Sendable { case proposed, active, completed, paused, dismissed }
+
+    let id: UUID
+    var title: String
+    var detail: String?
+    var cadence: Cadence
+    var source: Source
+    var sourceEntityID: UUID?
+    var sourceTimestampMilliseconds: Int?
+    var status: Status
+    let createdAt: Date
+    var targetDate: Date?
+    var provenance: Provenance
+}
+
+struct TalkingPoint: Identifiable, Codable, Equatable, Sendable {
+    enum Source: String, Codable, Sendable { case manual, journal, session, aiSuggestion }
+    enum Status: String, Codable, Sendable { case open, discussed, dismissed }
+
+    let id: UUID
+    var text: String
+    var source: Source
+    var sourceID: UUID?
+    var targetAppointmentKind: Appointment.Kind?
+    var isImportant: Bool
+    var status: Status
+    let createdAt: Date
+    var provenance: Provenance
+}
+
+struct AIArtifact: Identifiable, Codable, Equatable, Sendable {
+    enum Kind: String, Codable, Sendable {
+        case journalRewrite
+        case journalSummary
+        case sessionSummary
+        case appointmentBrief
+        case goalSuggestions
+        case connectionSuggestion
+    }
+
+    let id: UUID
+    let kind: Kind
+    let sourceIDs: [UUID]
+    let provider: String
+    let model: String
+    let structuredPayload: Data
+    let createdAt: Date
+}
+
+struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
+    enum Speaker: String, Codable, Sendable { case patient, provider, unknown }
+
+    let id: UUID
+    let appointmentID: UUID
+    var speaker: Speaker
+    var rawSpeakerLabel: String?
+    let startMilliseconds: Int
+    let endMilliseconds: Int
+    var text: String
+    var confidence: Double?
+}
