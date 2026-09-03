@@ -25,7 +25,7 @@ struct JournalSuggestionsView: View {
     }
 
     var body: some View {
-        ScreenLayout(
+        V2Screen(
             title: "Suggestions",
             subtitle: "Nothing is added until you choose it.",
             backAction: navigation.backAction(for: .journalSuggestions)
@@ -68,101 +68,83 @@ struct JournalSuggestionsView: View {
                 kind: .information
             )
         } else {
-            VStack(alignment: .leading, spacing: 0) {
-                ledgerHeader(artifact: artifact)
-                talkingPointRows(review.talkingPoints, entry: entry, artifact: artifact)
-                commitmentRows(review.commitments, entry: entry, artifact: artifact)
-            }
-            .padding(DesignTokens.Spacing.base)
-            .background(DesignTokens.surfaceWarm)
-            .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
+            ProvenanceStack(provenance: Provenance(
+                voice: .candyCorn,
+                label: "Candy Corn suggestions from \(entry.title)",
+                detail: "Based only on the source words shown. \(artifact.provider), \(artifact.model)",
+                occurredAt: artifact.createdAt,
+                sourceRoute: .journalDetail
+            ))
+            .padding(.horizontal, DesignTokens.Spacing.xSmall)
+            talkingPointCards(review.talkingPoints, entry: entry)
+            commitmentCards(review.commitments, entry: entry)
         }
         if let saveError {
             StatusNotice(title: "Could not add that suggestion", detail: saveError, kind: .warning)
         }
     }
 
-    private func ledgerHeader(artifact: AIArtifact) -> some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Text("Possible next steps")
-                .font(TypeScale.section)
-                .foregroundStyle(DesignTokens.cocoa)
-            Text("Suggestions are based only on source words shown below.")
-                .font(TypeScale.label)
-                .foregroundStyle(DesignTokens.cocoaSoft)
-            candyCornProvenance(
-                label: "Candy Corn suggestions",
-                detail: "\(artifact.provider), \(artifact.model)",
-                occurredAt: artifact.createdAt
-            )
-        }
-        .padding(.bottom, DesignTokens.Spacing.medium)
-    }
-
     @ViewBuilder
-    private func talkingPointRows(
+    private func talkingPointCards(
         _ suggestions: [JournalSignals.TalkingPointSuggestion],
-        entry: JournalEntry,
-        artifact: AIArtifact
+        entry: JournalEntry
     ) -> some View {
         ForEach(suggestions) { suggestion in
             if decisions.isVisible(suggestion.id) {
-                Divider().overlay(DesignTokens.hairline)
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
-                    candyCornProvenance(
-                        label: "Candy Corn suggested a talking point",
-                        detail: "From \(entry.title)",
-                        occurredAt: artifact.createdAt
-                    )
-                    Text(suggestion.text)
-                        .font(TypeScale.bodyMedium)
-                        .foregroundStyle(DesignTokens.cocoa)
-                    Text(suggestion.reason)
-                        .font(TypeScale.body)
-                        .foregroundStyle(DesignTokens.cocoaSoft)
-                    evidence(suggestion.evidence)
-                    Button {
-                        addTalkingPoint(suggestion, entry: entry)
-                    } label: {
-                        Label(
-                            talkingPointAdded(suggestion, entry: entry) ? "Added" : "Add to next appointment",
-                            systemImage: talkingPointAdded(suggestion, entry: entry) ? AppIcon.check.rawValue : AppIcon.listPlus.rawValue
-                        )
+                let added = talkingPointAdded(suggestion, entry: entry)
+                V2Card {
+                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
+                        cardHeader(kicker: "Talking point", title: suggestion.text, icon: .listPlus)
+                        Text(suggestion.reason)
+                            .font(TypeScale.label)
+                            .foregroundStyle(DesignTokens.cocoaSoft)
+                            .fixedSize(horizontal: false, vertical: true)
+                        evidence(suggestion.evidence)
+                        Button(added ? "Added" : "Add to next appointment") {
+                            addTalkingPoint(suggestion, entry: entry)
+                        }
+                        .buttonStyle(CompactDarkButtonStyle())
+                        .disabled(added || decisions.isPending(suggestion.id))
+                        .accessibilityValue(added ? "Added" : "Not added")
                     }
-                    .buttonStyle(SecondaryButtonStyle())
-                    .disabled(talkingPointAdded(suggestion, entry: entry) || decisions.isPending(suggestion.id))
-                    .accessibilityValue(talkingPointAdded(suggestion, entry: entry) ? "Added" : "Not added")
                 }
-                .padding(.vertical, DesignTokens.Spacing.medium)
             }
         }
     }
 
     @ViewBuilder
-    private func commitmentRows(
+    private func commitmentCards(
         _ commitments: [JournalSignals.Commitment],
-        entry: JournalEntry,
-        artifact: AIArtifact
+        entry: JournalEntry
     ) -> some View {
         ForEach(commitments) { candidate in
             if decisions.isVisible(candidate.id) {
-                Divider().overlay(DesignTokens.hairline)
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
-                    candyCornProvenance(
-                        label: "Candy Corn found an explicit commitment",
-                        detail: "Candidate goal from \(entry.title)",
-                        occurredAt: artifact.createdAt
-                    )
-                    Text(candidate.text)
-                        .font(TypeScale.bodyMedium)
-                        .foregroundStyle(DesignTokens.cocoa)
-                    Text("Suggested cadence: \(cadenceTitle(JournalCandidateDraft.supportedCadence(candidate.cadenceHint)))")
-                        .font(TypeScale.label)
-                        .foregroundStyle(DesignTokens.cocoaSoft)
-                    evidence(candidate.evidence)
-                    candidateActions(candidate, entry: entry)
+                V2Card {
+                    VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
+                        cardHeader(
+                            kicker: "Goal · \(cadenceTitle(JournalCandidateDraft.supportedCadence(candidate.cadenceHint)))",
+                            title: candidate.text,
+                            icon: .flag
+                        )
+                        evidence(candidate.evidence)
+                        candidateActions(candidate, entry: entry)
+                    }
                 }
-                .padding(.vertical, DesignTokens.Spacing.medium)
+            }
+        }
+    }
+
+    private func cardHeader(kicker: String, title: String, icon: AppIcon) -> some View {
+        HStack(alignment: .top, spacing: DesignTokens.Spacing.compact) {
+            IconTile(icon: icon, size: 34)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(kicker)
+                    .font(TypeScale.metaStrong)
+                    .foregroundStyle(DesignTokens.cocoaSoft)
+                Text(title)
+                    .font(TypeScale.cardTitle)
+                    .foregroundStyle(DesignTokens.cocoa)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -172,71 +154,62 @@ struct JournalSuggestionsView: View {
         entry: JournalEntry
     ) -> some View {
         let added = goalAdded(candidate, entry: entry)
+        let busy = added || decisions.isPending(candidate.id)
         return HStack(spacing: DesignTokens.Spacing.small) {
             Button(added ? "Added" : "Add") {
                 addGoal(JournalCandidateDraft(candidate: candidate, journalID: entry.id), entry: entry)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(DesignTokens.orange)
-            .foregroundStyle(DesignTokens.cocoa)
-            .frame(minHeight: DesignTokens.controlMinimum)
-            .disabled(added || decisions.isPending(candidate.id))
+            .buttonStyle(CompactDarkButtonStyle())
+            .disabled(busy)
 
             Button("Edit") {
                 editor = JournalCandidateDraft(candidate: candidate, journalID: entry.id)
             }
-            .buttonStyle(.bordered)
-            .tint(DesignTokens.cocoa)
-            .frame(minHeight: DesignTokens.controlMinimum)
-            .disabled(added || decisions.isPending(candidate.id))
+            .buttonStyle(CompactGhostButtonStyle())
+            .disabled(busy)
 
             Button("Ignore") { decisions.ignore(candidate.id) }
-                .buttonStyle(.plain)
+                .font(TypeScale.label)
                 .foregroundStyle(DesignTokens.cocoaSoft)
                 .frame(minWidth: DesignTokens.controlMinimum, minHeight: DesignTokens.controlMinimum)
-                .disabled(added || decisions.isPending(candidate.id))
+                .disabled(busy)
         }
         .accessibilityElement(children: .contain)
     }
 
     private func evidence(_ quote: String) -> some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.xSmall) {
-            Text("Your exact words")
-                .font(TypeScale.provenance)
-                .foregroundStyle(DesignTokens.yellowText)
-            Text("“\(quote)”")
-                .font(TypeScale.label)
-                .foregroundStyle(DesignTokens.cocoa)
-                .fixedSize(horizontal: false, vertical: true)
+        HStack(alignment: .top, spacing: DesignTokens.Spacing.small) {
+            KernelGlyph(voice: .user, height: 14, decorative: true)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Your exact words")
+                    .font(TypeScale.metaStrong)
+                    .foregroundStyle(DesignTokens.cocoa)
+                Text("“\(quote)”")
+                    .font(TypeScale.meta)
+                    .foregroundStyle(DesignTokens.cocoaSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
+        .padding(DesignTokens.Spacing.compact)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DesignTokens.surfaceWarm)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 
     private var unavailableContent: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.base) {
+        V2GroupCard {
             if state.aiMode == .off {
-                StatusNotice(
-                    title: "Organizing is off",
-                    detail: "Your journal remains available. Turn on Organizer when you want suggestions.",
-                    kind: .information
-                )
+                V2ListRow(icon: .sliders, title: "Organizing is off", detail: "Your journal remains available. Turn on Organizer when you want suggestions.", trailing: .none, divider: false)
             } else if !state.hasOpenRouterKey || !state.routerAvailable {
-                StatusNotice(
-                    title: "Router key needed",
-                    detail: "Add a key in AI settings before sending journal text.",
-                    kind: .warning
-                )
+                V2ListRow(icon: .key, title: "Router key needed", detail: "Add a key in AI settings before sending journal text.", trailing: .none, divider: false)
             } else {
-                StatusNotice(
-                    title: "No usable suggestions yet",
-                    detail: "The saved suggestion artifact is missing or could not be read. Your journal is unchanged.",
-                    kind: .warning
-                )
+                V2ListRow(icon: .sparkles, title: "No usable suggestions yet", detail: "The saved suggestion artifact is missing or could not be read. Your journal is unchanged.", trailing: .none, divider: false)
             }
-            Button("Read original") { navigation.navigate(to: .journalDetail) }
-                .buttonStyle(SecondaryButtonStyle())
+            V2ListRow(icon: .journal, title: "Read original") { navigation.navigate(to: .journalDetail) }
             if state.aiMode == .off || !state.hasOpenRouterKey {
-                Button("Open AI settings") { navigation.navigate(to: .settingsAI) }
-                    .buttonStyle(SecondaryButtonStyle())
+                V2ListRow(icon: .sliders, title: "Open AI settings") { navigation.navigate(to: .settingsAI) }
             }
         }
     }
@@ -319,16 +292,6 @@ struct JournalSuggestionsView: View {
             .filter { $0.status == .planned }
             .sorted { ($0.scheduledAt ?? .distantFuture) < ($1.scheduledAt ?? .distantFuture) }
             .first?.kind ?? .therapy
-    }
-
-    private func candyCornProvenance(label: String, detail: String, occurredAt: Date?) -> ProvenanceLine {
-        ProvenanceLine(provenance: Provenance(
-            voice: .candyCorn,
-            label: label,
-            detail: detail,
-            occurredAt: occurredAt,
-            sourceRoute: .journalDetail
-        ))
     }
 
     private func cadenceTitle(_ cadence: Goal.Cadence) -> String {

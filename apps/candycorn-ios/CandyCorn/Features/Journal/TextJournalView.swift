@@ -34,20 +34,23 @@ struct TextJournalView: View {
     }
 
     private var editorView: some View {
-        ScreenLayout(
+        V2Screen(
             title: "Write it down",
             subtitle: "Messy is welcome. Your original stays unchanged.",
             backAction: navigation.backAction(for: .journalWrite),
+            backLabel: "Close",
+            backIcon: .close,
             bottomInset: DesignTokens.Spacing.section
         ) {
-            TextEditor(text: $draft.text)
-                .font(Font.custom("AvenirNext-Regular", size: 18, relativeTo: .body))
-                .foregroundStyle(DesignTokens.cocoa)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 330)
-                .focused($editorFocused)
-                .accessibilityLabel("Your journal")
-                .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
+            V2Card {
+                TextEditor(text: $draft.text)
+                    .font(Font.custom("AvenirNext-Regular", size: 18, relativeTo: .body))
+                    .foregroundStyle(DesignTokens.cocoa)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 300)
+                    .focused($editorFocused)
+                    .accessibilityLabel("Your journal")
+            }
 
             if saveFailed {
                 StatusNotice(title: "Your journal could not be saved", detail: "Your words are still here. Try again.", kind: .warning)
@@ -62,22 +65,23 @@ struct TextJournalView: View {
     }
 
     private func savedView(_ entry: JournalEntry) -> some View {
-        ScreenLayout(
+        V2Screen(
             title: "Your words are saved",
             subtitle: "The original stays exactly as you wrote it.",
             backAction: navigation.backAction(for: .journalWrite),
+            backLabel: "Close",
+            backIcon: .close,
             bottomInset: DesignTokens.Spacing.section
         ) {
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.base) {
-                ProvenanceLine(provenance: entry.provenance)
-                Text(entry.rawText)
-                    .font(TypeScale.body)
-                    .foregroundStyle(DesignTokens.cocoa)
-                    .fixedSize(horizontal: false, vertical: true)
+            V2Card {
+                VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
+                    ProvenanceInline(voice: entry.provenance.voice, text: entry.provenance.inlineText)
+                    Text(entry.rawText)
+                        .font(TypeScale.body)
+                        .foregroundStyle(DesignTokens.cocoa)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-            .padding(.bottom, DesignTokens.Spacing.large)
-            .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
-
             StatusNotice(title: "Saved on this device", detail: "AI is off. No cleaned text or summary was created.", kind: .saved)
             Button("View in history") { open(.history) }
                 .buttonStyle(PrimaryButtonStyle())

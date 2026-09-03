@@ -20,69 +20,31 @@ struct CaptureChoiceView: View {
     @Bindable var navigation: NavigationModel
 
     var body: some View {
-        ScreenLayout(
+        V2Screen(
             title: "What feels easiest?",
             subtitle: "Choose one way to get it out. You can organize it later.",
             backAction: navigation.dismissPresentedFlow,
+            backLabel: "Close",
+            backIcon: .close,
             bottomInset: DesignTokens.Spacing.large
         ) {
-            VStack(spacing: 0) {
-                Divider().overlay(DesignTokens.hairline)
+            V2GroupCard {
                 ForEach(Self.choices) { choice in
-                    choiceRow(choice)
-                    Divider().overlay(DesignTokens.hairline)
+                    V2ListRow(
+                        icon: choice.icon,
+                        title: choice.title,
+                        detail: choice.detail,
+                        divider: choice.route != Self.choices.first?.route
+                    ) { navigation.navigate(to: choice.route) }
+                    .accessibilityHint("Opens the next screen")
                 }
             }
             privacyStatement
-                .padding(.top, DesignTokens.Spacing.xSmall)
         }
-    }
-
-    private func choiceRow(_ choice: CaptureChoice) -> some View {
-        Button { navigation.navigate(to: choice.route) } label: {
-            HStack(spacing: DesignTokens.Spacing.compact) {
-                choice.icon.image
-                    .font(.system(size: 22, weight: .regular))
-                    .foregroundStyle(DesignTokens.orangePressed)
-                    .frame(width: 44, height: 44)
-                    .overlay(Circle().stroke(DesignTokens.orange, lineWidth: 1))
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: DesignTokens.Spacing.xSmall) {
-                    Text(choice.title)
-                        .font(TypeScale.bodyMedium)
-                        .foregroundStyle(DesignTokens.cocoa)
-                    Text(choice.detail)
-                        .font(TypeScale.label)
-                        .foregroundStyle(DesignTokens.cocoaSoft)
-                }
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: DesignTokens.Spacing.small)
-                AppIcon.chevronRight.image
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(DesignTokens.cocoaSoft)
-                    .accessibilityHidden(true)
-            }
-            .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(choice.title)
-        .accessibilityHint("\(choice.detail) Opens the next screen")
     }
 
     private var privacyStatement: some View {
-        HStack(alignment: .top, spacing: DesignTokens.Spacing.compact) {
-            KernelGlyph(voice: .user, height: 18)
-                .padding(.top, 2)
-            Text("Nothing starts until you choose the next action.")
-                .font(TypeScale.provenance)
-                .foregroundStyle(DesignTokens.cocoaSoft)
-            Spacer(minLength: 0)
-        }
-        .padding(DesignTokens.Spacing.base)
-        .background(DesignTokens.surfaceWarm)
-        .clipShape(RoundedRectangle(cornerRadius: DesignTokens.controlRadius, style: .continuous))
-        .accessibilityElement(children: .combine)
+        ProvenanceInline(voice: .user, text: "Nothing starts until you choose the next action.")
+            .padding(.horizontal, DesignTokens.Spacing.xSmall)
     }
 }

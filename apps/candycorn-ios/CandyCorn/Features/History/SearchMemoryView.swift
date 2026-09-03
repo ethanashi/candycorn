@@ -113,9 +113,9 @@ struct SearchMemoryView: View {
     }
 
     var body: some View {
-        ScreenLayout(
+        V2Screen(
             title: "Search memory",
-            subtitle: "Search across journals, sessions, goals, and pinned items.",
+            subtitle: "Journals, sessions, goals, and pinned items. Runs on this device.",
             backAction: navigation.backAction(for: .search)
         ) {
             searchField
@@ -156,97 +156,91 @@ struct SearchMemoryView: View {
     }
 
     private var searchField: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            Text("Search your thread")
-                .font(TypeScale.label)
+        HStack(spacing: DesignTokens.Spacing.small) {
+            AppIcon.search.image
+                .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(DesignTokens.cocoa)
-            HStack(spacing: DesignTokens.Spacing.small) {
-                AppIcon.search.image
-                    .font(.system(size: 18, weight: .regular))
-                    .foregroundStyle(DesignTokens.cocoa)
-                    .accessibilityHidden(true)
-                TextField("Try football", text: Binding(get: { query }, set: { query = MemorySearchModel.boundedQuery($0) }))
-                    .font(TypeScale.body)
-                    .foregroundStyle(DesignTokens.cocoa)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.search)
-                    .accessibilityLabel("Search your thread")
-                if !query.isEmpty {
-                    Button(action: clearSearch) {
-                        AppIcon.close.image
-                            .font(.system(size: 15, weight: .semibold))
-                            .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum)
-                    }
-                    .foregroundStyle(DesignTokens.cocoaSoft)
-                    .accessibilityLabel("Clear memory search")
+                .accessibilityHidden(true)
+            TextField("Try football", text: Binding(get: { query }, set: { query = MemorySearchModel.boundedQuery($0) }))
+                .font(TypeScale.body)
+                .foregroundStyle(DesignTokens.cocoa)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .accessibilityLabel("Search your thread")
+            if !query.isEmpty {
+                Button(action: clearSearch) {
+                    AppIcon.close.image
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(width: DesignTokens.controlMinimum, height: DesignTokens.controlMinimum)
                 }
+                .foregroundStyle(DesignTokens.cocoaSoft)
+                .accessibilityLabel("Clear memory search")
             }
-            .padding(.leading, DesignTokens.Spacing.base)
-            .padding(.trailing, DesignTokens.Spacing.small)
-            .frame(minHeight: 52)
-            .background(DesignTokens.surface)
-            .overlay(
-                RoundedRectangle(cornerRadius: DesignTokens.controlRadius, style: .continuous)
-                    .stroke(DesignTokens.hairline, lineWidth: 1)
-            )
         }
+        .padding(.leading, DesignTokens.Spacing.base)
+        .padding(.trailing, DesignTokens.Spacing.small)
+        .frame(minHeight: 52)
+        .background(DesignTokens.surfaceWarm)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private var prompt: some View {
-        HStack(alignment: .top, spacing: DesignTokens.Spacing.compact) {
-            KernelGlyph(voice: .candyCorn, height: 18, decorative: true)
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.compact) {
-                Text("Try “football” to find where that thread appeared in a journal, therapy, and your appointment inbox.")
-                    .font(TypeScale.body)
-                    .foregroundStyle(DesignTokens.cocoa)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("Search runs on this device.")
-                    .font(TypeScale.provenance)
-                    .foregroundStyle(DesignTokens.cocoaSoft)
+        V2Card {
+            HStack(alignment: .top, spacing: DesignTokens.Spacing.compact) {
+                IconTile(icon: .search, size: 34)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Try “football”")
+                        .font(TypeScale.cardTitle)
+                        .foregroundStyle(DesignTokens.cocoa)
+                    Text("Find where a thread appeared across journals, therapy, and your appointment inbox.")
+                        .font(TypeScale.meta)
+                        .foregroundStyle(DesignTokens.cocoaSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
-        .padding(DesignTokens.Spacing.medium)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(DesignTokens.surfaceWarm)
-        .clipShape(RoundedRectangle(cornerRadius: DesignTokens.cardRadius, style: .continuous))
     }
 
     private var resultList: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("\(results.count) \(results.count == 1 ? "result" : "results")")
-                .font(TypeScale.sectionCompact)
-                .foregroundStyle(DesignTokens.cocoa)
-                .padding(.bottom, DesignTokens.Spacing.base)
-                .monospacedDigit()
-            Divider().overlay(DesignTokens.hairline)
+        V2GroupCard(title: "\(results.count) \(results.count == 1 ? "result" : "results")") {
             ForEach(results) { record in
-                SearchResultRow(record: record) { open(record) }
+                V2ListRow(
+                    icon: icon(for: record.destination),
+                    title: record.title,
+                    detail: "\(record.excerpt)\n\(record.provenance.label) · \(record.provenance.detail)"
+                ) { open(record) }
+                .accessibilityHint("Opens this memory")
             }
         }
     }
 
     private var noResults: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-            KernelGlyph(voice: .candyCorn, height: 20, decorative: true)
-            Text("No memories match “\(trimmedQuery)”")
-                .font(TypeScale.sectionCompact)
-                .foregroundStyle(DesignTokens.cocoa)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("Try another word or clear the search. Nothing was sent anywhere.")
-                .font(TypeScale.label)
-                .foregroundStyle(DesignTokens.cocoaSoft)
-                .fixedSize(horizontal: false, vertical: true)
-            Button("Clear search", action: clearSearch)
-                .font(TypeScale.bodyMedium)
-                .foregroundStyle(DesignTokens.cocoa)
-                .frame(minHeight: DesignTokens.controlMinimum)
+        V2Card {
+            VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
+                Text("No memories match “\(trimmedQuery)”")
+                    .font(TypeScale.cardTitle)
+                    .foregroundStyle(DesignTokens.cocoa)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Try another word or clear the search. Nothing was sent anywhere.")
+                    .font(TypeScale.meta)
+                    .foregroundStyle(DesignTokens.cocoaSoft)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Clear search", action: clearSearch)
+                    .buttonStyle(CompactGhostButtonStyle())
+            }
         }
-        .padding(.vertical, DesignTokens.Spacing.large)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .top) { Divider().overlay(DesignTokens.hairline) }
-        .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
+    }
+
+    private func icon(for destination: Route) -> AppIcon {
+        switch destination {
+        case .journalDetail: .journal
+        case .therapySession, .tmsPost: .waveform
+        case .goals: .flag
+        case .bringUp: .listPlus
+        case .checkIn: .heart
+        default: .search
+        }
     }
 
     private func clearSearch() {
@@ -271,40 +265,5 @@ struct SearchMemoryView: View {
             if hit.kind == .appointment { state.selectAppointment(id: hit.entityID) }
         }
         navigation.navigate(to: record.destination)
-    }
-}
-
-private struct SearchResultRow: View {
-    let record: MemorySearchRecord
-    let onOpen: () -> Void
-
-    var body: some View {
-        Button(action: onOpen) {
-            VStack(alignment: .leading, spacing: DesignTokens.Spacing.small) {
-                HStack(spacing: DesignTokens.Spacing.small) {
-                    Text(record.title)
-                        .font(TypeScale.bodyMedium)
-                        .foregroundStyle(DesignTokens.cocoa)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    AppIcon.chevronRight.image
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(DesignTokens.cocoaSoft)
-                }
-                Text(record.excerpt)
-                    .font(TypeScale.provenance)
-                    .foregroundStyle(DesignTokens.cocoaSoft)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                ProvenanceLine(provenance: record.provenance, compact: true)
-            }
-            .padding(.vertical, DesignTokens.Spacing.base)
-            .frame(maxWidth: .infinity, minHeight: DesignTokens.controlMinimum, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .overlay(alignment: .bottom) { Divider().overlay(DesignTokens.hairline) }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(record.title). \(record.excerpt). \(record.provenance.label). \(record.provenance.detail)")
-        .accessibilityHint("Opens this memory")
     }
 }
