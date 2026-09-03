@@ -1,3 +1,17 @@
+# Host capture status, September 3, 2026, 2:30 AM
+
+All 29 PNGs in this directory are real iPhone 17 Pro (iOS 26.5) captures of the merged Phase 2 plus Phase 3 main (commit 9183bf1 plus the test fix), taken on the host with `-screen <route>` and `-sheet <scenario>`. The app builds on the iPhone 17 simulator once the SQLCipher artifact is pre-placed (see docs/HANDOFF-2026-09-02.md, Keychain hang).
+
+Observed against the goals:
+- Phase 2 shell fixes are visible: mood bands without the pill clip, minus and plus controls with drag on the check-in, no floating back button on Goals, Today's dead zone filled, product copy on Privacy.
+- Journal detail shows Play original audio, the Original, Cleaned, Summary tabs, and an honest "Organizing is off" state with Open AI settings.
+- The OpenRouter key sheet (25) and the journal disclosure sheet (26) open and read correctly: destination OpenRouter, 215 characters, Send and Cancel.
+- Photo disclosure (27) opens on the photo journal route.
+- Session disclosure (28) and prepare disclosure (29) did NOT open: the captures show the underlying screens with no sheet, confirming the missing `session-send` and `prepare-send` triggers noted below. These two remain open for Nyx.
+- The voice route (05) now shows the real pre-recording screen with the microphone note and a Talk button; the live timer appears after the tap, so it is not in a static capture.
+
+The worker-written sections below are retained as the record of what could not be verified inside the sandbox.
+
 # Phase 3 native acceptance comparison
 
 Status on September 3, 2026: Blocked before native compilation, test execution, simulator interaction, accessibility inspection, and Phase 3 capture. XcodeGen succeeded, but the managed macOS session could not connect to CoreSimulatorService and SwiftPM could not write its manifest diagnostics cache. No stale screenshot is presented as Phase 3 proof.
