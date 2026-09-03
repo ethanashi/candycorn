@@ -183,7 +183,10 @@ final class DemoState {
         self.dependencies = resolvedDependencies
         launchArguments = arguments
         let base = dependencies == nil ? SeededData.careSnapshot : SeededData.emptySnapshot
-        let initial = Phase4ScreenshotSeed.applyingIfNeeded(to: base, arguments: arguments)
+        let initial = Phase5ScreenshotSeed.applyingIfNeeded(
+            to: Phase4ScreenshotSeed.applyingIfNeeded(to: base, arguments: arguments),
+            arguments: arguments, now: resolvedDependencies.now()
+        )
         journals = initial.journals
         moods = initial.moods
         appointments = initial.appointments
@@ -212,8 +215,11 @@ final class DemoState {
         loadState = .loading
         do {
             listenForProcessingEvents()
-            apply(Phase4ScreenshotSeed.applyingIfNeeded(
-                to: try await dependencies.careStore.snapshot(), arguments: launchArguments
+            apply(Phase5ScreenshotSeed.applyingIfNeeded(
+                to: Phase4ScreenshotSeed.applyingIfNeeded(
+                    to: try await dependencies.careStore.snapshot(), arguments: launchArguments
+                ),
+                arguments: launchArguments, now: dependencies.now()
             ))
             refreshLoadState()
             dependencies.logger.record(.vaultOpened, metrics: EventMetrics())
@@ -1743,7 +1749,10 @@ final class DemoState {
 
     private func refreshPhase4Snapshot() async {
         guard let snapshot = try? await dependencies.careStore.snapshot() else { return }
-        apply(Phase4ScreenshotSeed.applyingIfNeeded(to: snapshot, arguments: launchArguments))
+        apply(Phase5ScreenshotSeed.applyingIfNeeded(
+            to: Phase4ScreenshotSeed.applyingIfNeeded(to: snapshot, arguments: launchArguments),
+            arguments: launchArguments, now: dependencies.now()
+        ))
         refreshLoadState()
     }
 
