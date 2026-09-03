@@ -100,12 +100,12 @@ describe('PrepareTmsScreen', () => {
 });
 
 describe('SettingsPrivacyScreen', () => {
-  it('states the device, upload, retention, and prototype truth plainly', () => {
+  it('states the device, upload, and retention truth plainly', () => {
     renderScreen(<SettingsPrivacyScreen />);
     expect(screen.getByText('Stored on this device')).toBeInTheDocument();
     expect(screen.getByText('Cloud upload: only when AI is on')).toBeInTheDocument();
     expect(screen.getByText('Raw audio retention: you decide')).toBeInTheDocument();
-    expect(screen.getByText(/keeps only in-memory demo changes/)).toBeInTheDocument();
+    expect(screen.getByText(/encrypted vault on this phone/)).toBeInTheDocument();
     expect(screen.getByText(/not a therapist, medical advice, or a crisis service/)).toBeInTheDocument();
   });
 });
