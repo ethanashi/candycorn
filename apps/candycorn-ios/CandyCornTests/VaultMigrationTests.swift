@@ -17,7 +17,26 @@ struct VaultMigrationTests {
         #expect(try queue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM grdb_migrations") } == 1)
         try migrator.migrate(queue)
         try migrator.migrate(queue)
-        #expect(try queue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM grdb_migrations") } == 4)
+        #expect(try queue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM grdb_migrations") } == 5)
+        #expect(try queue.read {
+            try String.fetchAll($0, sql: "SELECT identifier FROM grdb_migrations ORDER BY rowid")
+        } == ["v1_core", "v2_relations", "v3_search", "v4_appointment_audio", "v5_memory"])
+        let indexes = try queue.read { db in
+            try String.fetchAll(
+                db,
+                sql: "SELECT name FROM sqlite_master WHERE type = 'index' AND name IN (?, ?, ?) ORDER BY name",
+                arguments: [
+                    "ai_artifacts_kind_created",
+                    "ai_artifact_sources_source",
+                    "goal_progress_goal_created",
+                ]
+            )
+        }
+        #expect(indexes == [
+            "ai_artifact_sources_source",
+            "ai_artifacts_kind_created",
+            "goal_progress_goal_created",
+        ])
     }
 
     @Test("Foreign keys reject dangling records")
