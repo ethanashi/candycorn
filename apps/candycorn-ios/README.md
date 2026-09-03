@@ -12,9 +12,11 @@ Run these commands from `apps/candycorn-ios`:
 
 ```sh
 /opt/homebrew/bin/xcodegen generate
-xcodebuild -project CandyCorn.xcodeproj -scheme CandyCorn -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/candycorn-ios-derived-data CODE_SIGNING_ALLOWED=NO build
-xcodebuild -project CandyCorn.xcodeproj -scheme CandyCorn -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/candycorn-ios-derived-data CODE_SIGNING_ALLOWED=NO test
+xcodebuild -project CandyCorn.xcodeproj -scheme CandyCorn -scmProvider system -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/candycorn-ios-derived-data CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project CandyCorn.xcodeproj -scheme CandyCorn -scmProvider system -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /tmp/candycorn-ios-derived-data CODE_SIGNING_ALLOWED=NO test
 ```
+
+If package resolution hangs during SwiftPM Keychain lookup, follow the SQLCipher artifact-placement procedure in the [host handoff](../../docs/HANDOFF-2026-09-02.md), then rerun the command with `-disableAutomaticPackageResolution` and `-scmProvider system`.
 
 The tests cover vault migrations, SQLCipher availability and wrong-key rejection, repositories, Keychain behavior through test seams, FTS5 and LIKE search, exports, logging privacy, navigation, mood interactions, media state machines, runtime bootstrap, OpenRouter request shape, structured output validation, evidence rejection, retry policy, disclosure counts, immutable AI artifact persistence, and organizer workflows. Provider tests inject fake transports and do not make live network calls.
 

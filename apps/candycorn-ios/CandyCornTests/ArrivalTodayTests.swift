@@ -34,23 +34,25 @@ struct ArrivalTodayTests {
 
     @Test("Check-in draft sets absolute values and caps notes")
     func checkInDraftEditing() {
-        let source = MoodLog(id: UUID(), createdAt: Date(timeIntervalSince1970: 1), mood: 10, anxiety: nil, energy: 4, customValues: [:], note: nil)
-        var draft = CheckInDraft(mood: source)
-        draft.set(.mood, to: 1)
+        let now = Date(timeIntervalSince1970: 20)
+        let source = MoodLog(id: UUID(), createdAt: Date(timeIntervalSince1970: 1), mood: 10, anxiety: nil, energy: 4, customValues: ["focus": 7], note: nil)
+        var draft = CheckInDraft(mood: source, now: now)
+        draft.set(.mood, to: nil)
         draft.set(.anxiety, to: 8)
         draft.set(.energy, to: 5)
         draft.updateNote(String(repeating: "x", count: 181))
-        #expect(draft.values.mood == 1)
+        #expect(draft.values.mood == nil)
         #expect(draft.values.anxiety == 8)
         #expect(draft.values.energy == 5)
         #expect(draft.note.count == 180)
+        #expect(draft.beginSave()?.customValues == ["focus": 7])
     }
 
     @Test("Cancel leaves shared mood unchanged")
     func checkInCancel() {
         let state = DemoState()
         let original = state.mood
-        var draft = CheckInDraft(mood: state.mood)
+        var draft = CheckInDraft(mood: state.mood, now: state.dependencies.now())
         draft.set(.mood, to: 9)
         draft.updateNote("Changed only in the draft")
         #expect(state.mood == original)
@@ -60,7 +62,7 @@ struct ArrivalTodayTests {
     @Test("Save produces one normalized mood even under rapid activation")
     func checkInSaveOnce() {
         let state = DemoState()
-        var draft = CheckInDraft(mood: state.mood)
+        var draft = CheckInDraft(mood: state.mood, now: state.dependencies.now())
         draft.set(.anxiety, to: 8)
         draft.updateNote("  A short note  ")
         let first = draft.beginSave()
@@ -75,7 +77,8 @@ struct ArrivalTodayTests {
 
     @Test("Empty check-in retains not-logged values and an empty optional note")
     func emptyCheckIn() {
-        var draft = CheckInDraft(mood: nil)
+        let now = Date(timeIntervalSince1970: 42)
+        var draft = CheckInDraft(mood: nil, now: now)
         #expect(draft.values == MoodValues(mood: nil, anxiety: nil, energy: nil))
         #expect(draft.note.isEmpty)
         let saved = draft.beginSave()
@@ -83,5 +86,15 @@ struct ArrivalTodayTests {
         #expect(saved?.anxiety == nil)
         #expect(saved?.energy == nil)
         #expect(saved?.note == nil)
+        #expect(saved?.createdAt == now)
+    }
+
+    @Test("Mood adjustments can clear a logged dimension")
+    func moodAdjustmentClearsDimension() {
+        let logged: Int? = 1
+        let notLogged: Int? = nil
+        #expect(MoodBandSelection.adjusted(logged, by: -1) == nil)
+        #expect(MoodBandSelection.adjusted(notLogged, by: -1) == 4)
+        #expect(MoodBandSelection.adjusted(notLogged, by: 1) == 6)
     }
 }

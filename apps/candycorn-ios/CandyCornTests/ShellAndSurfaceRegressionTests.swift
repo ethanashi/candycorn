@@ -64,7 +64,22 @@ struct ShellAndSurfaceRegressionTests {
         let properties = try #require(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
         #expect(properties[kCGImagePropertyPixelWidth] as? Int == 1024)
         #expect(properties[kCGImagePropertyPixelHeight] as? Int == 1024)
-        #expect(properties[kCGImagePropertyHasAlpha] as? Bool == false)
+        let image = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        let metadataHasAlpha = properties[kCGImagePropertyHasAlpha] as? Bool
+        #expect(
+            Self.isOpaque(metadataHasAlpha: metadataHasAlpha, alphaInfo: image.alphaInfo),
+            "App icon must decode without an alpha channel"
+        )
+    }
+
+    @Test("Icon opacity accepts absent metadata and rejects alpha channels")
+    func iconOpacityClassification() {
+        #expect(Self.isOpaque(metadataHasAlpha: nil, alphaInfo: .none))
+        #expect(Self.isOpaque(metadataHasAlpha: false, alphaInfo: .noneSkipFirst))
+        #expect(Self.isOpaque(metadataHasAlpha: false, alphaInfo: .noneSkipLast))
+        #expect(!Self.isOpaque(metadataHasAlpha: true, alphaInfo: .none))
+        #expect(!Self.isOpaque(metadataHasAlpha: nil, alphaInfo: .premultipliedLast))
+        #expect(!Self.isOpaque(metadataHasAlpha: false, alphaInfo: .last))
     }
 
     @Test("Logging calls contain event names and scalar metrics only")
@@ -105,5 +120,15 @@ struct ShellAndSurfaceRegressionTests {
             if depth <= 0 { break }
         }
         return result
+    }
+
+    private static func isOpaque(metadataHasAlpha: Bool?, alphaInfo: CGImageAlphaInfo) -> Bool {
+        let hasOpaqueDecoderFormat = switch alphaInfo {
+        case .none, .noneSkipFirst, .noneSkipLast:
+            true
+        default:
+            false
+        }
+        return metadataHasAlpha != true && hasOpaqueDecoderFormat
     }
 }

@@ -84,7 +84,7 @@ struct PrepareSettingsTests {
         #expect(state.aiProvider == .off)
         state.setAIProvider(.router)
         AISettingsLogic.selectMode(.reflection, in: state)
-        #expect(AISettingsLogic.leavesDeviceCopy(mode: state.aiMode, provider: state.aiProvider).contains("transcript excerpts"))
+        #expect(AISettingsLogic.leavesDeviceCopy(mode: state.aiMode, provider: state.aiProvider).contains("Transcript excerpts"))
     }
 
     @Test("Unavailable router cannot be selected and leaves originals intact")

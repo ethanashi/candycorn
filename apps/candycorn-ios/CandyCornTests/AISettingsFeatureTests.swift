@@ -50,6 +50,10 @@ struct AISettingsFeatureTests {
         #expect(state.aiProvider == .router)
         #expect(await state.persistAIMode(.off))
         #expect(state.aiProvider == .off)
+        #expect(await state.persistAIMode(.reflection))
+        #expect(state.aiProvider == .off)
+        #expect(await state.persistAIProvider(.router))
+        #expect(state.aiProvider == .router)
     }
 
     @Test("Reflection explains its Organizer behavior without promising conversation")

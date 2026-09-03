@@ -15,7 +15,16 @@ struct SeededDataTests {
         #expect(SeededData.goals.count == 4)
         #expect(SeededData.talkingPoints.count == 3)
         #expect(SeededData.transcript.count == 3)
-        #expect(SeededData.aiArtifacts.count == 3)
+        let artifactKinds = SeededData.aiArtifacts.map(\.kind)
+        let expectedArtifactKinds: Set<AIArtifact.Kind> = [
+            .journalRewrite,
+            .journalSignals,
+            .sessionSummary,
+            .appointmentBrief,
+        ]
+        #expect(SeededData.aiArtifacts.count == 4)
+        #expect(Set(artifactKinds) == expectedArtifactKinds)
+        #expect(Set(artifactKinds).count == artifactKinds.count, "Seeded artifact kinds must be unique")
 
         let ids = SeededData.journalEntries.map(\.id)
             + SeededData.moodLogs.map(\.id)
@@ -54,6 +63,7 @@ struct SeededDataTests {
         #expect(SeededData.transcript.allSatisfy { appointmentIDs.contains($0.appointmentID) })
         #expect(SeededData.goals.compactMap(\.sourceEntityID).allSatisfy { sourceIDs.contains($0) })
         #expect(SeededData.talkingPoints.compactMap(\.sourceID).allSatisfy { sourceIDs.contains($0) })
+        #expect(SeededData.aiArtifacts.allSatisfy { !$0.sourceIDs.isEmpty })
         #expect(SeededData.aiArtifacts.flatMap(\.sourceIDs).allSatisfy { sourceIDs.contains($0) })
         #expect(SeededData.aiArtifacts.allSatisfy { !$0.provider.isEmpty && !$0.model.isEmpty && !$0.structuredPayload.isEmpty })
     }

@@ -17,6 +17,7 @@ struct TherapySessionView: View {
     @State private var sendTask: Task<Void, Never>?
     @State private var isPreparingSummary = false
     @State private var actionError: String?
+    @State private var openedScreenshotSheet = false
 
     @ViewBuilder
     var body: some View {
@@ -51,6 +52,7 @@ struct TherapySessionView: View {
             }
         }
         .onAppear { notes = sessionAppointment?.manualNotes ?? "" }
+        .task { openScreenshotDisclosureIfNeeded() }
         .sheet(item: $pendingSend, onDismiss: cancelSend) { pending in
             WhatLeavesDeviceSheet(
                 pending: pending,
@@ -334,6 +336,22 @@ struct TherapySessionView: View {
         sendTask?.cancel()
         sendTask = nil
         pendingSend = nil
+    }
+
+    private func openScreenshotDisclosureIfNeeded() {
+        guard !openedScreenshotSheet,
+              state.dependencies.screenshotScenario == .sessionSend,
+              let appointment = state.appointments.first(where: { $0.id == SeededData.therapySessionID }),
+              !appointment.manualNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+        openedScreenshotSheet = true
+        state.selectAppointment(id: appointment.id)
+        notes = appointment.manualNotes
+        selection = .notes
+        state.setAIMode(.organizer)
+        state.setAIProvider(.router)
+        prepareSummary()
     }
 }
 

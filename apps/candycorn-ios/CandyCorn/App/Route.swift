@@ -61,7 +61,8 @@ enum Route: String, CaseIterable, Codable, Hashable, Identifiable, Sendable {
 
     var presentation: RoutePresentation {
         switch self {
-        case .welcome, .today, .settingsPrivacy, .settingsAI, .settingsData:
+        case .welcome, .today, .prepareTherapy, .history,
+             .settingsPrivacy, .settingsAI, .settingsData:
             .root
         case .checkIn, .capture, .journalVoice, .journalWrite, .journalPhoto,
              .recordAppointment, .activeAppointment:

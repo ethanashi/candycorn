@@ -12,6 +12,37 @@ struct RouteTests {
         #expect(routes.map(\.order) == Array(1...24))
     }
 
+    @Test("Every route has one truthful presentation family")
+    func presentationFamilies() {
+        let roots: Set<Route> = [
+            .welcome, .today, .prepareTherapy, .history,
+            .settingsPrivacy, .settingsAI, .settingsData,
+        ]
+        let pushed: Set<Route> = [
+            .journalDetail, .journalSuggestions, .goals, .bringUp, .appointments,
+            .therapySession, .tmsPre, .tmsPost, .prepareTMS, .search,
+        ]
+        let fullScreen: Set<Route> = [
+            .checkIn, .capture, .journalVoice, .journalWrite, .journalPhoto,
+            .recordAppointment, .activeAppointment,
+        ]
+
+        #expect(roots.count + pushed.count + fullScreen.count == Route.allCases.count)
+        #expect(roots.isDisjoint(with: pushed))
+        #expect(roots.isDisjoint(with: fullScreen))
+        #expect(pushed.isDisjoint(with: fullScreen))
+        for route in Route.allCases {
+            let expected: RoutePresentation = if roots.contains(route) {
+                .root
+            } else if pushed.contains(route) {
+                .pushed
+            } else {
+                .fullScreen
+            }
+            #expect(route.presentation == expected)
+        }
+    }
+
     @Test("Routes use the approved paths and screenshot names")
     func approvedValues() {
         let expected: [(Route, String, String)] = [

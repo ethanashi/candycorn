@@ -42,6 +42,64 @@ struct RuntimeBootstrapTests {
         await (graph.dependencies.maintenance as? VaultDatabase)?.close()
     }
 
+    @Test("Recording checkpoints persist appointment timing and preserve care fields")
+    func recordingCheckpointPersistence() async throws {
+        let appointmentID = UUID(uuidString: "A1000000-0000-0000-0000-000000000001")!
+        let providerID = UUID(uuidString: "A1000000-0000-0000-0000-000000000002")!
+        let attachmentID = UUID(uuidString: "A1000000-0000-0000-0000-000000000003")!
+        let transcriptID = UUID(uuidString: "A1000000-0000-0000-0000-000000000004")!
+        let summaryID = UUID(uuidString: "A1000000-0000-0000-0000-000000000005")!
+        let scheduledAt = Date(timeIntervalSince1970: 1_900_000_000)
+        let original = Appointment(
+            id: appointmentID,
+            kind: .psychiatry,
+            scheduledAt: scheduledAt,
+            startedAt: nil,
+            endedAt: nil,
+            providerID: providerID,
+            providerName: "Dr. Morgan Lee",
+            recordingAttachmentID: attachmentID,
+            transcriptID: transcriptID,
+            summaryID: summaryID,
+            status: .planned,
+            manualNotes: "Discuss the medication log."
+        )
+        var snapshot = SeededData.emptySnapshot
+        snapshot.appointments = [original]
+        let store = InMemoryCareStore(snapshot: snapshot)
+        let clock = CheckpointWallClock(now: Date(timeIntervalSince1970: 2_000_000_000))
+        let sink = CareStoreRecordingCheckpointSink(careStore: store, now: { clock.now() })
+
+        try await sink.write(appointmentID: appointmentID, durationMilliseconds: 15_000)
+        let firstSnapshot = await store.snapshot()
+        var saved = try #require(firstSnapshot.appointments.first)
+        let establishedStart = Date(timeIntervalSince1970: 1_999_999_985)
+        #expect(saved.startedAt == establishedStart)
+        #expect(saved.status == .recording)
+
+        clock.advance(by: 15)
+        try await sink.write(appointmentID: appointmentID, durationMilliseconds: 30_000)
+        let secondSnapshot = await store.snapshot()
+        saved = try #require(secondSnapshot.appointments.first)
+        #expect(saved.startedAt == establishedStart)
+        #expect(saved.kind == original.kind)
+        #expect(saved.scheduledAt == original.scheduledAt)
+        #expect(saved.endedAt == original.endedAt)
+        #expect(saved.providerID == original.providerID)
+        #expect(saved.providerName == original.providerName)
+        #expect(saved.recordingAttachmentID == original.recordingAttachmentID)
+        #expect(saved.transcriptID == original.transcriptID)
+        #expect(saved.summaryID == original.summaryID)
+        #expect(saved.manualNotes == original.manualNotes)
+
+        await #expect(throws: UserFacingError.saving) {
+            try await sink.write(appointmentID: UUID(), durationMilliseconds: 15_000)
+        }
+        await #expect(throws: UserFacingError.saving) {
+            try await sink.write(appointmentID: appointmentID, durationMilliseconds: -1)
+        }
+    }
+
     @Test("Screenshot launches stay deterministic and off production paths")
     func screenshotSelection() async throws {
         let arguments = ["CandyCorn", "-screen", "/appointments/active"]
@@ -147,5 +205,26 @@ private actor AttemptCounter {
     func next() -> Int {
         value += 1
         return value
+    }
+}
+
+private final class CheckpointWallClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: Date
+
+    init(now: Date) {
+        current = now
+    }
+
+    func now() -> Date {
+        lock.lock()
+        defer { lock.unlock() }
+        return current
+    }
+
+    func advance(by seconds: TimeInterval) {
+        lock.lock()
+        defer { lock.unlock() }
+        current = current.addingTimeInterval(seconds)
     }
 }

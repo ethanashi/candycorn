@@ -12,9 +12,15 @@ struct VaultSearchTests {
         let hits = try await store.search(" football AND guilt's ", limit: 20)
         #expect(!hits.isEmpty)
         #expect(hits.contains { $0.entityID == SeededData.footballJournalID })
-        #expect(hits == hits.sorted { $0.occurredAt > $1.occurredAt })
+        #expect(hits == hits.sorted(by: Self.newestFirst))
         #expect(try await store.search("!!!", limit: 20).isEmpty)
+        let footballHits = try await store.search("football", limit: 20)
+        let operatorHits = try await store.search("football OR", limit: 20)
+        let wildcardHits = try await store.search("%_football_%", limit: 20)
+        #expect(operatorHits == footballHits)
+        #expect(wildcardHits == footballHits)
         await #expect(throws: VaultRepositoryError.self) { _ = try await store.search(" ", limit: 20) }
+        await #expect(throws: VaultRepositoryError.self) { _ = try await store.search("football", limit: 0) }
         await #expect(throws: VaultRepositoryError.self) { _ = try await store.search("football", limit: 101) }
     }
 
@@ -25,8 +31,15 @@ struct VaultSearchTests {
         defer { VaultTestSupport.remove(ftsRoot); VaultTestSupport.remove(likeRoot) }
         _ = try await fts.snapshot()
         _ = try await like.snapshot()
-        let ftsIDs = try await fts.search("football", limit: 20).map(\.id)
-        let likeIDs = try await like.search("football", limit: 20).map(\.id)
-        #expect(ftsIDs == likeIDs)
+        for query in ["football", "football AND guilt's", "%_football_%", "football OR senior"] {
+            let ftsIDs = try await fts.search(query, limit: 20).map(\.id)
+            let likeIDs = try await like.search(query, limit: 20).map(\.id)
+            #expect(ftsIDs == likeIDs)
+        }
+    }
+
+    private static func newestFirst(_ lhs: SearchHit, _ rhs: SearchHit) -> Bool {
+        if lhs.occurredAt != rhs.occurredAt { return lhs.occurredAt > rhs.occurredAt }
+        return lhs.entityID.uuidString.lowercased() < rhs.entityID.uuidString.lowercased()
     }
 }
