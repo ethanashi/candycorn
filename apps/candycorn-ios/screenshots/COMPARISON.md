@@ -1,6 +1,6 @@
 # Phase 1 native acceptance comparison
 
-Status: Blocked on native simulator infrastructure on September 2, 2026.
+Status: Captured on the host on September 2, 2026 after the simulator service was restored. The 24 PNGs in this directory are real iPhone 17 Pro (iOS 26.5) captures via `-screen <route>`. The full Swift Testing suite (10 suites) passed on the iPhone 17 simulator. The blocked table below is the worker's original record; the operator review that supersedes it is in the commit message and docs/PHASES.md Phase 2.
 
 XcodeGen completed successfully with XcodeGen 2.46.0. Xcode 26.6 can compile the app and the complete Swift Testing bundle for the generic arm64 iOS Simulator destination when the Swift macro sandbox is disabled for this restricted runner. The required named iPhone 17 build and test commands cannot select a destination because CoreSimulatorService is disconnected and reports no available simulator devices or runtimes.
 
