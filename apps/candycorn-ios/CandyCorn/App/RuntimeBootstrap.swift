@@ -111,11 +111,12 @@ struct RuntimeDependencyFactory: Sendable {
         let repositories = VaultRepositories(database: database, attachments: attachments, logger: logger)
         _ = try await repositories.snapshot()
         let registration = CareStoreAttachmentRegistrationSink(careStore: repositories)
+        let checkpoint = CareStoreRecordingCheckpointSink(careStore: repositories, now: { Date() })
         let recording = AVRecordingService(
             attachments: attachments,
             registration: registration,
             logger: logger,
-            checkpoint: NoOpRecordingCheckpointSink()
+            checkpoint: checkpoint
         )
         let aiLogger = logger as? any AIEventLogging ?? NoOpAIEventLogger()
         let languageModel = OpenRouterLanguageModel(

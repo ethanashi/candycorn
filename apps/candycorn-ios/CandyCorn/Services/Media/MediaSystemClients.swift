@@ -81,10 +81,27 @@ struct CareStoreAttachmentRegistrationSink: AttachmentRegistrationSink {
     }
 }
 
-struct NoOpRecordingCheckpointSink: RecordingCheckpointSink {
+struct CareStoreRecordingCheckpointSink: RecordingCheckpointSink {
+    let careStore: any CareStore
+    let now: @Sendable () -> Date
+
+    init(careStore: any CareStore, now: @escaping @Sendable () -> Date) {
+        self.careStore = careStore
+        self.now = now
+    }
+
     func write(appointmentID: UUID, durationMilliseconds: Int) async throws {
         guard durationMilliseconds >= 0 else { throw UserFacingError.saving }
-        _ = appointmentID
+        let snapshot = try await careStore.snapshot()
+        guard var appointment = snapshot.appointments.first(where: { $0.id == appointmentID }) else {
+            throw UserFacingError.saving
+        }
+
+        if appointment.status != .recording || appointment.startedAt == nil {
+            appointment.startedAt = now().addingTimeInterval(-TimeInterval(durationMilliseconds) / 1_000)
+        }
+        appointment.status = .recording
+        try await careStore.saveAppointment(appointment)
     }
 }
 
