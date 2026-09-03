@@ -127,6 +127,8 @@ struct AIArtifact: Identifiable, Codable, Equatable, Sendable {
         case sessionSummary
         case appointmentBrief
         case goalSuggestions
+        case goalProgressSuggestions
+        case weeklySummary
         case connectionSuggestion
     }
 
@@ -137,6 +139,12 @@ struct AIArtifact: Identifiable, Codable, Equatable, Sendable {
     let model: String
     let structuredPayload: Data
     let createdAt: Date
+}
+
+enum GoalProgressMark: String, Codable, CaseIterable, Sendable {
+    case doneToday
+    case partial
+    case blocked
 }
 
 struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
@@ -261,6 +269,7 @@ struct GoalProgress: Identifiable, Codable, Equatable, Sendable {
     var note: String
     var source: Source
     let createdAt: Date
+    var mark: GoalProgressMark? = nil
 }
 
 struct VaultSettings: Codable, Equatable, Sendable {

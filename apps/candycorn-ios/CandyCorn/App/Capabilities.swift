@@ -15,6 +15,11 @@ protocol CareStore: Sendable {
     func saveAppointment(_ appointment: Appointment) async throws
     func saveGoal(_ goal: Goal) async throws
     func addGoalProgress(_ progress: GoalProgress) async throws
+    func resolveGoalProgressSuggestion(
+        id: UUID,
+        as resolution: GoalProgressSuggestionResolution,
+        at date: Date
+    ) async throws
     func saveTalkingPoint(_ point: TalkingPoint) async throws
     func saveAttachment(_ attachment: Attachment) async throws
     func saveArtifact(_ artifact: AIArtifact) async throws
@@ -30,6 +35,22 @@ protocol CareStore: Sendable {
 }
 
 extension CareStore {
+    func resolveGoalProgressSuggestion(
+        id: UUID,
+        as resolution: GoalProgressSuggestionResolution,
+        at date: Date
+    ) async throws {
+        let current = try await snapshot()
+        let plan = try GoalProgressResolutionPlan.make(
+            snapshot: current,
+            suggestionID: id,
+            resolution: resolution,
+            now: date
+        )
+        if let progress = plan.progress { try await addGoalProgress(progress) }
+        if let artifact = plan.artifact { try await saveArtifact(artifact) }
+    }
+
     func saveArtifact(_ artifact: AIArtifact) async throws {
         _ = artifact.id
         throw AIProviderError.unavailable

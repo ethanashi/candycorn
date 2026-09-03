@@ -74,6 +74,45 @@ actor VaultRepositories: CareStore {
         try await database.write { db in try VaultRecordWriter.save(record, in: db) }
     }
 
+    func resolveGoalProgressSuggestion(
+        id: UUID,
+        as resolution: GoalProgressSuggestionResolution,
+        at date: Date
+    ) async throws {
+        try await database.write { db in
+            let resolutionSnapshot = CareSnapshot(
+                journals: try Self.fetch(JournalEntry.self, table: "journal_entries", order: "created_at DESC, id", db: db),
+                moods: [],
+                appointments: try Self.fetch(Appointment.self, table: "appointments", order: "COALESCE(started_at, scheduled_at, 0) DESC, id", db: db),
+                goals: try Self.fetch(Goal.self, table: "goals", order: "created_at DESC, id", db: db),
+                goalProgress: try Self.fetch(GoalProgress.self, table: "goal_progress", order: "created_at DESC, id", db: db),
+                talkingPoints: [],
+                artifacts: try Self.fetch(AIArtifact.self, table: "ai_artifacts", order: "created_at DESC, id", db: db),
+                attachments: [],
+                providers: [],
+                transcript: try Self.fetch(TranscriptSegment.self, table: "transcript_segments", order: "appointment_id, start_milliseconds, id", db: db),
+                settings: try Self.fetchSettings(db),
+                sessionProcessing: try Self.fetch(SessionProcessingRecord.self, table: "session_processing", order: "updated_at DESC, id", db: db)
+            )
+            let plan = try GoalProgressResolutionPlan.make(
+                snapshot: resolutionSnapshot,
+                suggestionID: id,
+                resolution: resolution,
+                now: date
+            )
+            if let progress = plan.progress {
+                try VaultRecordWriter.save(
+                    GoalProgressPersistenceRecord(progress, isSample: false),
+                    in: db,
+                    insertOnly: true
+                )
+            }
+            if let artifact = plan.artifact {
+                try VaultRecordWriter.save(ArtifactPersistenceRecord(artifact, isSample: false), in: db)
+            }
+        }
+    }
+
     func saveTalkingPoint(_ point: TalkingPoint) async throws {
         let record = try TalkingPointPersistenceRecord(point, isSample: false)
         try await database.write { db in try VaultRecordWriter.save(record, in: db) }
