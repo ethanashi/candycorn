@@ -139,7 +139,7 @@ struct WeeklyConsolidatorTests {
     func consentPersistenceAndScheduling() async throws {
         let clock = LockedDate(Self.now)
         let model = WeeklyLanguageModel()
-        let fixture = try Self.stateFixture(snapshot: Self.snapshot(), model: model, clock: clock)
+        let fixture = try await Self.stateFixture(snapshot: Self.snapshot(), model: model, clock: clock)
 
         async let first = fixture.state.refreshWeeklySummary()
         async let second = fixture.state.refreshWeeklySummary()
@@ -173,12 +173,12 @@ struct WeeklyConsolidatorTests {
         var off = Self.snapshot()
         off.settings.aiMode = .off
         off.settings.aiProvider = .off
-        let offFixture = try Self.stateFixture(snapshot: off, model: offModel, clock: clock)
+        let offFixture = try await Self.stateFixture(snapshot: off, model: offModel, clock: clock)
         await #expect(throws: UserFacingError.self) { _ = try await offFixture.state.refreshWeeklySummary() }
         #expect(await offModel.callCount == 0)
 
         let missingModel = WeeklyLanguageModel()
-        let missing = try Self.stateFixture(snapshot: Self.snapshot(), model: missingModel, clock: clock, hasKey: false)
+        let missing = try await Self.stateFixture(snapshot: Self.snapshot(), model: missingModel, clock: clock, hasKey: false)
         await #expect(throws: UserFacingError.self) { _ = try await missing.state.refreshWeeklySummary() }
         #expect(await missingModel.callCount == 0)
 
@@ -186,12 +186,12 @@ struct WeeklyConsolidatorTests {
         var empty = SeededData.emptySnapshot
         empty.settings.aiMode = .organizer
         empty.settings.aiProvider = .router
-        let emptyFixture = try Self.stateFixture(snapshot: empty, model: emptyModel, clock: clock)
+        let emptyFixture = try await Self.stateFixture(snapshot: empty, model: emptyModel, clock: clock)
         #expect(try await emptyFixture.state.refreshWeeklySummary() == nil)
         #expect(await emptyModel.callCount == 0)
 
         let staleModel = WeeklyLanguageModel()
-        let stale = try Self.stateFixture(snapshot: Self.snapshot(), model: staleModel, clock: clock)
+        let stale = try await Self.stateFixture(snapshot: Self.snapshot(), model: staleModel, clock: clock)
         let stalePending = try #require(await stale.state.refreshWeeklySummary())
         var changed = Self.journal(id: Self.journalID, text: "Changed after disclosure")
         changed.updatedAt = Self.now.addingTimeInterval(1)
@@ -200,7 +200,7 @@ struct WeeklyConsolidatorTests {
         #expect(await staleModel.callCount == 0)
 
         let failedModel = WeeklyLanguageModel(fails: true)
-        let failed = try Self.stateFixture(snapshot: Self.snapshot(), model: failedModel, clock: clock)
+        let failed = try await Self.stateFixture(snapshot: Self.snapshot(), model: failedModel, clock: clock)
         let failedPending = try #require(await failed.state.refreshWeeklySummary())
         #expect(!(await failed.state.performAISend(failedPending)))
         #expect(await failedModel.callCount == 1)
@@ -322,7 +322,7 @@ struct WeeklyConsolidatorTests {
         model: WeeklyLanguageModel,
         clock: LockedDate,
         hasKey: Bool = true
-    ) throws -> WeeklyStateFixture {
+    ) async throws -> WeeklyStateFixture {
         let store = InMemoryCareStore(snapshot: snapshot)
         let attachments = InMemoryAttachmentStore()
         let keyStore = InMemoryOpenRouterAPIKeyStore()
@@ -334,11 +334,9 @@ struct WeeklyConsolidatorTests {
             logger: NoOpEventLogger(), languageModel: model, openRouterKeyStore: keyStore,
             screenshotMode: false, now: { clock.get() }
         )
-        return WeeklyStateFixture(
-            state: DemoState(dependencies: dependencies, arguments: ["CandyCorn"]),
-            store: store,
-            dependencies: dependencies
-        )
+        let state = DemoState(dependencies: dependencies, arguments: ["CandyCorn"])
+        await state.load()
+        return WeeklyStateFixture(state: state, store: store, dependencies: dependencies)
     }
 
     private static func calendar(firstWeekday: Int = 2) -> Calendar {

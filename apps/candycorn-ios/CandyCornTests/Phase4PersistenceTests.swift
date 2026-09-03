@@ -63,7 +63,7 @@ struct Phase4PersistenceTests {
         }
         #expect(result.0 == journal)
         #expect(result.1 == settings)
-        #expect(result.2 == ["v1_core", "v2_relations", "v3_search", "v4_appointment_audio"])
+        #expect(result.2 == ["v1_core", "v2_relations", "v3_search", "v4_appointment_audio", "v5_memory"])
         for table in Self.phase4Tables {
             #expect(result.3.contains(table))
         }
