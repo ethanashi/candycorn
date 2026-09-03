@@ -129,15 +129,163 @@ struct AppointmentBriefSection: Codable, Equatable, Sendable, Identifiable {
     var statements: [EvidenceBackedStatement]
 }
 
-struct AppointmentBriefInput: Codable, Equatable, Sendable {
+struct AppointmentBriefInput: Equatable, Sendable {
     let appointmentKind: Appointment.Kind
-    let sources: [SourceTextDocument]
+    let contextPacket: ContextPacket
+
+    var sources: [SourceTextDocument] { contextPacket.sources }
+
+    init(appointmentKind: Appointment.Kind, contextPacket: ContextPacket) {
+        self.appointmentKind = appointmentKind
+        self.contextPacket = contextPacket
+    }
+
+    // nyx: This compatibility initializer keeps Phase 3 fixtures source-compatible. Runtime preparation always supplies a retrieved packet.
+    init(appointmentKind: Appointment.Kind, sources: [SourceTextDocument]) {
+        let now = sources.compactMap(\.occurredAt).max() ?? Date(timeIntervalSince1970: 0)
+        let request = MemoryRetrievalRequest(
+            appointmentKind: appointmentKind,
+            window: DateInterval(start: now, end: now),
+            now: now
+        )
+        let items = sources.map { source in
+            ContextPacketItem(
+                id: source.id,
+                sourceIDs: [source.id],
+                kind: Self.packetKind(source.kind),
+                title: source.title,
+                text: source.text,
+                occurredAt: source.occurredAt,
+                provenance: .user,
+                evidence: [],
+                relevanceRank: nil
+            )
+        }
+        contextPacket = ContextPacket(
+            request: request,
+            items: items,
+            text: sources.map(\.text).joined(separator: "\n\n"),
+            omittedItemCount: 0
+        )
+        self.appointmentKind = appointmentKind
+    }
+
+    private static func packetKind(_ kind: SourceTextDocument.Kind) -> ContextPacketItem.Kind {
+        switch kind {
+        case .sessionNotes: .sessionSummary
+        case .homework: .homework
+        case .goal: .activeGoal
+        case .talkingPoint: .talkingPoint
+        case .journal, .extractedPhotoText: .journal
+        case .moodTrend: .moodTrend
+        }
+    }
 }
 
 struct AppointmentBriefResult: Codable, Equatable, Sendable {
     var sections: [AppointmentBriefSection]
     var userEditedAt: Date?
     let metadata: AIResultMetadata
+}
+
+enum GoalProgressSuggestionSource: Hashable, Codable, Sendable {
+    case journal(UUID)
+    case processedSession(UUID)
+}
+
+struct GoalProgressSourceDocument: Identifiable, Codable, Equatable, Sendable {
+    let document: SourceTextDocument
+    let startMilliseconds: Int?
+    let endMilliseconds: Int?
+
+    var id: UUID { document.id }
+}
+
+struct GoalProgressGoalContext: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    let title: String
+    let detail: String?
+    let cadence: Goal.Cadence
+}
+
+enum GoalProgressSuggestionResolution: String, Codable, Sendable {
+    case pending
+    case accepted
+    case dismissed
+}
+
+struct GoalProgressSuggestion: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    let goalID: UUID
+    let mark: GoalProgressMark
+    let note: String
+    let evidence: [EvidenceCitation]
+    var resolution: GoalProgressSuggestionResolution
+}
+
+struct GoalProgressSuggestionInput: Codable, Equatable, Sendable {
+    let originID: UUID
+    let origin: GoalProgressSuggestionSource
+    let sources: [GoalProgressSourceDocument]
+    let goals: [GoalProgressGoalContext]
+    let requestText: String
+}
+
+struct GoalProgressSuggestionResult: Codable, Equatable, Sendable {
+    var suggestions: [GoalProgressSuggestion]
+    let metadata: AIResultMetadata
+}
+
+struct GoalProgressSuggestionArtifactPayload: Codable, Equatable, Sendable {
+    let origin: GoalProgressSuggestionSource
+    let input: GoalProgressSuggestionInput
+    var result: GoalProgressSuggestionResult
+}
+
+enum WeeklySummarySectionKind: String, Codable, CaseIterable, Sendable {
+    case moodTrend
+    case completedWork
+    case recurringTopics
+    case openForNextAppointment
+}
+
+struct WeeklySummarySource: Identifiable, Codable, Equatable, Sendable {
+    let document: SourceTextDocument
+    let provenance: ProvenanceVoice
+
+    var id: UUID { document.id }
+}
+
+struct WeeklySummaryItem: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    let text: String
+    let provenance: ProvenanceVoice
+    let evidence: [EvidenceCitation]
+}
+
+struct WeeklySummarySection: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    let kind: WeeklySummarySectionKind
+    let items: [WeeklySummaryItem]
+}
+
+struct WeeklySummaryInput: Equatable, Sendable {
+    let interval: DateInterval
+    let sources: [WeeklySummarySource]
+    let requestText: String
+}
+
+struct WeeklySummaryResult: Codable, Equatable, Sendable {
+    let interval: DateInterval
+    let sections: [WeeklySummarySection]
+    let metadata: AIResultMetadata
+}
+
+struct WeeklySummaryArtifactPayload: Codable, Equatable, Sendable {
+    let inputInterval: DateInterval
+    let sources: [WeeklySummarySource]
+    let requestText: String
+    let result: WeeklySummaryResult
 }
 
 struct TranscriptPiece: Codable, Equatable, Sendable {
@@ -301,6 +449,20 @@ protocol CandyCornLanguageModel: Sendable {
     func extractJournalSignals(_ input: JournalSignalInput) async throws -> JournalSignalResult
     func summarizeSession(_ input: SessionSummaryInput) async throws -> SessionSummaryResult
     func generateAppointmentBrief(_ input: AppointmentBriefInput) async throws -> AppointmentBriefResult
+    func suggestGoalProgress(_ input: GoalProgressSuggestionInput) async throws -> GoalProgressSuggestionResult
+    func consolidateWeek(_ input: WeeklySummaryInput) async throws -> WeeklySummaryResult
+}
+
+extension CandyCornLanguageModel {
+    func suggestGoalProgress(_ input: GoalProgressSuggestionInput) async throws -> GoalProgressSuggestionResult {
+        _ = input.originID
+        throw AIProviderError.unavailable
+    }
+
+    func consolidateWeek(_ input: WeeklySummaryInput) async throws -> WeeklySummaryResult {
+        _ = input.interval.start
+        throw AIProviderError.unavailable
+    }
 }
 
 protocol CandyCornTranscriber: Sendable {
@@ -379,6 +541,23 @@ enum AISendAction: Hashable, Sendable {
     case summarizeSession(UUID)
     case generateAppointmentBrief(Appointment.Kind)
     case summarizeProcessedSession(UUID)
+}
+
+extension AISendAction {
+    // nyx: The factory preserves protected Feature switches. A dedicated enum case can replace it when Claude owns those views.
+    static func suggestGoalProgress(_ source: GoalProgressSuggestionSource) -> AISendAction {
+        .extractJournalSignals(source.sourceID)
+    }
+
+    // nyx: A factory preserves protected exhaustive Feature switches while retaining a stable action per calendar week.
+    static func generateWeeklySummary(_ normalizedWeekStart: Date) -> AISendAction {
+        let bits = normalizedWeekStart.timeIntervalSinceReferenceDate.bitPattern
+        let byte: (Int) -> UInt8 = { UInt8(truncatingIfNeeded: bits >> UInt64($0 * 8)) }
+        return .summarizeSession(UUID(uuid: (
+            0x57, 0x45, 0x45, 0x4B, 0x4C, 0x59, 0x00, 0x01,
+            byte(7), byte(6), byte(5), byte(4), byte(3), byte(2), byte(1), byte(0)
+        )))
+    }
 }
 
 struct OutgoingSourceDescriptor: Equatable, Sendable, Identifiable {

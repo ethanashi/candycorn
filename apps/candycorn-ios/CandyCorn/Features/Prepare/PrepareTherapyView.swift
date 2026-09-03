@@ -16,6 +16,42 @@ struct TherapyBrief: Equatable, Sendable {
         possibleOpening: "Last time we stopped at junior year. I finished that part, and I realized I may need proof that I could have played more than I need to play again."
     )
 
+    static let empty = TherapyBrief(
+        whereLeftOff: "",
+        whatChanged: "",
+        pinnedQuestion: "",
+        carryingForward: "",
+        possibleOpening: ""
+    )
+
+    init(packet: ContextPacket) {
+        whereLeftOff = Self.join(packet, kinds: [.sessionSummary, .transcriptEvidence])
+        whatChanged = Self.join(packet, kinds: [.journal, .moodTrend, .moodLog])
+        pinnedQuestion = Self.join(packet, kinds: [.talkingPoint])
+        carryingForward = Self.join(packet, kinds: [.homework, .activeGoal, .goalProgress])
+        possibleOpening = String(
+            (packet.items.first { $0.provenance == .user }?.text ?? "").prefix(700)
+        )
+    }
+
+    init(
+        whereLeftOff: String,
+        whatChanged: String,
+        pinnedQuestion: String,
+        carryingForward: String,
+        possibleOpening: String
+    ) {
+        self.whereLeftOff = whereLeftOff
+        self.whatChanged = whatChanged
+        self.pinnedQuestion = pinnedQuestion
+        self.carryingForward = carryingForward
+        self.possibleOpening = possibleOpening
+    }
+
+    private static func join(_ packet: ContextPacket, kinds: Set<ContextPacketItem.Kind>) -> String {
+        String(packet.items.filter { kinds.contains($0.kind) }.map(\.text).joined(separator: "\n\n").prefix(700))
+    }
+
     func text(for section: TherapyBriefSection) -> String {
         switch section {
         case .whereLeftOff: whereLeftOff
@@ -134,11 +170,13 @@ struct TherapyBriefEditor: Equatable, Sendable {
 struct PrepareTherapyView: View {
     @Bindable var navigation: NavigationModel
     @Bindable var state: DemoState
-    @State private var manualEditor = TherapyBriefEditor()
+    @State private var manualEditor = TherapyBriefEditor(brief: .empty)
     @State private var generatedEditor: AppointmentBriefEditor?
     @State private var preferredArtifactID: UUID?
     @State private var pendingSend: PendingAISend?
     @State private var sendTask: Task<Void, Never>?
+    @State private var preparationTask: Task<Void, Never>?
+    @State private var manualRefreshTask: Task<Void, Never>?
     @State private var actionError: String?
     @State private var isSavingGenerated = false
     @State private var openedScreenshotSheet = false
@@ -350,21 +388,15 @@ struct PrepareTherapyView: View {
 
     private func refreshManualBrief() {
         guard !manualEditor.isEditing, generatedEditor?.isEditing != true else { return }
-        let latestJournal = state.journals.max { $0.createdAt < $1.createdAt }
-        let pinned = state.talkingPoints.first { $0.status == .open && $0.isImportant }
-            ?? state.talkingPoints.first { $0.status == .open }
-        let activeGoals = state.goals.filter { $0.status == .active }.prefix(2).map(\.title)
-        let latestSession = state.appointments.filter { $0.kind == .therapy && $0.status == .completed }
-            .max { ($0.endedAt ?? .distantPast) < ($1.endedAt ?? .distantPast) }
-        let seeded = TherapyBrief.seeded
-        let brief = TherapyBrief(
-            whereLeftOff: latestSession?.manualNotes.nilIfBlank ?? seeded.whereLeftOff,
-            whatChanged: latestJournal.map { $0.cleanedText ?? $0.rawText }?.nilIfBlank ?? seeded.whatChanged,
-            pinnedQuestion: pinned?.text.nilIfBlank ?? seeded.pinnedQuestion,
-            carryingForward: activeGoals.isEmpty ? seeded.carryingForward : activeGoals.joined(separator: " "),
-            possibleOpening: pinned.map { "I want to start with this question: \($0.text)" } ?? seeded.possibleOpening
-        )
-        manualEditor = TherapyBriefEditor(brief: brief)
+        manualRefreshTask?.cancel()
+        manualRefreshTask = Task {
+            defer { manualRefreshTask = nil }
+            let now = state.dependencies.now()
+            let window = DateInterval(start: now.addingTimeInterval(-90 * 24 * 60 * 60), end: now)
+            guard let packet = try? await state.appointmentContextPacket(kind: .therapy, window: window),
+                  !Task.isCancelled, !manualEditor.isEditing, generatedEditor?.isEditing != true else { return }
+            manualEditor = TherapyBriefEditor(brief: TherapyBrief(packet: packet))
+        }
     }
 
     private var isEditing: Bool {
@@ -422,14 +454,21 @@ struct PrepareTherapyView: View {
     }
 
     private func prepareGeneration() {
-        guard organizerAvailable, pendingSend == nil else { return }
+        guard organizerAvailable, pendingSend == nil, preparationTask == nil else { return }
         actionError = nil
-        do {
-            pendingSend = try state.prepareAISend(.generateAppointmentBrief(.therapy))
-        } catch let error as UserFacingError {
-            actionError = error.message
-        } catch {
-            actionError = "Your saved sources are not ready to send."
+        preparationTask = Task {
+            defer { preparationTask = nil }
+            do {
+                let prepared = try await state.prepareAppointmentBriefSend(kind: .therapy)
+                guard !Task.isCancelled else { return }
+                pendingSend = prepared
+            } catch is CancellationError {
+                return
+            } catch let error as UserFacingError {
+                actionError = error.message
+            } catch {
+                actionError = "Your saved sources are not ready to send."
+            }
         }
     }
 
@@ -458,6 +497,10 @@ struct PrepareTherapyView: View {
     }
 
     private func cancelSend() {
+        preparationTask?.cancel()
+        preparationTask = nil
+        manualRefreshTask?.cancel()
+        manualRefreshTask = nil
         sendTask?.cancel()
         sendTask = nil
         pendingSend = nil

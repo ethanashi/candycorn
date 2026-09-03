@@ -1,7 +1,7 @@
 import GRDB
 
 enum VaultMigrations {
-    static let latestIdentifier = "v4_appointment_audio"
+    static let latestIdentifier = "v5_memory"
 
     static func makeMigrator(includeSearch: Bool = true, forcedFailure: Bool = false) -> DatabaseMigrator {
         var migrator = DatabaseMigrator()
@@ -29,8 +29,11 @@ enum VaultMigrations {
                 )
                 """)
         }
-        migrator.registerMigration(latestIdentifier) { db in
+        migrator.registerMigration("v4_appointment_audio") { db in
             try createAppointmentAudioTables(db)
+        }
+        migrator.registerMigration(latestIdentifier) { db in
+            try createMemoryIndexes(db)
         }
         return migrator
     }
@@ -213,6 +216,14 @@ enum VaultMigrations {
             CREATE INDEX speaker_embeddings_appointment ON speaker_embeddings(appointment_id, raw_speaker_label);
             CREATE INDEX patient_voice_profiles_model ON patient_voice_profiles(model_id, id);
             CREATE INDEX session_debrief_appointment ON session_debrief_decisions(appointment_id, created_at, id);
+            """)
+    }
+
+    private static func createMemoryIndexes(_ db: Database) throws {
+        try db.execute(sql: """
+            CREATE INDEX IF NOT EXISTS ai_artifacts_kind_created ON ai_artifacts(kind, created_at DESC, id);
+            CREATE INDEX IF NOT EXISTS ai_artifact_sources_source ON ai_artifact_sources(source_id, artifact_id);
+            CREATE INDEX IF NOT EXISTS goal_progress_goal_created ON goal_progress(goal_id, created_at DESC, id);
             """)
     }
 }

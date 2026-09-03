@@ -13,12 +13,19 @@ private struct PreparedAIContext: Equatable, Sendable {
     let careRevision: Int
 }
 
+private enum BriefDisclosureStyle: Equatable, Sendable {
+    case individualSources
+    case contextPacket
+}
+
 private enum PreparedAIPayload: Equatable, Sendable {
     case journal(JournalEntry, SourceTextDocument)
     case photo(JournalEntry, Attachment)
     case session(Appointment, SourceTextDocument)
-    case brief(AppointmentBriefInput, Int)
+    case brief(AppointmentBriefInput, Int, BriefDisclosureStyle)
     case processedSession(ProcessedSessionAIContext)
+    case goalProgress(GoalProgressSuggestionInput)
+    case weeklySummary(WeeklySummaryInput)
 
     var sourceRevision: Date? {
         switch self {
@@ -26,17 +33,21 @@ private enum PreparedAIPayload: Equatable, Sendable {
             journal.updatedAt
         case let .session(appointment, _):
             appointment.endedAt ?? appointment.startedAt ?? appointment.scheduledAt
-        case let .brief(input, _):
+        case let .brief(input, _, _):
             input.sources.compactMap(\.occurredAt).max()
         case let .processedSession(context):
             context.appointment.endedAt ?? context.appointment.startedAt ?? context.appointment.scheduledAt
+        case let .goalProgress(input):
+            input.sources.compactMap(\.document.occurredAt).max()
+        case let .weeklySummary(input):
+            input.sources.compactMap(\.document.occurredAt).max()
         }
     }
 
     var journalID: UUID? {
         switch self {
         case let .journal(journal, _), let .photo(journal, _): journal.id
-        case .session, .brief, .processedSession: nil
+        case .session, .brief, .processedSession, .goalProgress, .weeklySummary: nil
         }
     }
 }
@@ -46,6 +57,12 @@ private struct ProcessedSessionAIContext: Equatable, Sendable {
     let attachmentID: UUID
     let transcript: [SessionTranscriptSource]
     let talkingPoints: [SessionTalkingPointSource]
+}
+
+private struct AppointmentBriefPreparation: Sendable {
+    let id: UUID
+    let careRevision: Int
+    let task: Task<ContextPacket, Error>
 }
 
 enum AIProvider: String, CaseIterable, Codable, Sendable {
@@ -114,8 +131,13 @@ final class DemoState {
     private var processingEventsTask: Task<Void, Never>?
     private var busyGoalIDs: Set<UUID> = []
     private var busyTalkingPointIDs: Set<UUID> = []
+    private var busyProgressSuggestionIDs: Set<UUID> = []
     private var preparedAISends: [UUID: PreparedAIContext] = [:]
     private var preparedAISendOrder: [UUID] = []
+    private var appointmentBriefPreparations: [Appointment.Kind: AppointmentBriefPreparation] = [:]
+    private var preparedAppointmentBriefIDs: [Appointment.Kind: UUID] = [:]
+    private var preparedGoalProgressIDs: [GoalProgressSuggestionSource: UUID] = [:]
+    private var preparedWeeklySummaryIDs: [Date: UUID] = [:]
     private var activeAISends: Set<AISendAction> = []
     private var aiProcessingStates: [AISendAction: AIProcessingState] = [:]
     private var careRevision = 0
@@ -133,6 +155,21 @@ final class DemoState {
     }
     var aiMode: AIMode { settings.aiMode }
     var aiProvider: AIProvider { settings.aiProvider }
+    var pendingProgressSuggestions: [GoalProgressSuggestion] {
+        artifacts
+            .filter { $0.kind == .goalProgressSuggestions }
+            .sorted { ($0.createdAt, $0.id.uuidString) > ($1.createdAt, $1.id.uuidString) }
+            .prefix(256)
+            .flatMap { artifact in
+                (try? JSONDecoder().decode(
+                    GoalProgressSuggestionArtifactPayload.self,
+                    from: artifact.structuredPayload
+                ))?.result.suggestions.filter { $0.resolution == .pending } ?? []
+            }
+    }
+    var currentWeeklySummary: WeeklySummaryResult? {
+        WeeklyConsolidator.currentSummary(in: artifacts, for: dependencies.now())
+    }
 
     init(
         dependencies: AppDependencies? = nil,
@@ -614,6 +651,254 @@ final class DemoState {
         try prepareAISend(.summarizeProcessedSession(appointmentID))
     }
 
+    /// Retrieves the bounded, source-attributed vault context used by Prepare.
+    func appointmentContextPacket(
+        kind: Appointment.Kind,
+        window: DateInterval
+    ) async throws -> ContextPacket {
+        let now = dependencies.now()
+        guard window.start <= window.end, window.end <= now else { throw UserFacingError.aiSource }
+        let retriever: any MemoryRetrieving = MemoryRetriever(careStore: dependencies.careStore)
+        return try await retriever.retrieve(MemoryRetrievalRequest(
+            appointmentKind: kind,
+            window: window,
+            now: now
+        ))
+    }
+
+    /// Prepares one consent disclosure. No provider request occurs until `performAISend` receives this token.
+    func prepareAppointmentBriefSend(
+        kind: Appointment.Kind,
+        window: DateInterval? = nil
+    ) async throws -> PendingAISend {
+        if let existing = preparedAppointmentBrief(kind: kind) { return existing }
+        let revision = careRevision
+        let now = dependencies.now()
+        let resolvedWindow = window ?? DateInterval(
+            start: now.addingTimeInterval(-90 * 24 * 60 * 60),
+            end: now
+        )
+        let packet = try await retrieveAppointmentBriefPacket(
+            kind: kind,
+            window: resolvedWindow,
+            now: now,
+            revision: revision
+        )
+        try Task.checkCancellation()
+        guard revision == careRevision else { throw UserFacingError.aiStale }
+        if let existing = preparedAppointmentBrief(kind: kind) { return existing }
+        return try storeAppointmentBriefSend(kind: kind, packet: packet, revision: revision)
+    }
+
+    private func retrieveAppointmentBriefPacket(
+        kind: Appointment.Kind,
+        window: DateInterval,
+        now: Date,
+        revision: Int
+    ) async throws -> ContextPacket {
+        let preparation: AppointmentBriefPreparation
+        if let active = appointmentBriefPreparations[kind], active.careRevision == revision {
+            preparation = active
+        } else {
+            appointmentBriefPreparations[kind]?.task.cancel()
+            let retriever: any MemoryRetrieving = MemoryRetriever(careStore: dependencies.careStore)
+            let request = MemoryRetrievalRequest(appointmentKind: kind, window: window, now: now)
+            preparation = AppointmentBriefPreparation(
+                id: UUID(),
+                careRevision: revision,
+                task: Task { try await retriever.retrieve(request) }
+            )
+            appointmentBriefPreparations[kind] = preparation
+        }
+        defer {
+            if appointmentBriefPreparations[kind]?.id == preparation.id {
+                appointmentBriefPreparations[kind] = nil
+            }
+        }
+        return try await preparation.task.value
+    }
+
+    private func storeAppointmentBriefSend(
+        kind: Appointment.Kind,
+        packet: ContextPacket,
+        revision: Int
+    ) throws -> PendingAISend {
+        guard !packet.items.isEmpty, !packet.text.isEmpty,
+              packet.text.count <= ContextPacketLimits.appointment.maximumCharacters,
+              let descriptorID = packet.items.first?.id else {
+            throw UserFacingError.aiSource
+        }
+        let input = AppointmentBriefInput(appointmentKind: kind, contextPacket: packet)
+        let action = AISendAction.generateAppointmentBrief(kind)
+        let descriptor = OutgoingSourceDescriptor(
+            id: descriptorID,
+            kind: .text,
+            title: "\(kind.displayName) context packet",
+            characterCount: packet.text.count,
+            imageCount: 0
+        )
+        let pending = PendingAISend(
+            id: UUID(),
+            action: action,
+            sourceRevision: packet.items.compactMap(\.occurredAt).max(),
+            disclosure: WhatLeavesDeviceSummary(
+                purpose: Self.purpose(for: action),
+                destination: "OpenRouter",
+                sources: [descriptor],
+                totalCharacterCount: packet.text.count,
+                totalImageCount: 0,
+                omittedSourceCount: packet.omittedItemCount
+            )
+        )
+        storePreparedSend(PreparedAIContext(
+            pending: pending,
+            payload: .brief(input, packet.omittedItemCount, .contextPacket),
+            careRevision: revision
+        ))
+        preparedAppointmentBriefIDs[kind] = pending.id
+        aiProcessingStates[action] = .idle
+        return pending
+    }
+
+    /// Prepares a consent disclosure for evidence-backed goal progress suggestions without contacting a provider.
+    func prepareGoalProgressSuggestions(
+        from source: GoalProgressSuggestionSource
+    ) async throws -> PendingAISend {
+        if let existing = preparedGoalProgress(source: source) { return existing }
+        let revision = careRevision
+        let suggester = GoalProgressSuggester(
+            careStore: dependencies.careStore,
+            languageModel: dependencies.languageModel,
+            now: dependencies.now
+        )
+        let input: GoalProgressSuggestionInput
+        do {
+            input = try await suggester.prepareInput(from: source)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw UserFacingError.aiSource
+        }
+        try Task.checkCancellation()
+        guard revision == careRevision else { throw UserFacingError.aiStale }
+        if let existing = preparedGoalProgress(source: source) { return existing }
+        let action = AISendAction.suggestGoalProgress(source)
+        let pending = PendingAISend(
+            id: UUID(),
+            action: action,
+            sourceRevision: input.sources.compactMap(\.document.occurredAt).max(),
+            disclosure: WhatLeavesDeviceSummary(
+                purpose: "Suggest goal progress",
+                destination: "OpenRouter",
+                sources: [OutgoingSourceDescriptor(
+                    id: input.originID,
+                    kind: .text,
+                    title: "Goal progress source and active goals",
+                    characterCount: input.requestText.count,
+                    imageCount: 0
+                )],
+                totalCharacterCount: input.requestText.count,
+                totalImageCount: 0,
+                omittedSourceCount: 0
+            )
+        )
+        storePreparedSend(PreparedAIContext(pending: pending, payload: .goalProgress(input), careRevision: revision))
+        preparedGoalProgressIDs[source] = pending.id
+        aiProcessingStates[action] = .idle
+        return pending
+    }
+
+    /// Prepares the current week's consent disclosure only. Present it, then call `performAISend` after the user taps Send.
+    func refreshWeeklySummary() async throws -> PendingAISend? {
+        let now = dependencies.now()
+        let interval = try WeeklyConsolidator.weekInterval(containing: now, calendar: .autoupdatingCurrent)
+        if currentWeeklySummary != nil { return nil }
+        guard canDispatchAI() else { throw UserFacingError.aiUnavailable }
+        if let existing = preparedWeeklySummary(weekStart: interval.start) { return existing }
+        let revision = careRevision
+        let consolidator = WeeklyConsolidator(
+            careStore: dependencies.careStore,
+            languageModel: dependencies.languageModel,
+            calendar: .autoupdatingCurrent,
+            now: dependencies.now
+        )
+        let preparation: WeeklySummaryPreparation?
+        do {
+            preparation = try await consolidator.prepareSummary(for: now)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw UserFacingError.aiSource
+        }
+        try Task.checkCancellation()
+        guard revision == careRevision else { throw UserFacingError.aiStale }
+        guard let preparation else { return nil }
+        if currentWeeklySummary != nil { return nil }
+        if let existing = preparedWeeklySummary(weekStart: interval.start) { return existing }
+        guard let firstSource = preparation.input.sources.first else { return nil }
+        let action = AISendAction.generateWeeklySummary(interval.start)
+        let pending = PendingAISend(
+            id: UUID(),
+            action: action,
+            sourceRevision: preparation.input.sources.compactMap(\.document.occurredAt).max(),
+            disclosure: WhatLeavesDeviceSummary(
+                purpose: "Create this weekly summary",
+                destination: "OpenRouter",
+                sources: [OutgoingSourceDescriptor(
+                    id: firstSource.id,
+                    kind: .text,
+                    title: "Weekly vault context",
+                    characterCount: preparation.input.requestText.count,
+                    imageCount: 0
+                )],
+                totalCharacterCount: preparation.input.requestText.count,
+                totalImageCount: 0,
+                omittedSourceCount: preparation.omittedSourceCount
+            )
+        )
+        storePreparedSend(PreparedAIContext(
+            pending: pending,
+            payload: .weeklySummary(preparation.input),
+            careRevision: revision
+        ))
+        preparedWeeklySummaryIDs[interval.start] = pending.id
+        aiProcessingStates[action] = .idle
+        return pending
+    }
+
+    @discardableResult
+    func accept(suggestionID: UUID) async -> Bool {
+        await resolveProgressSuggestion(id: suggestionID, as: .accepted)
+    }
+
+    @discardableResult
+    func dismiss(suggestionID: UUID) async -> Bool {
+        await resolveProgressSuggestion(id: suggestionID, as: .dismissed)
+    }
+
+    private func resolveProgressSuggestion(
+        id: UUID,
+        as resolution: GoalProgressSuggestionResolution
+    ) async -> Bool {
+        guard !busyProgressSuggestionIDs.contains(id) else { return false }
+        busyProgressSuggestionIDs.insert(id)
+        defer { busyProgressSuggestionIDs.remove(id) }
+        do {
+            try await dependencies.careStore.resolveGoalProgressSuggestion(
+                id: id,
+                as: resolution,
+                at: dependencies.now()
+            )
+            apply(try await dependencies.careStore.snapshot())
+            refreshLoadState()
+            operationError = nil
+            return true
+        } catch {
+            operationError = UserFacingError.saving.message
+            return false
+        }
+    }
+
     @discardableResult
     func performAISend(_ pending: PendingAISend) async -> Bool {
         guard let prepared = consumePreparedSend(pending.id), prepared.pending == pending else {
@@ -893,6 +1178,11 @@ final class DemoState {
         operationError = nil
         preparedAISends = [:]
         preparedAISendOrder = []
+        for preparation in appointmentBriefPreparations.values { preparation.task.cancel() }
+        appointmentBriefPreparations = [:]
+        preparedAppointmentBriefIDs = [:]
+        preparedGoalProgressIDs = [:]
+        preparedWeeklySummaryIDs = [:]
         activeAISends = []
         aiProcessingStates = [:]
     }
@@ -1006,7 +1296,7 @@ final class DemoState {
             total += source.text.count
         }
         guard !required.isEmpty else { throw UserFacingError.aiSource }
-        return .brief(AppointmentBriefInput(appointmentKind: kind, sources: required), omitted)
+        return .brief(AppointmentBriefInput(appointmentKind: kind, sources: required), omitted, .individualSources)
     }
 
     private func requiredBriefSources(
@@ -1123,8 +1413,18 @@ final class DemoState {
         case let .session(_, source):
             sources = [textDescriptor(source)]
             omitted = 0
-        case let .brief(input, omittedCount):
-            sources = input.sources.map(textDescriptor)
+        case let .brief(input, omittedCount, disclosureStyle):
+            if disclosureStyle == .contextPacket, let first = input.contextPacket.items.first {
+                sources = [OutgoingSourceDescriptor(
+                    id: first.id,
+                    kind: .text,
+                    title: "\(input.appointmentKind.displayName) context packet",
+                    characterCount: input.contextPacket.text.count,
+                    imageCount: 0
+                )]
+            } else {
+                sources = input.sources.map(textDescriptor)
+            }
             omitted = omittedCount
         case let .processedSession(context):
             sources = context.transcript.map { source in
@@ -1139,6 +1439,26 @@ final class DemoState {
                     characterCount: source.text.count, imageCount: 0
                 )
             }
+            omitted = 0
+        case let .goalProgress(input):
+            sources = [OutgoingSourceDescriptor(
+                id: input.originID,
+                kind: .text,
+                title: "Goal progress source and active goals",
+                characterCount: input.requestText.count,
+                imageCount: 0
+            )]
+            omitted = 0
+        case let .weeklySummary(input):
+            sources = input.sources.first.map {
+                [OutgoingSourceDescriptor(
+                    id: $0.id,
+                    kind: .text,
+                    title: "Weekly vault context",
+                    characterCount: input.requestText.count,
+                    imageCount: 0
+                )]
+            } ?? []
             omitted = 0
         }
         return WhatLeavesDeviceSummary(
@@ -1178,6 +1498,9 @@ final class DemoState {
         if preparedAISendOrder.count >= maximumPreparedSends {
             let oldest = preparedAISendOrder.removeFirst()
             preparedAISends.removeValue(forKey: oldest)
+            preparedAppointmentBriefIDs = preparedAppointmentBriefIDs.filter { $0.value != oldest }
+            preparedGoalProgressIDs = preparedGoalProgressIDs.filter { $0.value != oldest }
+            preparedWeeklySummaryIDs = preparedWeeklySummaryIDs.filter { $0.value != oldest }
         }
         preparedAISends[context.pending.id] = context
         preparedAISendOrder.append(context.pending.id)
@@ -1185,7 +1508,43 @@ final class DemoState {
 
     private func consumePreparedSend(_ id: UUID) -> PreparedAIContext? {
         preparedAISendOrder.removeAll { $0 == id }
+        preparedAppointmentBriefIDs = preparedAppointmentBriefIDs.filter { $0.value != id }
+        preparedGoalProgressIDs = preparedGoalProgressIDs.filter { $0.value != id }
+        preparedWeeklySummaryIDs = preparedWeeklySummaryIDs.filter { $0.value != id }
         return preparedAISends.removeValue(forKey: id)
+    }
+
+    private func preparedAppointmentBrief(kind: Appointment.Kind) -> PendingAISend? {
+        guard let id = preparedAppointmentBriefIDs[kind],
+              let context = preparedAISends[id],
+              context.careRevision == careRevision,
+              context.pending.action == .generateAppointmentBrief(kind) else {
+            preparedAppointmentBriefIDs[kind] = nil
+            return nil
+        }
+        return context.pending
+    }
+
+    private func preparedGoalProgress(source: GoalProgressSuggestionSource) -> PendingAISend? {
+        guard let id = preparedGoalProgressIDs[source],
+              let context = preparedAISends[id],
+              context.careRevision == careRevision,
+              context.pending.action == .suggestGoalProgress(source) else {
+            preparedGoalProgressIDs[source] = nil
+            return nil
+        }
+        return context.pending
+    }
+
+    private func preparedWeeklySummary(weekStart: Date) -> PendingAISend? {
+        guard let id = preparedWeeklySummaryIDs[weekStart],
+              let context = preparedAISends[id],
+              context.careRevision == careRevision,
+              context.pending.action == .generateWeeklySummary(weekStart) else {
+            preparedWeeklySummaryIDs[weekStart] = nil
+            return nil
+        }
+        return context.pending
     }
 
     private func canDispatchAI() -> Bool {
@@ -1214,8 +1573,24 @@ final class DemoState {
                 appointmentKind: appointment.kind,
                 manualNotes: source
             ))
-        case (.generateAppointmentBrief, let .brief(input, _)):
+        case (.generateAppointmentBrief, let .brief(input, _, _)):
             return try await dependencies.organizer.generateAppointmentBrief(input)
+        case (.extractJournalSignals, let .goalProgress(input)):
+            let product = try await GoalProgressSuggester(
+                careStore: dependencies.careStore,
+                languageModel: dependencies.languageModel,
+                now: dependencies.now
+            ).generate(input)
+            return OrganizerWorkProduct(artifact: product.artifact, journalMutation: nil)
+        case (let weeklyAction, let .weeklySummary(input))
+        where weeklyAction == .generateWeeklySummary(input.interval.start):
+            let product = try await WeeklyConsolidator(
+                careStore: dependencies.careStore,
+                languageModel: dependencies.languageModel,
+                calendar: .autoupdatingCurrent,
+                now: dependencies.now
+            ).generate(input)
+            return OrganizerWorkProduct(artifact: product.artifact, journalMutation: nil)
         case (.summarizeProcessedSession, .processedSession):
             throw AIProviderError.invalidInput
         default:
@@ -1248,16 +1623,17 @@ final class DemoState {
         case let .session(appointment, source):
             guard appointments.first(where: { $0.id == appointment.id }) == appointment else { return false }
             return appointment.manualNotes == source.text
-        case let .brief(input, omitted):
-            guard case let .brief(current, currentOmitted)? = try? briefPayload(kind: input.appointmentKind) else {
-                return false
-            }
-            return current == input && currentOmitted == omitted
+        case .brief:
+            return true
         case let .processedSession(context):
             guard case let .processedSession(current)? = try? preparedPayload(
                 for: .summarizeProcessedSession(context.appointment.id)
             ) else { return false }
             return current == context
+        case .goalProgress:
+            return true
+        case .weeklySummary:
+            return true
         }
     }
 

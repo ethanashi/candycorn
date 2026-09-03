@@ -36,9 +36,32 @@ enum TMSBriefSection: String, CaseIterable, Identifiable, Sendable {
 }
 
 struct TMSBrief: Equatable, Sendable {
-    var observations = "Before the visit, you noted low energy and worry about the day. Afterward, you noted a quieter morning and a mild headache. These observations do not show that TMS caused a mood change."
-    var question = "Should I keep tracking the headache if it is still mild later today?"
-    var providerFocus = "Notice when moving-forward guilt appears. Do not change your treatment plan based on this app."
+    var observations: String
+    var question: String
+    var providerFocus: String
+
+    static let seeded = TMSBrief(
+        observations: "Before the visit, you noted low energy and worry about the day. Afterward, you noted a quieter morning and a mild headache. These observations do not show that TMS caused a mood change.",
+        question: "Should I keep tracking the headache if it is still mild later today?",
+        providerFocus: "Notice when moving-forward guilt appears. Do not change your treatment plan based on this app."
+    )
+    static let empty = TMSBrief(observations: "", question: "", providerFocus: "")
+
+    init(packet: ContextPacket) {
+        observations = Self.join(packet, kinds: [.journal, .moodTrend, .moodLog])
+        question = Self.join(packet, kinds: [.talkingPoint])
+        providerFocus = Self.join(packet, kinds: [.homework, .activeGoal, .goalProgress])
+    }
+
+    init(observations: String, question: String, providerFocus: String) {
+        self.observations = observations
+        self.question = question
+        self.providerFocus = providerFocus
+    }
+
+    private static func join(_ packet: ContextPacket, kinds: Set<ContextPacketItem.Kind>) -> String {
+        String(packet.items.filter { kinds.contains($0.kind) }.map(\.text).joined(separator: "\n\n").prefix(1_400))
+    }
 
     func text(for section: TMSBriefSection) -> String {
         switch section {
@@ -60,10 +83,15 @@ struct TMSBrief: Equatable, Sendable {
 
 struct TMSBriefEditor: Equatable, Sendable {
     static let blankMessage = "Keep text in every TMS brief section or cancel your edits."
-    private(set) var saved = TMSBrief()
-    private(set) var draft = TMSBrief()
+    private(set) var saved: TMSBrief
+    private(set) var draft: TMSBrief
     private(set) var isEditing = false
     private(set) var error: String?
+
+    init(brief: TMSBrief = .seeded) {
+        saved = brief
+        draft = brief
+    }
 
     mutating func begin() {
         draft = saved
@@ -101,11 +129,13 @@ struct TMSBriefEditor: Equatable, Sendable {
 struct PrepareTMSView: View {
     @Bindable var navigation: NavigationModel
     @Bindable var state: DemoState
-    @State private var manualEditor = TMSBriefEditor()
+    @State private var manualEditor = TMSBriefEditor(brief: .empty)
     @State private var generatedEditor: AppointmentBriefEditor?
     @State private var preferredArtifactID: UUID?
     @State private var pendingSend: PendingAISend?
     @State private var sendTask: Task<Void, Never>?
+    @State private var preparationTask: Task<Void, Never>?
+    @State private var manualRefreshTask: Task<Void, Never>?
     @State private var actionError: String?
     @State private var isSavingGenerated = false
 
@@ -150,7 +180,14 @@ struct PrepareTMSView: View {
                 onCancel: cancelSend
             )
         }
-        .onAppear(perform: refreshGeneratedBrief)
+        .onAppear {
+            refreshManualBrief()
+            refreshGeneratedBrief()
+        }
+        .onChange(of: state.loadState) { _, _ in
+            refreshManualBrief()
+            refreshGeneratedBrief()
+        }
         .onChange(of: state.artifacts) { _, _ in refreshGeneratedBrief() }
         .onDisappear(perform: cancelSend)
     }
@@ -350,14 +387,34 @@ struct PrepareTMSView: View {
     }
 
     private func prepareGeneration() {
-        guard organizerAvailable, pendingSend == nil else { return }
+        guard organizerAvailable, pendingSend == nil, preparationTask == nil else { return }
         actionError = nil
-        do {
-            pendingSend = try state.prepareAISend(.generateAppointmentBrief(.tms))
-        } catch let error as UserFacingError {
-            actionError = error.message
-        } catch {
-            actionError = "Your saved sources are not ready to send."
+        preparationTask = Task {
+            defer { preparationTask = nil }
+            do {
+                let prepared = try await state.prepareAppointmentBriefSend(kind: .tms)
+                guard !Task.isCancelled else { return }
+                pendingSend = prepared
+            } catch is CancellationError {
+                return
+            } catch let error as UserFacingError {
+                actionError = error.message
+            } catch {
+                actionError = "Your saved sources are not ready to send."
+            }
+        }
+    }
+
+    private func refreshManualBrief() {
+        guard !manualEditor.isEditing, generatedEditor?.isEditing != true else { return }
+        manualRefreshTask?.cancel()
+        manualRefreshTask = Task {
+            defer { manualRefreshTask = nil }
+            let now = state.dependencies.now()
+            let window = DateInterval(start: now.addingTimeInterval(-90 * 24 * 60 * 60), end: now)
+            guard let packet = try? await state.appointmentContextPacket(kind: .tms, window: window),
+                  !Task.isCancelled, !manualEditor.isEditing, generatedEditor?.isEditing != true else { return }
+            manualEditor = TMSBriefEditor(brief: TMSBrief(packet: packet))
         }
     }
 
@@ -389,6 +446,10 @@ struct PrepareTMSView: View {
     }
 
     private func cancelSend() {
+        preparationTask?.cancel()
+        preparationTask = nil
+        manualRefreshTask?.cancel()
+        manualRefreshTask = nil
         sendTask?.cancel()
         sendTask = nil
         pendingSend = nil
