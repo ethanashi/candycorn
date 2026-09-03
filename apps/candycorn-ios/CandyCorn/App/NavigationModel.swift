@@ -32,8 +32,9 @@ final class NavigationModel {
     }
 
     func select(_ tab: AppTab) {
+        guard selectedTab != tab else { return }
+        materializeLaunchSource()
         selectedTab = tab
-        presentedFlow = nil
     }
 
     func navigate(to route: Route) {
@@ -41,16 +42,18 @@ final class NavigationModel {
             openSettings(section)
             return
         }
-        if route.isPresentedFlow {
+        switch route.presentation {
+        case .fullScreen:
+            materializeLaunchSource()
             presentedFlow = route
-            return
+        case .root:
+            navigateToRoot(route)
+        case .pushed:
+            materializeLaunchSource()
+            guard let destinationTab = route.tab else { return }
+            selectedTab = destinationTab
+            appendIfNeeded(route, to: destinationTab)
         }
-        guard let destinationTab = route.tab else {
-            if route == .welcome { onboardingComplete = false }
-            return
-        }
-        selectedTab = destinationTab
-        append(route, to: destinationTab)
     }
 
     func dismissPresentedFlow() {
@@ -58,23 +61,25 @@ final class NavigationModel {
     }
 
     func openSettings(_ section: SettingsSection) {
+        materializeLaunchSource()
         selectedTab = .settings
         selectedSettingsSection = section
         settingsPath = []
-        presentedFlow = nil
     }
 
     func canGoBack(from route: Route) -> Bool {
-        if presentedFlow == route { return true }
+        if route.presentation == .fullScreen { return presentedFlow == route }
+        guard route.presentation == .pushed else { return false }
         guard let tab = route.tab else { return false }
         return path(for: tab).last == route
     }
 
     func goBack(from route: Route) {
-        if presentedFlow == route {
-            dismissPresentedFlow()
+        if route.presentation == .fullScreen {
+            if presentedFlow == route { dismissPresentedFlow() }
             return
         }
+        guard route.presentation == .pushed else { return }
         guard let tab = route.tab else { return }
         popLast(from: tab, matching: route)
     }
@@ -94,7 +99,8 @@ final class NavigationModel {
     private func prepareForLaunch(_ route: Route) {
         guard route != .welcome else { return }
         if let section = route.settingsSection {
-            openSettings(section)
+            selectedTab = .settings
+            selectedSettingsSection = section
             return
         }
         if route.isPresentedFlow {
@@ -104,14 +110,48 @@ final class NavigationModel {
         }
     }
 
-    private func append(_ route: Route, to tab: AppTab) {
-        let path = route == tab.rootRoute ? [] : [route]
+    private func navigateToRoot(_ route: Route) {
+        guard route != .welcome else {
+            onboardingComplete = false
+            launchRoute = nil
+            presentedFlow = nil
+            return
+        }
+        guard let destinationTab = route.tab else { return }
+        if launchRoute?.tab == destinationTab {
+            launchRoute = nil
+        } else {
+            materializeLaunchSource()
+        }
+        selectedTab = destinationTab
+        clearPath(for: destinationTab)
+    }
+
+    private func materializeLaunchSource() {
+        guard let source = launchRoute else { return }
+        launchRoute = nil
+        guard source.presentation == .pushed, let sourceTab = source.tab else { return }
+        appendIfNeeded(source, to: sourceTab)
+    }
+
+    private func appendIfNeeded(_ route: Route, to tab: AppTab) {
         switch tab {
-        case .today: todayPath = path
-        case .journal: journalPath = path
-        case .prepare: preparePath = path
-        case .history: historyPath = path
-        case .settings: settingsPath = path
+        case .today where todayPath.last != route: todayPath.append(route)
+        case .journal where journalPath.last != route: journalPath.append(route)
+        case .prepare where preparePath.last != route: preparePath.append(route)
+        case .history where historyPath.last != route: historyPath.append(route)
+        case .settings where settingsPath.last != route: settingsPath.append(route)
+        default: break
+        }
+    }
+
+    private func clearPath(for tab: AppTab) {
+        switch tab {
+        case .today: todayPath = []
+        case .journal: journalPath = []
+        case .prepare: preparePath = []
+        case .history: historyPath = []
+        case .settings: settingsPath = []
         }
     }
 

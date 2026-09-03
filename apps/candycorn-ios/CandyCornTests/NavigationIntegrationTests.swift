@@ -112,16 +112,20 @@ struct NavigationIntegrationTests {
             let selectedTab = navigation.selectedTab
             navigation.goBack(from: root)
             #expect(!navigation.canGoBack(from: root))
+            #expect(navigation.backAction(for: root) == nil)
             #expect(navigation.selectedTab == selectedTab)
             #expect(navigation.presentedFlow == nil)
         }
 
         for route in Route.allCases where route.presentation == .pushed {
             let tab = route.tab!
-            let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", tab.rootRoute.rawValue])
+            let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", Route.today.rawValue])
+            navigation.select(tab)
             navigation.navigate(to: route)
             #expect(navigation.canGoBack(from: route))
             #expect(navigation.backAction(for: route) != nil)
+            #expect(path(in: navigation, for: tab).last == route)
+            #expect(AppTab.allCases.filter { path(in: navigation, for: $0).contains(route) }.count == 1)
             navigation.goBack(from: route)
             #expect(!navigation.canGoBack(from: route))
             #expect(navigation.presentedFlow == nil)
@@ -137,6 +141,39 @@ struct NavigationIntegrationTests {
             #expect(navigation.presentedFlow == nil)
             #expect(!navigation.canGoBack(from: route))
         }
+    }
+
+    @Test("Root navigation clears only the destination stack")
+    func rootNavigation() {
+        let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", Route.today.rawValue])
+        navigation.navigate(to: .goals)
+        navigation.navigate(to: .journalDetail)
+        navigation.navigate(to: .search)
+
+        navigation.navigate(to: .history)
+
+        #expect(navigation.selectedTab == .history)
+        #expect(navigation.historyPath.isEmpty)
+        #expect(navigation.todayPath == [.goals])
+        #expect(navigation.journalPath == [.journalDetail])
+        #expect(!navigation.canGoBack(from: .history))
+        #expect(navigation.backAction(for: .history) == nil)
+    }
+
+    @Test("Back ignores a pushed route that is not on top")
+    func nonTopBack() {
+        let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", Route.today.rawValue])
+        navigation.navigate(to: .goals)
+        navigation.navigate(to: .appointments)
+
+        #expect(navigation.todayPath == [.goals, .appointments])
+        #expect(!navigation.canGoBack(from: .goals))
+        navigation.goBack(from: .goals)
+        #expect(navigation.todayPath == [.goals, .appointments])
+
+        navigation.goBack(from: .appointments)
+        #expect(navigation.todayPath == [.goals])
+        #expect(navigation.canGoBack(from: .goals))
     }
 
     @Test("Completing onboarding opens Today")
@@ -157,12 +194,54 @@ struct NavigationIntegrationTests {
         let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", Route.goals.rawValue])
         navigation.navigate(to: .checkIn)
         #expect(navigation.presentedFlow == .checkIn)
+        #expect(navigation.launchRoute == nil)
+        #expect(navigation.todayPath == [.goals])
 
+        navigation.dismissPresentedFlow()
         navigation.dismissPresentedFlow()
 
         #expect(navigation.presentedFlow == nil)
         #expect(navigation.selectedTab == .today)
         #expect(navigation.todayPath == [.goals])
+    }
+
+    @Test("Every pushed deep link is retained under a presented flow")
+    func pushedDeepLinkFlowRetention() {
+        for source in Route.allCases where source.presentation == .pushed {
+            let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", source.rawValue])
+            let sourceTab = source.tab!
+            #expect(!navigation.canGoBack(from: source))
+
+            navigation.navigate(to: .checkIn)
+
+            #expect(navigation.launchRoute == nil)
+            #expect(navigation.selectedTab == sourceTab)
+            #expect(path(in: navigation, for: sourceTab) == [source])
+            #expect(navigation.presentedFlow == .checkIn)
+            navigation.dismissPresentedFlow()
+            #expect(path(in: navigation, for: sourceTab) == [source])
+            #expect(navigation.presentedFlow == nil)
+        }
+    }
+
+    @Test("Presenting and switching tabs retain every tab path")
+    func flowAndTabRetention() {
+        let navigation = NavigationModel(arguments: ["CandyCorn", "-screen", Route.today.rawValue])
+        navigation.navigate(to: .goals)
+        navigation.navigate(to: .journalDetail)
+        navigation.navigate(to: .prepareTMS)
+        navigation.navigate(to: .search)
+        navigation.navigate(to: .checkIn)
+
+        let paths = AppTab.allCases.map { path(in: navigation, for: $0) }
+        navigation.select(.settings)
+
+        #expect(navigation.selectedTab == .settings)
+        #expect(navigation.presentedFlow == .checkIn)
+        #expect(AppTab.allCases.map { path(in: navigation, for: $0) } == paths)
+        navigation.goBack(from: .checkIn)
+        #expect(navigation.presentedFlow == nil)
+        #expect(AppTab.allCases.map { path(in: navigation, for: $0) } == paths)
     }
 
     @Test("Active appointment launch prepares screenshot state only")
@@ -190,6 +269,16 @@ struct NavigationIntegrationTests {
                 #expect(navigation.presentedFlow == route || navigation.selectedTab == route.tab)
                 if !route.isPresentedFlow { #expect(!navigation.canGoBack(from: route)) }
             }
+        }
+    }
+
+    private func path(in navigation: NavigationModel, for tab: AppTab) -> [Route] {
+        switch tab {
+        case .today: navigation.todayPath
+        case .journal: navigation.journalPath
+        case .prepare: navigation.preparePath
+        case .history: navigation.historyPath
+        case .settings: navigation.settingsPath
         }
     }
 }
